@@ -271,6 +271,8 @@ class Stream:
         self.hedged = False
         self.fallback: str | None = None        # "extractive" when the answer model couldn't be reached
         self.fallback_reason: str | None = None
+        self.by: str | None = None              # "card": a live-data card answered (no model call)
+        self.card: dict | None = None
         self._waiters: set[asyncio.Future] = set()
         self.task = asyncio.create_task(self._run())
         self.task.add_done_callback(self._task_done)
@@ -323,6 +325,8 @@ class Stream:
     async def _run(self):
         """Hedged request: if no token within HEDGE_MS, or the first request ends without producing one (an error such
         as a 529), send a duplicate and keep whichever answers first (cuts the API's time-to-first-token tail)."""
+        if self._card_answer():
+            return
         if config.ANSWER_FALLBACK and is_down():
             self._extractive(f"answer model down: {STATUS['last_error']}")    # breaker open: don't wait again
             return
@@ -388,6 +392,22 @@ class Stream:
                 if not t.done():
                     t.cancel()
             self._finish()
+
+    def _card_answer(self) -> bool:
+        """Card path (ROUTER): a live-data card among the sources that fits this question IS the answer: its one-line
+        spoken template, cited, with no model call (~0 ms instead of the model's time to first token)."""
+        if not (config.ROUTER and config.ROUTER_CARD_ANSWER):
+            return False
+        from . import router
+        hit = router.pick_card(self.question, self.docs)
+        if hit is None:
+            return False
+        i, card = hit
+        self.by, self.card = "card", card
+        self.t_first = time.perf_counter()
+        self.tokens.append(f"{card['spoken']} [{i + 1}]")
+        self._finish()
+        return True
 
     def _extractive(self, why: str):
         """Answer without the model: best-matching sentence of the top source, flagged (never presented as Claude's)."""
@@ -483,7 +503,7 @@ class Race:
         loop = asyncio.get_running_loop()
         while self.by is None:
             if self.primary.tokens:
-                self.by = "llm"
+                self.by = getattr(self.primary, "by", None) or "llm"      # "card": the router's card answered
             elif (a := self._alt_answer()) is not None:
                 self.by, self.alt_text = "tavily", a
             elif self.primary.done and (self.alt.done() or self.primary.error is None):

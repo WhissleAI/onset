@@ -252,6 +252,8 @@
           q.order.push(key);
         }
         if (e.ids) f.ids = e.ids;
+        if (e.tier) f.tier = e.tier;
+        if (e.reason) f.reason = e.reason;            // router: which tier served this web-lane call (card | facts | web | wait)
         if ((e.state === "done" || e.state === "stale" || e.revived) && e.took != null) { const d = HSResults.specDocs(e); if (d) f.docs = d; }
         pipeSpec(q, e);
         if (e.state === "fired") { f.t0 = e.ms; renderResults(mode); break; }
@@ -277,6 +279,7 @@
         q.sourcesMs[mode] = e.ms;
         q.sources[mode] = e.docs || [];
         renderSources(mode);
+        renderLane(mode);
         renderResults(mode);
         break;
       case "used": {
@@ -311,7 +314,7 @@
         q.speechEnd = Math.max(0, ...Object.values(q.se));
         if (!Object.keys(q.se).length) q.speechEnd = null;
         q.lastAnsMs = null;
-        for (const k of ["answer", "stats", "sources", "path", "delta"]) pk(mode, k).innerHTML = "";
+        for (const k of ["answer", "stats", "sources", "path", "delta", "lane"]) pk(mode, k).innerHTML = "";
         renderAnswer(mode);
         toast(e.correction ? `${MODE_NAME[mode]}: you corrected yourself, re-answering the corrected question`
           : `${MODE_NAME[mode]}: you kept talking, re-answering the longer question`);
@@ -413,7 +416,10 @@
       pipe("spec", `${mem}${spec.length} early search${spec.length === 1 ? "" : "es"}${stale ? ` · ${stale} stale` : ""}`);
     }
     const cnt = {};
-    for (const f of fires) if (f.lane !== "draft") { const l = f.lane.replace("final-", ""); cnt[l] = (cnt[l] || 0) + 1; }
+    for (const f of fires) if (f.lane !== "draft") {
+      const t = f.tier === "card" || f.tier === "facts" ? f.tier : "";         // router: free tiers named as such
+      const l = t || f.lane.replace("final-", ""); cnt[l] = (cnt[l] || 0) + 1;
+    }
     pipe("lanes", Object.entries(cnt).map(([l, n]) => `${l} ${n}`).join(" · "));
   }
 
@@ -616,10 +622,55 @@
     let html = esc(txt).replace(/\[(\d+(?:\s*[,–-]\s*\d+)*)\]/g, (_, grp) =>
       grp.split(/\s*[,–-]\s*/).map((d) => `<a class="cite" data-n="${d}" ${+d > n ? 'title="not in the source list"' : ""}>${d}</a>`).join(""));
     if (!q.metric[mode] && !q.error[mode]) html += txt ? '<span class="caret"></span>' : (q.endpointMs[mode] != null ? '<span class="wait">searching…</span>' : "");
+    renderLane(mode);
     if (fb) html = `<span class="badge fb" title="the answer model was unreachable: this is the best-matching sentence of the top source">${esc(fb)} · not generated</span> ` + html;
     const old = q.superseded[mode];
     if (old && old.answer) html = `<div class="old"><span class="badge corr">superseded</span> ${old.correction ? "answered" : "answered early"} (${fmtS(old.ready)}), then you ${old.correction ? "corrected yourself" : "kept talking"}: <s>${esc(old.answer.slice(0, 140))}${old.answer.length > 140 ? "…" : ""}</s></div>` + html;
     box.innerHTML = html;
+  }
+
+  // ------------------------------------------------------------------ router: which lane answered (+ the card)
+  // Tiers (server/router.py): card = live data from a free API (or computed locally), facts = local knowledge
+  // (Wikidata / local Wikipedia leads / Wiktionary), web = the paid search. Honesty: every card names its source and
+  // the time its data is "as of"; nothing computed or cached is presented as a live search.
+  const LANE_NAME = { card: "live data", facts: "local facts", web: "web" };
+  function laneOf(mode) {
+    const q = run.q, docs = q.sources[mode] || [], m = q.metric[mode];
+    if (!docs.length) return null;
+    const txt = q.answer[mode] || "";
+    const cited = (txt.match(/\[(\d+)/) || [])[1];
+    const card = docs.find((d) => d.card) || null;
+    const byCard = m ? m.answer_by === "card" : (card && txt.startsWith(card.card.spoken.slice(0, 12)));
+    const d = byCard ? card : (cited && docs[+cited - 1]) || docs[0];
+    const tier = d.tier || (d.source === "local" ? "local" : "web");
+    return { tier, d, byCard, card: byCard ? card.card : null };
+  }
+  function fmtAsOf(s) {
+    if (!s) return "";
+    const m = String(s).match(/^(\d{4}-\d\d-\d\d)(?:T(\d\d:\d\d))?/);
+    if (!m) return String(s).slice(0, 40);
+    const today = new Date().toISOString().slice(0, 10);
+    return m[2] ? (m[1] === today ? m[2] : `${m[1]} ${m[2]}`) : m[1];
+  }
+  function renderLane(mode) {
+    const box = pk(mode, "lane");
+    if (!box) return;
+    const L = laneOf(mode);
+    if (!L || L.tier === "local") { box.innerHTML = ""; return; }
+    const src = L.card ? L.card.source : (L.d.source || "");
+    const chip = `<span class="lane-chip lc-${esc(L.tier)}" title="${esc(L.byCard ? "answered by the card itself: no model call" : "the answer's first cited source came from this lane" + (L.d.snapshot ? ` (${L.d.snapshot})` : ""))}">${esc(LANE_NAME[L.tier] || L.tier)} · ${esc(src.replace(/ \(local.*\)$/, ""))}</span>`;
+    if (!L.card) { box.innerHTML = chip; return; }
+    const c = L.card, asof = fmtAsOf(c.as_of);
+    let body = "";
+    if (c.vertical === "weather" && c.data && c.data.days) {
+      const imp = c.data.imperial, t = (x) => x == null ? "?" : imp ? Math.round(x * 9 / 5 + 32) + "°" : Math.round(x) + "°";
+      body = `<div class="lc-days">` + c.data.days.map((d) => `<div class="lc-day"><b>${esc(d.label)}</b><span>${esc(d.cond)}</span><span class="lc-t">${t(d.hi)} / ${t(d.lo)}</span>${d.pop != null ? `<span class="lc-p">${d.pop}% rain</span>` : (d.precip_mm ? `<span class="lc-p">${d.precip_mm} mm</span>` : "")}</div>`).join("") + `</div>`;
+    } else if (c.vertical === "fx" && c.data) {
+      body = `<div class="lc-big">${esc(String(c.spoken).split(/ \(|, at /)[0])}</div><div class="lc-sub">${esc(c.detail || "")}</div>`;
+    } else {
+      body = `<div class="lc-big">${esc(c.spoken)}</div>${c.detail ? `<div class="lc-sub">${esc(c.detail)}</div>` : ""}`;
+    }
+    box.innerHTML = chip + `<div class="lane-card"><div class="lc-h">${esc(c.title)}</div>${body}<div class="lc-src">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.source)}</a>` : esc(c.source)}${asof ? ` · as of ${esc(asof)}` : ""}${c.live === false ? " · computed locally" : ""}</div></div>`;
   }
 
   function renderSources(mode) {
@@ -632,11 +683,15 @@
       a.dataset.n = String(i + 1);
       a.title = (d.title || "") + (d.text ? "\n\n" + d.text : "");
       const lane = String(d.lane || "").replace("final-", "");
-      const meta = [d.cached ? `${d.source} · CACHED` : d.source, d.score != null ? `cos ${(+d.score).toFixed(2)}` : null].filter(Boolean).join(" · ");
+      // d.as_of: served from the search cache (server/searchcache.py), fetched live at that time; else the recorded cache
+      // router cards / facts carry their own "as of" (d.card.as_of, d.snapshot): never a "cached" badge on them
+      const cachedDoc = d.cached && !d.card && !d.tier;
+      const asOf = cachedDoc && d.as_of ? String(d.as_of).slice(11, 16) : "";
+      const meta = [cachedDoc ? `${d.source} · CACHED${asOf ? " as of " + d.as_of.replace("T", " ") : ""}` : d.source, d.score != null ? `cos ${(+d.score).toFixed(2)}` : null].filter(Boolean).join(" · ");
       const ts = d.t != null ? `<span class="ts" title="moment starts at ${Math.round(d.t)} s">▶ ${mmss(d.t)}</span>` : "";
       const title = d.t != null ? String(d.title || "").replace(/\s*·\s*\d+:\d+$/, "") : d.title;
       a.title = (title || "") + (meta ? `\n${lane} · ${meta}` : "") + (d.text ? "\n\n" + d.text : "");
-      a.innerHTML = `<div class="st"><span class="sn">[${i + 1}]</span>${lane ? `<span class="ln ${esc(lane)}">${esc(lane.slice(0, 3))}</span>` : ""}${ts}${d.cached ? '<span class="ln cached" title="replayed from the recorded web cache">cache</span>' : ""}<span class="tt">${esc(title || "(untitled)")}</span></div>`;
+      a.innerHTML = `<div class="st"><span class="sn">[${i + 1}]</span>${lane ? `<span class="ln ${esc(lane)}">${esc(lane.slice(0, 3))}</span>` : ""}${ts}${cachedDoc ? (asOf ? `<span class="ln cached" title="search result from the cache, fetched ${esc(String(d.as_of).replace("T", " "))} (not live)">cache ${esc(asOf)}</span>` : '<span class="ln cached" title="replayed from the recorded web cache">cache</span>') : ""}<span class="tt">${esc(title || "(untitled)")}</span></div>`;
       box.appendChild(a);
     });
   }
@@ -660,13 +715,20 @@
       st.push(`fires <b>${m.spec_fires ?? 0}</b>`, `fed <b>${m.spec_used ?? 0}</b>`, `stale <b>${m.stale ?? 0}</b>`,
         `drafts <b>${m.drafts ?? 0}</b>${m.draft_reused ? "↺" : ""}`);
     }
-    st.push(`web <b>${m.web_calls ?? 0}</b>` + (m.credits ? ` · <b>${m.credits}</b> cr` : ""), `sources <b>${fmtS(m.sources_ms)}</b>`);
+    // router on (m.web_paid set): web-lane calls split into paid searches vs free card / fact lookups
+    const paid = m.paid_calls ?? m.web_paid;
+    const calls = m.web_paid != null ? `paid <b>${paid ?? 0}</b> · free <b>${m.free_calls ?? 0}</b>` : `web <b>${m.web_calls ?? 0}</b>`;
+    st.push(calls + (m.credits ? ` · <b>${m.credits}</b> cr` : ""), `sources <b>${fmtS(m.sources_ms)}</b>`);
     if (mode !== "headstart") st.push(`done <b>${fmtS(m.done_ms)}</b>`);
+    if (m.search_cached) st.unshift(`<span class="flag" title="web results served from the search cache, not fetched live">cached search ×${m.search_cached}${m.search_cached_as_of ? " · as of " + esc(String(m.search_cached_as_of).slice(11, 16)) : ""}</span>`);
+    if (m.web_paid == null && mode === "headstart" && m.paid_calls != null) st.push(`paid <b>${m.paid_calls}</b>`);
+    if (m.answer_by === "card") st.unshift(`<span class="flag ok" title="the live-data card answered: no model call">card answer</span>`);
     if (m.web_replayed) st.unshift(`<span class="flag" title="web results replayed from the recorded cache, not fetched live">cached web ×${m.web_replayed}</span>`);
     if (m.answer_fallback) st.unshift(`<span class="flag" title="${esc(m.answer_fallback_reason || "")}">${esc(m.answer_fallback)} answer · model offline</span>`);
     const box = pk(mode, "stats");
     box.innerHTML = st.map((s) => `<span>${s}</span>`).join("");
     box.title = `spec fires ${m.spec_fires ?? 0} · fed the answer ${m.spec_used ?? 0} · stale/cancelled ${m.stale ?? 0} · drafts ${m.drafts ?? 0}${m.draft_reused ? " (one reused)" : ""} · web calls ${m.web_calls ?? 0} · sources ${fmtS(m.sources_ms)} · done ${fmtS(m.done_ms)} · endpoint lag ${m.endpoint_lag_ms ?? "—"} ms (all after you stopped talking)`;
+    renderLane(mode);
     if (m.error && !q.answer[mode]) { q.error[mode] = m.error; renderAnswer(mode); }
   }
 
@@ -1006,8 +1068,10 @@
     } else {
       const f = r.f;
       const isFinal = f.lane.startsWith("final-");
-      laneCls = f.lane.replace("final-", "") + (isFinal ? " final" : "");
-      labelLane = f.lane.replace("final-", "");
+      // router tiers: a web-lane call served by a live-data card / local facts is labelled as such (free), not "web"
+      const tier = (f.tier === "card" || f.tier === "facts") ? f.tier : "";
+      laneCls = (tier ? "t-" + tier : f.lane.replace("final-", "")) + (isFinal ? " final" : "");
+      labelLane = tier || f.lane.replace("final-", "");
       labelQ = f.query;
       state = f.state === "fired" ? "live" : f.state;
       if (f.state === "fired") info = `${Math.round((r.t1 ?? f.t0) - f.t0)} ms…`;
@@ -1016,6 +1080,7 @@
       else if (f.state === "stale") info = f.staleAt != null && f.t1 != null && f.staleAt > f.t1 + 5 ? `stale @${f.staleAt}` : "cancelled: meaning changed";
       else if (f.state === "cancelled") info = "cancelled";
       else if (f.state === "error") info = "error";
+      else if (f.state === "skipped") info = "router: " + (f.reason || "key word not said yet") + " (free)";
       else if (f.took != null) info = `${f.took} ms · ${f.n ?? 0} docs`;
       if (f.used) info += " · fed answer";
       lab.title = [f.query, f.top && f.top.length ? "top: " + f.top.join(" | ") : "", f.error || ""].filter(Boolean).join("\n");

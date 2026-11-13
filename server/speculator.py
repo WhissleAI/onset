@@ -12,14 +12,32 @@ import asyncio
 import re
 import itertools
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, confidence, config, director, embed, lanes, narrow, rerank
+from . import answer, confidence, config, director, embed, lanes, narrow, rerank, searchcache
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
+
+# --- tiered router (server/router.py, ROUTER=on) runs inside lanes.web; these only pass its meter through ---------
+ROUTER_KEYS = ("route", "route_vertical", "route_conf", "route_why", "route_ms", "route_fallback", "route_error",
+               "tier", "tier_src", "paid", "free_calls")
+
+
+def router_counts(web_fires) -> dict:
+    """Per question: web-lane calls that reached the paid backend (not cached / replayed / answered by the router),
+    free calls the router made (card APIs, Wikidata, ...), and how many fires each tier served."""
+    paid = sum(1 for x in web_fires if x.meter.get("paid", 0 if x.meter.get("cached") or x.meter.get("replayed")
+                                                   or x.meter.get("backend") in ("cache", None) else 1))
+    tiers: dict = {}
+    for x in web_fires:
+        t = x.meter.get("tier")
+        if t:
+            tiers[t] = tiers.get(t, 0) + 1
+    return {"web_paid": paid, "free_calls": sum(x.meter.get("free_calls", 0) for x in web_fires), "tiers": tiers}
 
 
 @dataclass
@@ -37,6 +55,7 @@ class Fire:
     used: bool = False
     n_words: int = 0
     meter: dict = field(default_factory=dict)   # web lane: backend, depth, topic, credits, cached, fallback
+    key: object = None         # web lanes: searchcache.QKey of the frame it searched (SPEC_EFF policy + cache)
 
 
 @dataclass
@@ -49,6 +68,7 @@ class Draft:
     t_start: float
     doc_ids: tuple
     content: tuple = ()
+    cover: dict | None = None     # SPEC_EFF: coverage of the borrowed pool it was drafted from
 
 
 _NON_ANSWER = re.compile(r"\b(don't|didn't|did not|do not|doesn't|does not|no (?:information|mention)|not (?:mention|cover|"
@@ -70,6 +90,7 @@ class Speculator:
         self.answer_meter: dict = {}
         self.mode = mode
         self.t0 = t0 or time.perf_counter()
+        self.t_wall0 = time.time()                 # search cache: only entries from before this question count
         self.fires: list[Fire] = []
         self.fired_queries: dict[tuple, Fire] = {}
         self.pool: dict[str, lanes.Doc] = {}
@@ -95,6 +116,18 @@ class Speculator:
         self.audio_qdur = 0.0
         self.last_frame: Frame | None = None
         self.held = 0                           # fires held back on a shaky key word (SPEC_CONF)
+        # SPEC_EFF: web searches skipped because an earlier search already covers the meaning (reason -> count), and
+        # for each skipped query the search whose results stand in for it (drafts + the final coverage check use them)
+        self.skips: Counter = Counter()
+        self.skip_why: dict[str, str] = {}
+        self.eot_p: float | None = None          # the session's fused end-of-turn score for the current words
+        self.eot_src = "fused"
+        self.final_q: set = set()                # meanings an endpoint already answered (or searched) for
+        self.uncovered: dict = {}                # meaning_sig -> Coverage of a pool that failed the draft-time check
+        self.parent_of: dict[str, Fire] = {}
+        self.cheap_sigs: set = set()             # router plans (vertical + args) already looked up speculatively
+        self.sig_fire: dict = {}                 # plan sig -> the speculative cheap lookup for it
+        self.cheap_parent: dict[str, Fire] = {}  # query -> the cheap lookup of the same plan (drafts borrow it)
 
     # ------------------------------------------------------------------ helpers
     def ms(self, t=None):
@@ -106,10 +139,12 @@ class Speculator:
     def _fire(self, lane: str, query: str, f: Frame | None, coro_fn, meter: dict | None = None):
         fire = Fire(id=f"f{next(_ids)}", lane=lane, query=query, frame_sig=f.sig if f else (),
                     content=f.content if f else (), t_fire=time.perf_counter(), n_words=f.n if f else 0,
-                    meter=meter if meter is not None else {})
+                    meter=meter if meter is not None else {},
+                    key=searchcache.qkey(f) if f is not None and lane in ("web", "final-web") else None)
         self.fires.append(fire)
         self.fired_queries[(lane.replace("final-", ""), query)] = fire
-        self._ev(id=fire.id, lane=lane, query=query, state="fired", ms=self.ms(fire.t_fire), word=fire.n_words)
+        self._ev(id=fire.id, lane=lane, query=query, state="fired", ms=self.ms(fire.t_fire), word=fire.n_words,
+                 **({"key": fire.key.text()} if fire.key is not None else {}))
 
         async def run():
             try:
@@ -120,10 +155,22 @@ class Speculator:
                 await self._add_docs(docs)                  # vectors first, then "done": drafts rank on vectors
                 fire.docs = docs                            # (a fire cancelled mid-embed keeps none: never revived
                 fire.state = "done" if fire.state == "fired" else fire.state     # with vector-less docs)
+                if lane == "web" and fire.meter.get("paid") == 0 and fire.meter.get("tier"):
+                    self.web_used = max(0, self.web_used - 1)   # ROUTER: a free card / fact / wait fire spends no budget
                 self._ev(id=fire.id, lane=lane, query=query, state=fire.state, ms=self.ms(fire.t_done),
                          took=round((fire.t_done - fire.t_fire) * 1000), n=len(docs),
                          top=[d.title for d in docs[:3]], ids=[d.id for d in docs],
-                         docs=[d.brief(160) for d in docs[:5]], **self._meter_ev(fire))
+                         docs=[self._brief(d, 160) for d in docs[:5]], **self._meter_ev(fire))
+                # only paid web results go into the search cache: router cards / facts (meta tier / card / snapshot)
+                # would come back as plain docs (searchcache keeps id/title/text/url/source), losing their labels
+                web_docs = [d for d in docs if not (d.meta.get("tier") or d.meta.get("card") or d.meta.get("snapshot"))]
+                if (fire.key is not None and web_docs and fire.meter.get("tier") in (None, "web")
+                        and not (fire.meter.get("cached") or fire.meter.get("replayed") or fire.meter.get("fallback"))):
+                    searchcache.cache().put(fire.key, query, web_docs, fire.meter.get("backend") or config.WEB_BACKEND,
+                                            vecs={d.id: self.vecs[d.id] for d in web_docs if d.id in self.vecs})
+                if (config.SPEC_EFF and lane == "web" and self.mode == "headstart" and not self.closed
+                        and self.last_frame is not None and self.skip_why.get(self.last_frame.query()) == "hold"):
+                    self._spec_web(self.last_frame)        # a "hold" waiting for these results can decide now
                 if (config.DRAFT_ON_LAND and self.mode == "headstart" and not self.closed and not self.draft_busy
                         and lane in ("web", "local") and self.last_frame is not None
                         and self.last_frame.query() == query and self._conf_ok(self.last_frame)):
@@ -134,6 +181,12 @@ class Speculator:
                     fire.state = "cancelled"
                     self._ev(id=fire.id, lane=lane, query=query, state="cancelled", ms=self.ms(fire.t_done))
                 raise
+            except lanes.Skip as e:                         # ROUTER: nothing to search yet (free, not an error)
+                fire.state = "skipped"
+                fire.t_done = time.perf_counter()
+                self.web_used = max(0, self.web_used - 1)
+                self._ev(id=fire.id, lane=lane, query=query, state="skipped", ms=self.ms(fire.t_done),
+                         reason=str(e)[:120], **self._meter_ev(fire))
             except Exception as e:
                 fire.state = "error"
                 fire.t_done = time.perf_counter()
@@ -150,10 +203,22 @@ class Speculator:
         if not m:
             return {}
         return {k: m[k] for k in ("backend", "depth", "topic", "time_range", "credits", "cached", "fallback", "replayed",
-                                  "cache_match", "cache_miss", "narrow") if k in m}
+                                  "cache_match", "cache_miss", "narrow", "semcache", "as_of", "age_s", "cache_query")
+                + ROUTER_KEYS if k in m}
 
-    def _web(self, q: str, f: Frame, final: bool):
-        """(coroutine factory, meter) for one web-lane call of this question."""
+    @staticmethod
+    def _brief(d: lanes.Doc, n: int = 260) -> dict:
+        """Doc.brief plus the "as of" time of a result served from the search cache (the UI labels it)."""
+        b = d.brief(n)
+        if d.meta.get("as_of") and not d.meta.get("card") and not d.meta.get("tier"):
+            # (router cards / facts carry their own "as of" inside meta["card"] / meta["snapshot"]: never "cached")
+            b["as_of"] = d.meta["as_of"]
+            b["cached"] = True
+        return b
+
+    def _web(self, q: str, f: Frame, final: bool, qvec_task: asyncio.Task | None = None):
+        """(coroutine factory, meter) for one web-lane call of this question. With CACHE_SEM, the cross-question
+        search cache answers first (exact key; at the endpoint also the embedding nearest neighbour, `qvec_task`)."""
         meter: dict = {}
         hints = dict(f.web_hints())
         topic = "news" if f.intent in NEWS_INTENTS else "general"
@@ -165,8 +230,41 @@ class Speculator:
             if doms:
                 hints["include_domains"], hints["domains_mode"] = doms, mode
                 meter["narrow"] = narrow.family(f)
-        return (lambda: lanes.web(q, topic=topic, intent=f.intent, text=f.resolved_text, final=final,
-                                  ledger=self.ledger, meter=meter, entity=ent, hints=hints)), meter
+        key = searchcache.qkey(f)
+
+        async def go():
+            if config.CACHE_SEM and self._cache_ok(f, final):
+                c = searchcache.cache()
+                hit = c.get(key, before=self.t_wall0)
+                if hit is None and qvec_task is not None:
+                    cands = c.nn_candidates(key, before=self.t_wall0)
+                    if cands:
+                        hit = c.nearest(key, (await asyncio.shield(qvec_task))[0], cands)
+                if hit is not None:
+                    return self._from_cache(hit, meter)
+            return await lanes.web(q, topic=topic, intent=f.intent, text=f.resolved_text, final=final,
+                                   ledger=self.ledger, meter=meter, entity=ent, hints=hints, frame=f)
+        return go, meter
+
+    def _cache_ok(self, f: Frame, final: bool) -> bool:
+        """The search cache stands in for the PAID web lane only: with the router on, a frame whose plan goes to a
+        card / local facts first is never answered from cached web docs (the cheap lane is live and free)."""
+        p = self._plan(f, final)
+        return p is None or list(p) == ["web"]
+
+    def _from_cache(self, hit: searchcache.Hit, meter: dict) -> list:
+        """A search-cache hit as lane docs: labelled cached + "as of" (meter, events, every doc), no credit spent."""
+        e = hit.entry
+        meter.update(backend=e.backend, cached=True, semcache=hit.match, as_of=hit.as_of, age_s=round(hit.age_s),
+                     credits=0.0, cache_query=e.query)
+        docs = []
+        for x in e.docs:
+            d = lanes.Doc(id=x["id"], title=x["title"], text=x["text"], url=x.get("url", ""), source=x.get("source", ""),
+                          meta={"cached": True, "as_of": hit.as_of, "semcache": hit.match})
+            if e.vecs and d.id in e.vecs:
+                self.vecs.setdefault(d.id, e.vecs[d.id])       # no re-embedding
+            docs.append(d)
+        return docs
 
     def _web_affordable(self) -> bool:
         """Speculation stops (quietly) when the session's Tavily credits are down to the final-query reserve."""
@@ -329,6 +427,7 @@ class Speculator:
         now = now or time.perf_counter()
         if f.sig != self.last_sig:
             self.last_sig, self.stable, self.sig_since = f.sig, 1, now
+            self.eot_p = None
         else:
             self.stable += 1
         self._mark_stale(f)
@@ -340,10 +439,7 @@ class Speculator:
             # the director's fire head replaces the stability / min-words rules (budget + narrowing gate still apply)
             if f.director["fire"] >= dthr[0] and f.has_content():
                 q = f.query()
-                if q and f.route in ("web", "both") and ("web", q) not in self.fired_queries \
-                        and self.web_used < config.WEB_BUDGET and narrow.specific(f) and self._web_affordable():
-                    self.web_used += 1
-                    self._fire("web", q, f, *self._web(q, f, final=False))
+                self._spec_web(f)
                 if q and f.route in ("local", "both") and len(lanes.index()) and ("local", q) not in self.fired_queries \
                         and self.local_used < config.LOCAL_BUDGET:
                     self.local_used += 1
@@ -361,16 +457,193 @@ class Speculator:
         q = f.query()
         if not q:
             return
-        if (f.route in ("web", "both") and ("web", q) not in self.fired_queries and self.web_used < config.WEB_BUDGET
-                and narrow.specific(f) and self._web_affordable()):
-            self.web_used += 1
-            self._fire("web", q, f, *self._web(q, f, final=False))
+        self._spec_web(f)
         if (f.route in ("local", "both") and len(lanes.index()) and ("local", q) not in self.fired_queries
                 and self.local_used < config.LOCAL_BUDGET):
             self.local_used += 1
             self._fire("local", q, f, lambda q=q: lanes.local_text(q))
         if (now - self.sig_since) * 1000 >= config.DRAFT_STABLE_MS and not self.draft_busy and self._conf_ok(f):
             self._maybe_draft(f)
+
+    # ------------------------------------------------------------------ web fire policy
+    @staticmethod
+    def _plan(f: Frame, final: bool = False):
+        """Agent R's router (lanes.plan(frame) -> lane names, when it exists): the paid web policy below applies only
+        when the plan includes "web"; a cheap-only plan (card / facts) fires free lookups instead. None = no router:
+        the frame's own route decides."""
+        plan = getattr(lanes, "plan", None)
+        if plan is None:
+            return None
+        try:
+            return plan(f, final=final)
+        except Exception:
+            return None
+
+    def _paid(self) -> int:
+        """Paid web calls this question so far (in flight or landed): not cache hits, not failures (not billed), not
+        router skips, not calls the router answered for free (meter paid == 0: a card / local fact). A call still in
+        flight counts as paid (its cheap lane may fall back to the web)."""
+        return sum(1 for x in self.fires if x.lane in ("web", "final-web") and x.state not in ("error", "skipped")
+                   and not x.meter.get("cached") and not x.meter.get("replayed") and x.meter.get("paid", 1) != 0)
+
+    def _decide(self, f: Frame) -> tuple[str, Fire | None]:
+        """SPEC_EFF: does this frame's meaning need a new web search? ("fire", None) or (why not, the search whose
+        results stand in for it). Why not: dup (same key) | subsumed | extends (more words, same subject: re-rank the
+        pool) | grows (the entity phrase got longer and the earlier results already name it) | hold (it may be such a
+        completion: wait for the earlier search to land)."""
+        k = searchcache.qkey(f)
+        cands = [x for x in self.fires if x.lane in ("web", "final-web") and x.key is not None
+                 and (x.state in ("fired", "done") or (x.state == "stale" and x.docs))]
+        best = None
+        for x in reversed(cands):
+            rel = searchcache.relation(k, x.key)
+            if rel == "same":
+                return "dup", x
+            if rel == "subsumed":
+                return "subsumed", x
+            if best is not None:
+                continue
+            if rel == "extends":
+                if x.state == "fired":
+                    best = ("hold", x)
+                elif config.SPEC_DRIFT and searchcache.lex_missing(k, x.key, x.docs):
+                    best = ("fire", None)       # the added words aren't in its results: the meaning drifted
+                else:
+                    best = ("extends", x)
+            elif rel == "grows" and config.SPEC_GROW_CHECK:
+                added = [w for w in k.subject if not searchcache._tok_in(w, x.key.subject)]
+                if x.state == "fired":
+                    best = ("hold", x)
+                elif searchcache.mentions(x.docs, added):
+                    best = ("grows", x)
+        return best if best is not None else ("fire", None)
+
+    def _skip(self, f: Frame, why: str, parent: Fire | None):
+        q = f.query()
+        if parent is not None:
+            self.parent_of[q] = parent
+        if self.skip_why.get(q) != why:
+            self.skips[why] += 1
+            self.emit({"t": "spec_skip", "lane": "web", "query": q, "why": why, "ms": self.ms(),
+                       "parent": parent.id if parent is not None else None})
+        self.skip_why[q] = why
+
+    def _coverage_fire(self, f: Frame, cov):
+        """The pool doesn't cover the current partial (draft-time coverage check): that meaning gets its own search
+        (the next paid call), now or once it has settled (see _settled)."""
+        q = f.query()
+        if f.meaning_sig not in self.uncovered:
+            self.emit({"t": "spec_skip", "lane": "web", "query": q, "why": "uncovered", "ms": self.ms(),
+                       "cover": cov.to_json()})
+        self.uncovered[f.meaning_sig] = cov
+        self.skip_why[q] = "uncovered"
+        self._spec_web(f)
+
+    def _settled(self, f: Frame, k, now: float | None = None) -> bool:
+        """Has this meaning held long enough to spend a paid call on it? (time since its words last changed)
+          - SPEC_SETTLE_MS for a first call: a partial's last word is often half-heard ("kansas city" -> "... chiefs",
+            "switzer" -> "switzerland"), and a prefix that is still growing would spend the call on nothing;
+          - SPEC_LAST_SETTLE_MS for the budget's LAST call, and for a first call with no entity and few words
+            ("speed light", "when's best"): it must go to the final meaning (the endpoint searches it anyway);
+          - at once when the fused end-of-turn score says the turn is probably over (SPEC_EOT_FIRE; Flux ear)."""
+        if self.last_sig != f.sig:
+            return config.SPEC_SETTLE_MS <= 0
+        if self.eot_p is not None and self.eot_p >= config.SPEC_EOT_FIRE and (self.eot_src == "fused" or (
+                k.subject and not any(x.lane in ("web", "final-web") for x in self.fires))):
+            return True                 # the turn is probably over: these are the final words (the tagger's gate,
+            #                             a weaker hint than Flux's fused score, only releases a FIRST search that
+            #                             names its subject)
+        need = config.SPEC_SETTLE_MS
+        if config.SPEC_TAIL_SETTLE_MS > need and k.subject and f.content and \
+                searchcache.stem(f.content[-1]) in k.subject:
+            need = config.SPEC_TAIL_SETTLE_MS       # the entity is the last thing said: it may still be growing
+        if config.SPEC_PAID_MAX > 1 and self._paid() >= config.SPEC_PAID_MAX - 1:
+            need = max(need, config.SPEC_LAST_SETTLE_MS)
+        elif not k.subject and len([w for w in k.terms if w not in narrow.GENERIC]) < config.SPEC_NOSUBJ_MIN:
+            need = max(need, config.SPEC_LAST_SETTLE_MS)
+        return ((now or time.perf_counter()) - self.sig_since) * 1000 >= need
+
+    def on_eot(self, p: float, src: str = "fused"):
+        """Session: the end-of-turn score of the current words (Flux ear, FLUX_SOFT=fused: every update; other ears:
+        1.0 when the tagger's semantic-endpoint gate is open, src="gate"). A high one lets a meaning that was waiting
+        to settle spend its call now, a tick or two before the soft endpoint."""
+        self.eot_p, self.eot_src = p, src
+        if (config.SPEC_EFF and self.mode == "headstart" and not self.closed and self.last_frame is not None
+                and p >= config.SPEC_EOT_FIRE):
+            self._spec_web(self.last_frame)
+
+    def _spec_web(self, f: Frame):
+        """One speculative web search for this frame, if the policy wants one."""
+        q = f.query()
+        if not q or f.route not in ("web", "both") or ("web", q) in self.fired_queries or q in self.final_q:
+            return
+        plan = self._plan(f)
+        if plan is not None and "web" not in plan:
+            if plan.cheap_only:
+                self._spec_cheap(f, plan)
+            return
+        if not config.SPEC_EFF:
+            if self.web_used < config.WEB_BUDGET and narrow.specific(f) and self._web_affordable():
+                self.web_used += 1
+                self._fire("web", q, f, *self._web(q, f, final=False))
+            return
+        if not narrow.specific(f):
+            return
+        why, parent = self._decide(f)
+        if why in ("extends", "grows", "hold") and f.meaning_sig in self.uncovered:
+            why = "fire"                # its results were re-ranked for this partial and didn't cover it
+        if why == "fire":
+            if not self._settled(f, searchcache.qkey(f)):
+                return
+            if self._paid() >= config.SPEC_PAID_MAX or self.web_used >= config.WEB_BUDGET:
+                self._skip(f, "budget", None)
+                return
+            if self._route_hold(f, plan):
+                self._skip(f, "route-hold", None)
+                return
+            if not self._web_affordable():
+                return
+            self.skip_why.pop(q, None)
+            self.web_used += 1
+            self._fire("web", q, f, *self._web(q, f, final=False))
+            return
+        self._skip(f, why, parent)     # "hold": decided again on the next update, or when the earlier search lands
+
+    def _route_hold(self, f: Frame, plan) -> bool:
+        """Router + efficiency: no PAID speculative call while the router is unsure what kind of question this is
+        (plan conf < ROUTER_SPEC_HOLD_CONF: no card / fact / fresh / open-ended cue yet) and the frame is still
+        growing (no likely end of turn yet): the next words usually decide the lane ("what's the ..." -> weather card).
+        Corrections are never held (q27, sc27: the replacement is the final meaning)."""
+        if plan is None:
+            return False
+        weak = plan.lane == "web" and plan.conf < config.ROUTER_SPEC_HOLD_CONF
+        # the generic "stable factoid" plan (any wh- question: local leads first, paid web as their fallback) is the
+        # router's no-signal default while a question starts ("what's a hundred US dollars" -> currency card two
+        # words later): the same hold applies to its paid fallback
+        generic = config.ROUTER_SPEC_HOLD_LEADS and plan.lane == "facts" and plan.vertical == "leads"
+        if not (weak or generic):
+            return False
+        if f.dropped or f.cue:
+            return False
+        return not (self.eot_p is not None and self.eot_p >= config.SPEC_EOT_FIRE)
+
+    def _spec_cheap(self, f: Frame, plan):
+        """A cheap-only plan (live-data card / local facts): look it up now, free, once per distinct plan (vertical +
+        arguments). The call goes through lanes.web -> router.route, so it returns the card / facts (or falls back to
+        the paid web itself when the cheap lane comes back empty: counted then)."""
+        q = f.query()
+        sig = getattr(plan, "sig", None) or (plan.lane, plan.vertical, q)
+        if sig in self.cheap_sigs:
+            if sig in self.sig_fire:
+                self.cheap_parent[q] = self.sig_fire[sig]   # same lookup, more words: drafts borrow its result
+            return
+        if len(self.cheap_sigs) >= config.ROUTER_SPEC_CHEAP_MAX:
+            return
+        self.cheap_sigs.add(sig)
+        self.web_used += 1                     # refunded when the router answers for free (see _fire.run)
+        go, meter = self._web(q, f, final=False)
+        meter["no_paid"] = True                # cheap lane only: an empty / weak lookup is skipped, not sent to the web
+        self.sig_fire[sig] = self._fire("web", q, f, go, meter)
 
     def on_audio(self, wav: np.ndarray, route: str = "both", n_words: int = 0):
         """Audio lane: embed the spoken question itself (no words needed) and search the local moments index.
@@ -430,7 +703,7 @@ class Speculator:
 
         Drafts whose meaning the question has since moved past are cancelled (their tokens are cheap; the time saved
         when the meaning holds is not)."""
-        if any(d.meaning_sig == f.meaning_sig for d in self.drafts):
+        if any(d.meaning_sig == f.meaning_sig for d in self.drafts) or f.meaning_sig in self.uncovered:
             return
         live = [d for d in self.drafts if not d.stream.done and d.meaning_sig != f.meaning_sig]
         for d in live:
@@ -440,6 +713,13 @@ class Speculator:
             return
         q = f.query()
         mine = [x for x in self.fires if x.query == q and x.lane in ("web", "local")]
+        borrowed = False
+        if not any(x.lane == "web" for x in mine) and q in self.cheap_parent:
+            mine.append(self.cheap_parent[q])       # router: the same card / fact lookup (same plan args): no
+            #                                         coverage check needed, it is the answer's own source
+        elif config.SPEC_EFF and not any(x.lane == "web" for x in mine) and q in self.parent_of:
+            mine.append(self.parent_of[q])          # no search of its own: the search that covers its meaning
+            borrowed = True
         ready = [x for x in mine if x.state == "done"]
         if not ready or any(x.state == "fired" for x in mine):
             return                                  # wait for every lane of this query (web is the slow one)
@@ -448,15 +728,26 @@ class Speculator:
         async def go():
             try:
                 qvec = (await embed.arun(embed.encode_queries, [f.resolved_text]))[0]
-                top = [d for d, _ in self._rank_for(f, qvec)]
+                ranked = self._rank_for(f, qvec)
+                top = [d for d, _ in ranked]
                 if not top or self.closed or self.last_sig != f.sig:
                     return                          # the question moved on while we embedded
+                if borrowed:
+                    # pool reuse: the earlier search's results, re-ranked for the longer partial. Draft from them only
+                    # if they cover it; else that is a coverage failure: search this meaning now (budget permitting)
+                    cov = searchcache.coverage(searchcache.qkey(f), ranked, self._searched_keys())
+                    if not cov.ok:
+                        self._coverage_fire(f, cov)
+                        return
+                else:
+                    cov = None
                 own = {d.id for x in ready for d in x.docs}
                 if not own & {d.id for d in top}:
                     return                          # don't draft from other questions' results
                 st = answer.Stream(f.resolved_text, top, tag="draft", context=self.context, hint=f.answer_hint())
                 d = Draft(id=f"d{next(_ids)}", meaning_sig=f.meaning_sig, question=f.text, qvec=qvec, stream=st,
-                          t_start=time.perf_counter(), doc_ids=tuple(x.id for x in top), content=f.content)
+                          t_start=time.perf_counter(), doc_ids=tuple(x.id for x in top), content=f.content,
+                          cover=cov.to_json() if cov is not None else None)
                 self.drafts.append(d)
                 self._ev(id=d.id, lane="draft", query=f.text, state="fired", ms=self.ms(d.t_start))
             finally:
@@ -497,6 +788,9 @@ class Speculator:
 
         q = f.query() or " ".join(f.words)
         qtext = f.resolved_text
+        fplan = self._plan(f, final=True)
+        if fplan is not None:
+            m["route"], m["route_conf"], m["route_why"] = fplan.lane, fplan.conf, fplan.why[:80]
         qvec_task = asyncio.create_task(embed.arun(embed.encode_queries, [qtext]))
         reuse_draft = None
         alt = None
@@ -505,7 +799,7 @@ class Speculator:
                 alt = self._answer_race(q, f)
                 waits = []
                 if f.route in ("web", "both"):
-                    waits.append(self._fire("final-web", q, f, *self._web(q, f, final=True)).task)
+                    waits.append(self._fire("final-web", q, f, *self._web(q, f, final=True, qvec_task=qvec_task)).task)
                 if f.route in ("local", "both") and len(lanes.index()):
                     waits.append(self._fire("final-local", q, f, lambda: lanes.local_text(q)).task)
                 await asyncio.gather(*waits, return_exceptions=True)
@@ -520,6 +814,10 @@ class Speculator:
                 reuse_draft = await self._pick_draft(f, qvec, m)
                 if not live():
                     return superseded()
+                if (reuse_draft is not None and getattr(reuse_draft.stream, "by", None) == "card"
+                        and not self._card_fits(reuse_draft.stream.card, qtext)):
+                    m["draft_rejected_card"] = True     # a card for the partial ("weather in san") isn't the answer
+                    reuse_draft = None
                 if reuse_draft is None:
                     # 2) the final query already fired (in flight or done)? wait for it, don't re-search
                     # (a stale fire cancelled before its results landed doesn't count: it brought nothing)
@@ -534,19 +832,55 @@ class Speculator:
                         if pending:
                             # don't let a slow lane hold the answer hostage: answer with what has landed after the cap
                             await asyncio.wait(pending, timeout=config.PENDING_CAP_S)
+                    elif fplan is not None and fplan.cheap_only and f.route in ("web", "both"):
+                        # router: a live-data card / local fact question. A card already in the pool that fits the
+                        # final words answers it; else one cheap lookup now (the router itself falls back to the paid
+                        # web if the cheap lane comes back empty or weak). No paid budget involved.
+                        sf = self.sig_fire.get(fplan.sig)
+                        if sf is not None and sf.state == "fired" and sf.task:
+                            await asyncio.wait([sf.task], timeout=config.PENDING_CAP_S)   # same lookup in flight
+                        if fplan.lane == "card" and self._fitting_card(qtext):
+                            m["path"] = "card-hit"
+                        elif sf is not None and sf.state == "done" and sf.docs and fplan.lane == "facts":
+                            m["path"] = "route-hit"             # the same fact lookup (same plan args) already landed
+                        else:
+                            m["path"] = f"route-{fplan.lane}"
+                            await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True)).task,
+                                                 return_exceptions=True)
+                    elif config.SPEC_EFF and f.route == "web" and (fplan is None or "web" in fplan):
+                        alt = await self._final_eff(f, q, qvec, qvec_task, m)
                     elif best >= config.COMMIT_TAU and self._nothing_new(f):
                         m["path"] = "pool-commit"
                     else:
                         m["path"] = "speculative-miss"
                         alt = self._answer_race(q, f)
                         waits = []
-                        if f.route in ("web", "both") and self.web_used < config.WEB_BUDGET + 1:
+                        if f.route in ("web", "both") and self.web_used < config.WEB_BUDGET + 1 and \
+                                (fplan is None or "web" in fplan):
                             waits.append(self._fire("final-web", q, f, *self._web(q, f, final=True)).task)
                         if f.route in ("local", "both") and len(lanes.index()):
                             waits.append(self._fire("final-local", q, f, lambda: lanes.local_text(q)).task)
                         await asyncio.gather(*waits, return_exceptions=True)
                 else:
                     m["path"] = "draft-reuse"
+                if reuse_draft is None and not self.rank(qvec, 1) and live():
+                    # nothing to answer from yet (a slow search past PENDING_CAP_S): an answer with no sources is
+                    # worse than a late one, so wait for whatever is still on the wire
+                    # (stale searches too: an ASR revision marks a search stale while it is still on the wire)
+                    pending = [x.task for x in self.fires if x.task and not x.task.done() and x.lane != "audio"]
+                    if pending:
+                        m["waited_empty"] = True
+                        await asyncio.wait(pending, timeout=config.PENDING_EMPTY_S)
+                    if (not self.rank(qvec, 1) and live() and f.route in ("web", "both")
+                            and not any(x.lane == "final-web" for x in self.fires)
+                            and (fplan is None or "web" in fplan)):
+                        # every search so far came back empty: search the final question (over the budget if it
+                        # must be: the calls that were spent bought nothing to answer from)
+                        if self._paid() >= config.SPEC_PAID_MAX:
+                            m["budget_override"] = "empty-pool"
+                        m["path"] = (m.get("path") or "") + "+empty-retry"
+                        await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True)).task,
+                                             return_exceptions=True)
         finally:
             if not qvec_task.done():
                 qvec_task.cancel()
@@ -556,12 +890,22 @@ class Speculator:
             return superseded()
         self.last_qvec = qvec
         ranked = self._rank_for(f, qvec, 5)
+        if fplan is not None and fplan.lane == "card":
+            ranked = self._card_first(ranked, qtext, qvec)
+        if config.CACHE_SEM:
+            c = searchcache.cache()
+            rids = {d.id for d, _ in ranked}
+            for x in self.fires:
+                if x.key is not None and x.docs and rids & {d.id for d in x.docs}:
+                    c.note(x.key, qvec, {d.id: self.vecs[d.id] for d in x.docs if d.id in self.vecs})
         if reuse_draft is not None:
             st = reuse_draft.stream
             docs = [self.pool[i] for i in reuse_draft.doc_ids if i in self.pool]
             dv = {i: float(self.vecs[i] @ qvec) for i in reuse_draft.doc_ids if i in self.vecs}
             ranked = [(d, dv.get(d.id, 0.0)) for d in docs]      # the draft's own numbering = its citations
             self._ev(id=reuse_draft.id, lane="draft", query=reuse_draft.question, state="reused", ms=self.ms())
+            if reuse_draft.cover is not None:
+                m["cover"] = reuse_draft.cover
         else:
             docs = [d for d, _ in ranked]
             st = answer.Stream(qtext, docs, tag="final", context=self.context, hint=f.answer_hint())
@@ -570,7 +914,7 @@ class Speculator:
         t_sources = time.perf_counter()
         m["n_sources"] = len(docs)
         emit({"t": "sources", "ms": self.ms(t_sources),
-              "docs": [{**d.brief(), "score": round(sc, 3)} for d, sc in ranked]})
+              "docs": [{**self._brief(d), "score": round(sc, 3)} for d, sc in ranked]})
         self.answer_stream = st
         self.used_ids = [d.id for d in docs]
         used_ids = set(self.used_ids)
@@ -605,6 +949,10 @@ class Speculator:
             "ready_ms": round(((t_first or t_done) - t_speech_end) * 1000),
             "done_ms": round((t_done - t_speech_end) * 1000),
             "web_calls": sum(1 for x in self.fires if x.lane in ("web", "final-web")),
+            "paid_calls": self._paid(),
+            "web_skipped": dict(self.skips),
+            "search_cached": sum(1 for x in self.fires if x.meter.get("semcache")),
+            "search_cached_as_of": min((x.meter["as_of"] for x in self.fires if x.meter.get("semcache")), default=None),
             "spec_fires": len(spec),
             "spec_used": sum(1 for x in spec if x.used),
             "stale": sum(1 for x in self.fires if x.state in ("stale", "cancelled")),
@@ -621,6 +969,76 @@ class Speculator:
         })
         emit({"t": "metric", **{k: v for k, v in m.items() if k != "answer"}})
         return m
+
+    async def _final_eff(self, f: Frame, q: str, qvec, qvec_task, m: dict):
+        """SPEC_EFF endpoint without a search for the final query itself: answer from the pool when it covers the
+        question (coverage check: an earlier search of the same meaning, or any pool with a strong match), else ONE
+        final search if the per-question budget (SPEC_PAID_MAX paid calls) still allows it. Returns the Tavily
+        answer race or None."""
+        self.final_q.add(q)                      # no speculative search for this meaning after this point
+        why, parent = self._decide(f)
+        inflight = [x.task for x in self.fires if x.lane in ("web", "final-web") and x.task and not x.task.done()]
+        if why == "hold" or (parent is not None and parent.state == "fired") or (inflight and not self.rank(qvec, 1)):
+            inflight = [x.task for x in self.fires if x.lane in ("web", "final-web") and x.task and not x.task.done()]
+            if inflight:                         # an earlier search of this meaning is still on the wire
+                await asyncio.wait(inflight, timeout=config.PENDING_CAP_S)
+            why, parent = self._decide(f)
+        m["spec_verdict"] = why
+        if why in ("dup", "subsumed"):           # the same meaning was searched (other word order, or a soft final)
+            m["path"] = "speculative-hit"
+            return None
+        k = searchcache.qkey(f)
+        cov = searchcache.coverage(k, self.rank(qvec, 5), self._searched_keys())
+        m["cover"] = cov.to_json()
+        related = parent is not None and why in ("extends", "grows")
+        if cov.ok and (related or cov.sim >= config.SPEC_COVER_SIM_ANY):
+            m["path"] = "pool-reuse"
+            return None
+        if self._paid() >= config.SPEC_PAID_MAX:
+            if self.rank(qvec, 1):
+                m["path"] = "budget-pool"        # hard cap: answer from what was fetched
+                return None
+            # the budget went on searches that brought nothing (ASR-garbled partials): answering with no sources at
+            # all is worse than one more call; flagged so it shows up in the metric
+            m["budget_override"] = "empty-pool"
+        m["path"] = "coverage-miss" if related else "speculative-miss"
+        alt = self._answer_race(q, f)
+        await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True, qvec_task=qvec_task)).task,
+                             return_exceptions=True)
+        return alt
+
+    @staticmethod
+    def _card_fits(card, question: str) -> bool:
+        from . import router
+        try:
+            return bool(card) and router.card_fits(card, question)
+        except Exception:
+            return False
+
+    def _fitting_card(self, question: str) -> bool:
+        """A live-data card from a speculative lookup (not stale) that answers the final question as asked."""
+        for x in self.fires:
+            if x.lane in ("web", "final-web") and x.state == "done":
+                for d in x.docs:
+                    if d.meta.get("card") and self._card_fits(d.meta["card"], question):
+                        return True
+        return False
+
+    def _card_first(self, ranked, question: str, qvec):
+        """A card question: the fitting card (if any landed) leads the sources, whatever its cosine (the answer's
+        card path and the UI read it from there)."""
+        for x in self.fires:
+            if x.lane in ("web", "final-web") and x.state == "done":
+                for d in x.docs:
+                    if d.meta.get("card") and self._card_fits(d.meta["card"], question) and d.id in self.vecs:
+                        # other cards (an earlier partial's: "weather in chicago" for "... tomorrow") don't fit:
+                        # leave them out (two near-identical cards would read as one source twice)
+                        rest = [(y, sc) for y, sc in ranked if y.id != d.id and not y.meta.get("card")]
+                        return [(d, float(self.vecs[d.id] @ qvec))] + rest[:4]
+        return ranked
+
+    def _searched_keys(self) -> list:
+        return [x.key for x in self.fires if x.key is not None and x.docs and x.state in ("done", "stale")]
 
     def _answer_race(self, q: str, f: Frame):
         """TAVILY_ANSWER=1: on the after-endpoint path, also ask Tavily for its own answer (include_answer) in a
@@ -643,7 +1061,8 @@ class Speculator:
                 "web_replayed": sum(1 for x in web if x.meter.get("replayed")),     # served from the recorded cache
                 "web_backend": next((x.meter.get("backend") for x in reversed(web) if x.meter.get("backend")),
                                     config.WEB_BACKEND),
-                "session_credits": self.ledger.spent}
+                "session_credits": self.ledger.spent,
+                **router_counts(web)}
 
     def _nothing_new(self, f: Frame) -> bool:
         """True if every content word of the final question was already covered by some non-stale search."""

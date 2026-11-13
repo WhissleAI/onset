@@ -49,6 +49,7 @@ RUNS = ROOT / "runs"
 CHUNK = 1600
 TRAIL_CHUNKS = 12          # 1.2 s of zeros after the file, like app.replay()
 PAUSE_BETWEEN_S = 0.8      # let cancelled drafts / fires settle between runs
+SEARCH_CACHE = "per-run"   # --search-cache
 
 
 # ---------------------------------------------------------------------------------------------------- questions
@@ -198,8 +199,12 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         e["_wall"] = time.perf_counter()
         ear_events.append(e)
 
+    from server import config as _cfg, ear as _ear, searchcache as _sc
+    if SEARCH_CACHE == "per-run":
+        _sc.reset()            # A/B-honest: no search-cache hits carried over from another question or mode
+    from server import router as _router
+    _router.reset_caches()       # ROUTER: cold card / fact lookups per run (A/B-honest: no mode reads the other's)
     sess = Session(emit, mode=mode)
-    from server import config as _cfg, ear as _ear
     ear = ArcEar([sess], on_event=on_ear) if _cfg.EAR in ("arc", "") else _ear.make_ear([sess], on_event=on_ear)
     t0 = time.perf_counter()
     sess.t0 = t0
@@ -254,6 +259,15 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
     ready = m.get("ready_ms")
     spec_q = [e["query"] for e in events if e.get("t") == "spec" and e.get("state") == "fired"
               and e.get("lane") != "draft"]
+    # router (ROUTER=on): which tier the answer came from = the card if the card answered, else the answer's first
+    # cited source, else source [1] of the final ranking
+    srcs = [e for e in events if e.get("t") == "sources"]
+    sdocs = (srcs[-1].get("docs") or []) if srcs else []
+    cited = re.search(r"\[(\d+)", m.get("answer") or "")
+    adoc = next((d for d in sdocs if d.get("card")), None) if m.get("answer_by") == "card" else \
+        (sdocs[int(cited.group(1)) - 1] if cited and 0 < int(cited.group(1)) <= len(sdocs) else (sdocs[0] if sdocs else None))
+    answer_tier = (adoc.get("tier") or ("local" if adoc.get("source") == "local" else "web")) if adoc else None
+    routes = [e.get("route") for e in events if e.get("t") == "spec" and e.get("route") and e.get("state") != "fired"]
     row = {
         "id": q["id"], "text": q["text"], "kind": q.get("kind"), "voice": q.get("voice"), "mode": mode,
         "ready_ms": ready, "sources_ms": m.get("sources_ms"), "done_ms": m.get("done_ms"),
@@ -270,11 +284,18 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         "answers": len(ms), "answer_idx": pick, "phantom_answers": phantom,
         "question_heard": m.get("question"), "hedged": m.get("hedged"), "q_wer": round(q_wer[pick], 3) if ms else None,
         "web_calls": m.get("web_calls"), "spec_fires": m.get("spec_fires"), "spec_used": m.get("spec_used"),
+        "paid_calls": m.get("paid_calls", m.get("web_calls")), "web_skipped": m.get("web_skipped"),
+        "search_cached": m.get("search_cached"), "cover": m.get("cover"),
+        "first_fire_lead_ms": m.get("first_fire_lead_ms"), "used_fire_lead_ms": m.get("used_fire_lead_ms"),
         "credits": m.get("credits"), "credits_spec": m.get("credits_spec"), "credits_final": m.get("credits_final"),
         "web_cached": m.get("web_cached"), "web_backend": m.get("web_backend"), "answer_by": m.get("answer_by"),
         "stale": m.get("stale"), "drafts": m.get("drafts"), "draft_reused": m.get("draft_reused"),
         "draft_match": m.get("draft_match"), "query": m.get("query"), "intent": m.get("intent"),
         "spec_queries": spec_q, "sources": m.get("sources"),
+        "web_paid": m.get("web_paid"), "free_calls": m.get("free_calls"), "tiers": m.get("tiers"),
+        "answer_tier": answer_tier, "route_plan": m.get("route"), "route_conf": m.get("route_conf"), "answer_src": (adoc or {}).get("source"), "routes": routes,
+        "route_why": next((e.get("route_why") for e in reversed(events) if e.get("t") == "spec" and e.get("route_why")),
+                          None),
         # compact timeline (ms since first audio sample) of fires/drafts and the endpoint, for debugging paths
         "trace": [{k: e.get(k) for k in ("t", "id", "lane", "state", "ms", "took", "n", "query", "by")
                    if e.get(k) is not None} for e in events if e.get("t") in ("spec", "endpoint", "extended", "sources")]
@@ -313,12 +334,32 @@ def summarize(rows: list[dict]) -> dict:
             "accuracy": round(sum(1 for r in scored if r["correct"]) / len(scored), 3) if scored else None,
             "n_scored": len(scored),
             "mean_web_calls": round(statistics.mean([r["web_calls"] or 0 for r in rs]), 2) if rs else None,
+            # paid = web calls that weren't served by a cache (Tavily credits on Tavily; would-be credits on Wikipedia)
+            "mean_paid_calls": round(statistics.mean([r.get("paid_calls", r["web_calls"]) or 0 for r in rs]), 2)
+            if rs else None,
+            "mean_spec_fires": round(statistics.mean([r.get("spec_fires") or 0 for r in rs]), 2) if rs else None,
+            "mean_wasted_fires": round(statistics.mean([(r.get("spec_fires") or 0) - (r.get("spec_used") or 0)
+                                                        for r in rs]), 2) if rs else None,
+            "mean_search_cached": round(statistics.mean([r.get("search_cached") or 0 for r in rs]), 2) if rs else None,
+            "p50_used_fire_lead_ms": pct([r.get("used_fire_lead_ms") for r in rs], 50),
             # Tavily credits per question (0 on the Wikipedia lane); total = speculative + final
             "mean_credits": round(statistics.mean([r.get("credits") or 0 for r in rs]), 2) if rs else None,
             "mean_credits_spec": round(statistics.mean([r.get("credits_spec") or 0 for r in rs]), 2) if rs else None,
             "mean_credits_final": round(statistics.mean([r.get("credits_final") or 0 for r in rs]), 2) if rs else None,
             "total_credits": sum(r.get("credits") or 0 for r in rs),
             "web_backend": dict(Counter(str(r.get("web_backend")) for r in rs)),
+            # router: web-lane calls that reached the paid backend vs free calls (card APIs, Wikidata, ...) per question
+            "mean_web_paid": (round(statistics.mean([r["web_paid"] if r.get("web_paid") is not None
+                                                     else (r.get("web_calls") or 0) for r in rs]), 2) if rs else None),
+            "mean_free_calls": round(statistics.mean([r.get("free_calls") or 0 for r in rs]), 2) if rs else None,
+            "answer_by": dict(Counter(str(r.get("answer_by")) for r in rs)),
+            "by_lane": {k: {"n": len(g), "p50_ready_ms": pct([r["ready_ms"] for r in g], 50),
+                            "p90_ready_ms": pct([r["ready_ms"] for r in g], 90),
+                            "mean_web_paid": round(statistics.mean([r.get("web_paid") or 0 for r in g]), 2),
+                            "accuracy": (round(sum(1 for r in g if r["correct"]) / len([r for r in g if r["correct"] is not None]), 3)
+                                         if any(r["correct"] is not None for r in g) else None)}
+                        for k in sorted({str(r.get("answer_tier")) for r in rs})
+                        for g in [[r for r in rs if str(r.get("answer_tier")) == k]]},
             "draft_reuse_rate": round(sum(1 for r in rs if r["draft_reused"]) / len(rs), 3) if rs else None,
             "errors": sum(1 for r in rs if r["error"] or r["ready_ms"] is None),
             "split_questions": sum(1 for r in rs if (r["n_finals"] or 0) > 1),
@@ -371,11 +412,16 @@ def run_config(local_docs: int) -> dict:
                         "cache_scope": config.TAVILY_CACHE_SCOPE, "answer_race": config.TAVILY_ANSWER,
                         "base_url": config.TAVILY_BASE_URL} if config.WEB_BACKEND == "tavily" else None),
             "embed_device": config.EMBED_DEVICE, "arc_dir": str(config.ARC_DIR), "arc_threads": config.ARC_THREADS,
+            "spec_eff": {"on": config.SPEC_EFF, "paid_max": config.SPEC_PAID_MAX, "settle_ms": config.SPEC_SETTLE_MS,
+                         "last_settle_ms": config.SPEC_LAST_SETTLE_MS, "eot_fire": config.SPEC_EOT_FIRE,
+                         "drift": config.SPEC_DRIFT, "cover_sim": config.SPEC_COVER_SIM,
+                         "cache": config.CACHE_SEM, "cache_scope": SEARCH_CACHE},
             "local_docs": local_docs, "spec": {"min_words": config.MIN_WORDS, "stable_updates": config.STABLE_UPDATES,
                                                "web_budget": config.WEB_BUDGET, "draft_budget": config.DRAFT_BUDGET,
                                                "draft_stable_ms": config.DRAFT_STABLE_MS,
                                                "audio_lane": config.AUDIO_LANE, "commit_tau": config.COMMIT_TAU},
             "semantic_endpoint": getattr(config, "SEMANTIC_ENDPOINT", None), "ear": config.EAR,
+            "router": getattr(config, "ROUTER", None),
             "flux_soft": getattr(config, "FLUX_SOFT", None), "arc_meta": getattr(config, "ARC_META", None),
             "sem_silence_ms": getattr(config, "SEM_SILENCE_MS", None),
             "sem_stable_ms": getattr(config, "SEM_STABLE_MS", None),
@@ -464,7 +510,7 @@ def plot(res: dict, path: Path) -> bool:
 def print_row(r):
     ok = {True: "ok ", False: "BAD", None: " - "}[r["correct"]]
     print(f"  {r['id']} {r['mode']:9s} ready={r['ready_ms']!s:>5}ms vad={r['ready_vad_ms']!s:>5} "
-          f"src={r['sources_ms']!s:>5} lag={r['endpoint_lag_ms']!s:>4} ep={r.get('endpoint_by') or '-':8s} n_ans={r.get('answers')} {r['path'] or '-':22s} web={r['web_calls']} cr={r.get('credits') or 0:g} "
+          f"src={r['sources_ms']!s:>5} lag={r['endpoint_lag_ms']!s:>4} ep={r.get('endpoint_by') or '-':8s} n_ans={r.get('answers')} {r['path'] or '-':22s} web={r['web_calls']} paid={r.get('paid_calls')} cr={r.get('credits') or 0:g} "
           f"fires={r['spec_fires']} drafts={r['drafts']} reuse={r['draft_reused']} {ok} "
           f"heard={r['arc_heard']!r} | {(r['answer'] or r['error'] or '')[:80]!r}", flush=True)
 
@@ -571,7 +617,15 @@ def main():
     ap.add_argument("--no-latest", action="store_true", help="don't overwrite runs/ab_latest.{json,png}")
     ap.add_argument("--wait-lock", type=float, default=0, help="seconds to wait for another holder of the lock")
     ap.add_argument("--owner", default=os.environ.get("RUN_AB_OWNER", ""), help="name written into the lock file")
+    ap.add_argument("--search-cache", default="per-run", choices=["per-run", "shared", "off"],
+                    help="cross-question search cache (server/searchcache.py): per-run = cleared before every "
+                         "(question, mode) run (default: no hits carried between questions or modes); shared = "
+                         "one cache for the whole run, both modes (flatters later questions); off = CACHE_SEM=0")
     a = ap.parse_args()
+    global SEARCH_CACHE
+    SEARCH_CACHE = a.search_cache
+    if a.search_cache == "off":
+        os.environ["CACHE_SEM"] = "0"             # before any `server` import
     a.questions = Path(a.questions).resolve() if a.questions else None
     if a.questions and not a.questions.exists():
         raise SystemExit(f"no such questions file: {a.questions}")

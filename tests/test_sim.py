@@ -147,7 +147,8 @@ def sim(monkeypatch):
     yield s
 
 
-def test_replay_headstart_beats_baseline_and_is_deterministic(sim):
+def test_replay_headstart_beats_baseline_and_is_deterministic(sim, monkeypatch):
+    monkeypatch.setattr(config, "SPEC_EFF", False)   # old per-word fire mechanics; SPEC_EFF=1: tests/test_spec_eff.py
     tr = scripted_trace("who founded the company Nvidia")
     prof = fakes.PROFILES["wikipedia"]
     hs = sim.run_question(tr, "headstart", CURRENT, prof, seed=1)

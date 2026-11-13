@@ -21,6 +21,15 @@ NEWS, STOCK, FX = "discourse.intent.news_query", "discourse.intent.qa_stock", "d
 WEATHER, FACT = "discourse.intent.weather_query", "discourse.intent.qa_factoid"
 
 
+@pytest.fixture(autouse=True)
+def _fire_on_first_sight(monkeypatch):
+    # these tests check the web lane's mechanics with a scripted ear that has no end-of-turn score and a short
+    # endpoint: SPEC_EFF's settle waits would push every search past it. Settle 0 = fire on first sight (the
+    # meaning-key dedup + paid-call budget still apply); the settle waits are covered in tests/test_spec_eff.py
+    monkeypatch.setattr(config, "SPEC_SETTLE_MS", 0)
+    monkeypatch.setattr(config, "SPEC_LAST_SETTLE_MS", 0)
+
+
 @pytest.fixture
 def fake(monkeypatch):
     """Real lanes.web → Tavily code path, over an in-process fake; fake embedder + answer model (no network)."""

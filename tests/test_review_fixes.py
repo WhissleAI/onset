@@ -157,6 +157,7 @@ async def _drain(st):
 
 # ============================================================================ 3. pool consistency when a fire is cancelled mid-embed
 def test_cancel_mid_embed_keeps_pool_consistent(monkeypatch):
+    monkeypatch.setattr(config, "SPEC_EFF", False)   # old per-word fire mechanics; SPEC_EFF=1: tests/test_spec_eff.py
     async def slow_arun(fn, *a):
         await asyncio.sleep(0.2)          # document embedding in flight
         return fn(*a)
@@ -586,7 +587,8 @@ def test_run_stop_idempotent(ws_env):
 
 
 # ============================================================================ 10. back-to-back questions
-def test_back_to_back_questions_speculate_and_queue_fifo():
+def test_back_to_back_questions_speculate_and_queue_fifo(monkeypatch):
+    monkeypatch.setattr(config, "SPEC_EFF", False)   # old per-word fire mechanics; SPEC_EFF=1: tests/test_spec_eff.py
     async def go():
         ev = []
         s = Session(ev.append, mode="headstart")
@@ -644,6 +646,7 @@ def test_url_less_web_results_get_distinct_stable_ids():
 
 
 def test_flip_back_to_cancelled_query_fires_again(monkeypatch):
+    monkeypatch.setattr(config, "SPEC_EFF", False)   # old per-word fire mechanics; SPEC_EFF=1: tests/test_spec_eff.py
     monkeypatch.setattr(config, "STALE_CANCEL", True)      # the opt-in cancel-on-stale behaviour
     """A stale fire cancelled before its results landed brings nothing: coming back to that query searches again (the
     Tavily lane's cache holds the finished, paid-for request, so that is free), and a final query that matches only
