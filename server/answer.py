@@ -21,6 +21,10 @@ means Y is the largest), state it plainly with that citation and no disclaimer. 
 never remark on what the sources don't cover about other parts of it (a corrected-away name, a misheard word). Only
 if no source supports the answer, say in a few words that the sources don't cover it, then give the answer you are
 confident of without a citation; don't pad with unrelated facts from the sources.
+Conversions (currency, units): when the question gives an amount ("a hundred US dollars in euros", "26 miles in km"),
+answer with the converted amount first, converted from the unit the amount is in to the unit asked for, then the rate
+used with its citation: "100 US dollars is about 86 euros, at 1 USD = 0.86 EUR [1]". Do the arithmetic yourself; if
+the source gives the inverse rate (1 EUR = 1.16 USD), divide by it. Never answer with just the rate.
 Some sources are moments of recordings (game broadcasts, hearings, calls, podcasts): they have a timestamp and a noisy
 transcript; the moment itself is in [brackets], with the words just before and after it (also from the recording).
 Answer from every moment that helps. Say when and who, and quote the key words as transcribed, e.g. At 00:26 the
@@ -139,7 +143,7 @@ def model_opts(model: str) -> dict:
     return {"output_config": {"effort": "low"}}
 
 
-def build_prompt(question: str, docs, context: str = "") -> str:
+def build_prompt(question: str, docs, context: str = "", hint: str = "") -> str:
     lines = []
     for i, d in enumerate(docs, 1):
         meta = getattr(d, "meta", None) or {}
@@ -157,7 +161,8 @@ def build_prompt(question: str, docs, context: str = "") -> str:
             lines.append(f"[{i}] {d.title}: {d.text[:1000]}")
     src = "\n".join(lines) if lines else "(no results)"
     prev = f"Previous turn (for resolving 'it', 'he', 'there'):\n{context}\n\n" if context else ""
-    return f"{prev}Sources:\n{src}\n\nSpoken question: {question}"
+    note = f"\nNote: {hint}" if hint else ""
+    return f"{prev}Sources:\n{src}\n\nSpoken question: {question}{note}"
 
 
 async def warm():
@@ -185,8 +190,9 @@ class Stream:
     Ends exactly once: done=True (with error set on failure, "cancelled" on cancel) and every follower wakes, whether
     _run finished, failed, was cancelled mid-flight or was cancelled before it ever started."""
 
-    def __init__(self, question: str, docs, tag: str = "", context: str = ""):
+    def __init__(self, question: str, docs, tag: str = "", context: str = "", hint: str = ""):
         self.question = question
+        self.hint = hint                        # read-out instruction for this question (Frame.answer_hint)
         self.docs = list(docs)
         self.tag = tag
         self.context = context
@@ -234,7 +240,8 @@ class Stream:
         async with client().messages.stream(model=config.ANSWER_MODEL, max_tokens=160, system=SYSTEM,
                                             **model_opts(config.ANSWER_MODEL),
                                             messages=[{"role": "user",
-                                                       "content": build_prompt(self.question, self.docs, self.context)}]) as s:
+                                                       "content": build_prompt(self.question, self.docs, self.context,
+                                                                                   self.hint)}]) as s:
             async for text in s.text_stream:
                 if self.done:
                     return

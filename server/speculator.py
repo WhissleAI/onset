@@ -429,7 +429,7 @@ class Speculator:
                 own = {d.id for x in ready for d in x.docs}
                 if not own & {d.id for d in top}:
                     return                          # don't draft from other questions' results
-                st = answer.Stream(f.resolved_text, top, tag="draft", context=self.context)
+                st = answer.Stream(f.resolved_text, top, tag="draft", context=self.context, hint=f.answer_hint())
                 d = Draft(id=f"d{next(_ids)}", meaning_sig=f.meaning_sig, question=f.text, qvec=qvec, stream=st,
                           t_start=time.perf_counter(), doc_ids=tuple(x.id for x in top), content=f.content)
                 self.drafts.append(d)
@@ -539,7 +539,7 @@ class Speculator:
             self._ev(id=reuse_draft.id, lane="draft", query=reuse_draft.question, state="reused", ms=self.ms())
         else:
             docs = [d for d, _ in ranked]
-            st = answer.Stream(qtext, docs, tag="final", context=self.context)
+            st = answer.Stream(qtext, docs, tag="final", context=self.context, hint=f.answer_hint())
             if alt is not None:
                 st = answer.Race(st, alt)
         t_sources = time.perf_counter()
