@@ -21,6 +21,23 @@ from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
 
+# --- tiered router (server/router.py, ROUTER=on) runs inside lanes.web; these only pass its meter through ---------
+ROUTER_KEYS = ("route", "route_vertical", "route_conf", "route_why", "route_ms", "route_fallback", "route_error",
+               "tier", "tier_src", "paid", "free_calls")
+
+
+def router_counts(web_fires) -> dict:
+    """Per question: web-lane calls that reached the paid backend (not cached / replayed / answered by the router),
+    free calls the router made (card APIs, Wikidata, ...), and how many fires each tier served."""
+    paid = sum(1 for x in web_fires if x.meter.get("paid", 0 if x.meter.get("cached") or x.meter.get("replayed")
+                                                   or x.meter.get("backend") in ("cache", None) else 1))
+    tiers: dict = {}
+    for x in web_fires:
+        t = x.meter.get("tier")
+        if t:
+            tiers[t] = tiers.get(t, 0) + 1
+    return {"web_paid": paid, "free_calls": sum(x.meter.get("free_calls", 0) for x in web_fires), "tiers": tiers}
+
 
 @dataclass
 class Fire:
@@ -120,6 +137,8 @@ class Speculator:
                 await self._add_docs(docs)                  # vectors first, then "done": drafts rank on vectors
                 fire.docs = docs                            # (a fire cancelled mid-embed keeps none: never revived
                 fire.state = "done" if fire.state == "fired" else fire.state     # with vector-less docs)
+                if lane == "web" and fire.meter.get("paid") == 0 and fire.meter.get("tier"):
+                    self.web_used = max(0, self.web_used - 1)   # ROUTER: a free card / fact / wait fire spends no budget
                 self._ev(id=fire.id, lane=lane, query=query, state=fire.state, ms=self.ms(fire.t_done),
                          took=round((fire.t_done - fire.t_fire) * 1000), n=len(docs),
                          top=[d.title for d in docs[:3]], ids=[d.id for d in docs],
@@ -134,6 +153,12 @@ class Speculator:
                     fire.state = "cancelled"
                     self._ev(id=fire.id, lane=lane, query=query, state="cancelled", ms=self.ms(fire.t_done))
                 raise
+            except lanes.Skip as e:                         # ROUTER: nothing to search yet (free, not an error)
+                fire.state = "skipped"
+                fire.t_done = time.perf_counter()
+                self.web_used = max(0, self.web_used - 1)
+                self._ev(id=fire.id, lane=lane, query=query, state="skipped", ms=self.ms(fire.t_done),
+                         reason=str(e)[:120], **self._meter_ev(fire))
             except Exception as e:
                 fire.state = "error"
                 fire.t_done = time.perf_counter()
@@ -150,7 +175,7 @@ class Speculator:
         if not m:
             return {}
         return {k: m[k] for k in ("backend", "depth", "topic", "time_range", "credits", "cached", "fallback", "replayed",
-                                  "cache_match", "cache_miss", "narrow") if k in m}
+                                  "cache_match", "cache_miss", "narrow") + ROUTER_KEYS if k in m}
 
     def _web(self, q: str, f: Frame, final: bool):
         """(coroutine factory, meter) for one web-lane call of this question."""
@@ -166,7 +191,7 @@ class Speculator:
                 hints["include_domains"], hints["domains_mode"] = doms, mode
                 meter["narrow"] = narrow.family(f)
         return (lambda: lanes.web(q, topic=topic, intent=f.intent, text=f.resolved_text, final=final,
-                                  ledger=self.ledger, meter=meter, entity=ent, hints=hints)), meter
+                                  ledger=self.ledger, meter=meter, entity=ent, hints=hints, frame=f)), meter
 
     def _web_affordable(self) -> bool:
         """Speculation stops (quietly) when the session's Tavily credits are down to the final-query reserve."""
@@ -643,7 +668,8 @@ class Speculator:
                 "web_replayed": sum(1 for x in web if x.meter.get("replayed")),     # served from the recorded cache
                 "web_backend": next((x.meter.get("backend") for x in reversed(web) if x.meter.get("backend")),
                                     config.WEB_BACKEND),
-                "session_credits": self.ledger.spent}
+                "session_credits": self.ledger.spent,
+                **router_counts(web)}
 
     def _nothing_new(self, f: Frame) -> bool:
         """True if every content word of the final question was already covered by some non-stale search."""

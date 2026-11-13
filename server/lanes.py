@@ -35,7 +35,11 @@ class Doc:
 
     def brief(self, n=260):
         return {"id": self.id, "title": self.title, "text": self.text[:n], "url": self.url, "source": self.source,
-                "t": self.t, "lane": self.lane, **({"cached": True} if self.meta.get("cached") else {})}
+                "t": self.t, "lane": self.lane, **({"cached": True} if self.meta.get("cached") else {}),
+                # router tiers (server/router.py): which kind of source answered, the card itself, "as of" time
+                **({"tier": self.meta["tier"]} if self.meta.get("tier") else {}),
+                **({"card": self.meta["card"]} if self.meta.get("card") else {}),
+                **({"snapshot": self.meta["snapshot"]} if self.meta.get("snapshot") else {})}
 
 
 _client: httpx.AsyncClient | None = None
@@ -70,11 +74,14 @@ def use_transport(transport: httpx.AsyncBaseTransport | None):
 
 async def warm_web():
     """Open keep-alive connections so the first speculative call doesn't pay TLS setup; records whether the live
-    web lane is reachable (WEB_STATUS, reported by /api/health and the ready event)."""
-    try:
-        await probe_web()
-    except Exception:
-        pass
+    web lane is reachable (WEB_STATUS, reported by /api/health and the ready event). With ROUTER=on, also warms the
+    free card APIs and loads the local lead index."""
+    jobs = [probe_web()]
+    if config.ROUTER:
+        from . import knowledge, router
+        jobs.append(router.warm())
+        jobs.append(asyncio.get_running_loop().run_in_executor(None, knowledge.leads_index))
+    await asyncio.gather(*jobs, return_exceptions=True)
 
 
 _TAG = re.compile(r"<[^>]+>")
@@ -151,6 +158,12 @@ class TavilyError(Exception):
 
 class WebUnavailable(Exception):
     """Tavily not callable right now (session/process credit budget, or the breaker after 401/429/432/433)."""
+
+
+class Skip(Exception):
+    """The router declined a SPECULATIVE call for free (ROUTER: a card / fact question whose key argument hasn't been
+    said yet). Not an error: the speculator marks the fire "skipped", spends no budget, and the endpoint still
+    searches if the question ends this way."""
 
 
 class WebResult(list):
@@ -443,10 +456,14 @@ def web_down() -> bool:
 def web_health() -> dict:
     c = web_cache()
     st = "cache" if config.WEB_BACKEND == "cache" else WEB_STATUS["status"]
-    return {"backend": config.WEB_BACKEND, "status": st, "live": st == "live",
-            "fallback": "cache" if (st in ("cache", "down") and len(c)) else ("none" if st in ("cache", "down") else ""),
-            "last_error": WEB_STATUS["last_error"], "cache_entries": len(c), "cache_path": str(c.path),
-            "cache_recorded": c.recorded}
+    out = {"backend": config.WEB_BACKEND, "status": st, "live": st == "live",
+           "fallback": "cache" if (st in ("cache", "down") and len(c)) else ("none" if st in ("cache", "down") else ""),
+           "last_error": WEB_STATUS["last_error"], "cache_entries": len(c), "cache_path": str(c.path),
+           "cache_recorded": c.recorded}
+    if config.ROUTER:
+        from . import router
+        out["router"] = router.health()
+    return out
 
 
 def reset_web_status():
@@ -578,11 +595,19 @@ def _network_failure(e: Exception) -> bool:
 
 async def web(query: str, topic: str = "general", *, intent: str = "", text: str = "", final: bool = False,
               ledger: Ledger | None = None, meter: dict | None = None, entity: str = "",
-              hints: dict | None = None) -> list[Doc]:
+              hints: dict | None = None, frame=None) -> list[Doc]:
     """The web lane. WEB_BACKEND=cache: recorded responses only. Otherwise the live lane (see _live); if it fails (or
     failed in the last WEB_BREAKER_S seconds), the recorded cache answers instead, flagged as such. Both modes go
-    through here, so Head Start and the baseline always see the same fallbacks."""
+    through here, so Head Start and the baseline always see the same fallbacks.
+
+    With `frame` (the query frame) and ROUTER=on, the tiered router (server/router.py) decides first: a live-data card
+    or a local fact can answer for free, and the paid web search below runs only as its fallback."""
     meter = meter if meter is not None else {}
+    if frame is not None and config.ROUTER:
+        from . import router
+        return await router.route(query, frame, final=final, meter=meter, web_fn=lambda: web(
+            query, topic, intent=intent, text=text, final=final, ledger=ledger, meter=meter, entity=entity,
+            hints=hints))
     if config.WEB_BACKEND == "cache":
         return _from_cache(query, meter, None)
     if config.WEB_CACHE_FALLBACK and web_down() and len(web_cache()):

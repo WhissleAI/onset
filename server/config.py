@@ -187,3 +187,19 @@ MEMORY_TTL_S = float(os.environ.get("MEMORY_TTL_S", "180"))   # push-to-talk fol
 # marker is held up to REPAIR_HOLD_S (wall) for that next turn before it is answered. Both modes alike.
 REPAIR_GAP_S = float(os.environ.get("REPAIR_GAP_S", "1.5"))
 REPAIR_HOLD_S = float(os.environ.get("REPAIR_HOLD_S", "1.2"))
+
+# ---------------------------------------------------------------------------------------------------- tiered router
+# server/router.py: each question goes to the cheapest source that can answer it. card = live-data verticals
+# (server/verticals/: weather, FX, time, units, sun), facts = local knowledge (server/knowledge.py: Wikidata properties,
+# local Wikipedia lead index, Wiktionary), web = the paid lane (Tavily | Wikipedia). Both race modes route the same way
+# (the router sits inside lanes.web), so the A/B still differs only in WHEN searches start.
+ROUTER = os.environ.get("ROUTER", "on").strip().lower() in ("1", "on", "true")
+ROUTER_SKIP_CONF = float(os.environ.get("ROUTER_SKIP_CONF", "0.75"))   # plan confidence at/above which paid web is skipped
+ROUTER_TIMEOUT_S = float(os.environ.get("ROUTER_TIMEOUT_S", "0.6"))    # one free-API request
+ROUTER_LANE_TIMEOUT_S = float(os.environ.get("ROUTER_LANE_TIMEOUT_S", "2.0"))   # a whole cheap lane (geocode + forecast)
+ROUTER_SLOW_TIMEOUT_S = float(os.environ.get("ROUTER_SLOW_TIMEOUT_S", "1.5"))   # one request to a slower host (SPARQL, met.no)
+ROUTER_CARD_ANSWER = os.environ.get("ROUTER_CARD_ANSWER", "1") == "1"  # a fitting card answers itself (no model call)
+ROUTER_LEADS = os.environ.get("ROUTER_LEADS", "1") == "1"              # local Wikipedia lead index (if built)
+ROUTER_LEADS_STRONG = float(os.environ.get("ROUTER_LEADS_STRONG", "0.62"))   # lead cosine that counts as an answer
+ROUTER_UA = os.environ.get("ROUTER_UA", "HeadStartDemo/0.1 (https://github.com/; voice search research prototype)")
+KNOWLEDGE_DIR = Path(os.environ.get("KNOWLEDGE_DIR", ROOT / "index/data/knowledge"))

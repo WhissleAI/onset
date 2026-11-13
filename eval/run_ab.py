@@ -254,6 +254,15 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
     ready = m.get("ready_ms")
     spec_q = [e["query"] for e in events if e.get("t") == "spec" and e.get("state") == "fired"
               and e.get("lane") != "draft"]
+    # router (ROUTER=on): which tier the answer came from = the card if the card answered, else the answer's first
+    # cited source, else source [1] of the final ranking
+    srcs = [e for e in events if e.get("t") == "sources"]
+    sdocs = (srcs[-1].get("docs") or []) if srcs else []
+    cited = re.search(r"\[(\d+)", m.get("answer") or "")
+    adoc = next((d for d in sdocs if d.get("card")), None) if m.get("answer_by") == "card" else \
+        (sdocs[int(cited.group(1)) - 1] if cited and 0 < int(cited.group(1)) <= len(sdocs) else (sdocs[0] if sdocs else None))
+    answer_tier = (adoc.get("tier") or ("local" if adoc.get("source") == "local" else "web")) if adoc else None
+    routes = [e.get("route") for e in events if e.get("t") == "spec" and e.get("route") and e.get("state") != "fired"]
     row = {
         "id": q["id"], "text": q["text"], "kind": q.get("kind"), "voice": q.get("voice"), "mode": mode,
         "ready_ms": ready, "sources_ms": m.get("sources_ms"), "done_ms": m.get("done_ms"),
@@ -275,6 +284,10 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         "stale": m.get("stale"), "drafts": m.get("drafts"), "draft_reused": m.get("draft_reused"),
         "draft_match": m.get("draft_match"), "query": m.get("query"), "intent": m.get("intent"),
         "spec_queries": spec_q, "sources": m.get("sources"),
+        "web_paid": m.get("web_paid"), "free_calls": m.get("free_calls"), "tiers": m.get("tiers"),
+        "answer_tier": answer_tier, "answer_src": (adoc or {}).get("source"), "routes": routes,
+        "route_why": next((e.get("route_why") for e in reversed(events) if e.get("t") == "spec" and e.get("route_why")),
+                          None),
         # compact timeline (ms since first audio sample) of fires/drafts and the endpoint, for debugging paths
         "trace": [{k: e.get(k) for k in ("t", "id", "lane", "state", "ms", "took", "n", "query", "by")
                    if e.get(k) is not None} for e in events if e.get("t") in ("spec", "endpoint", "extended", "sources")]
@@ -319,6 +332,18 @@ def summarize(rows: list[dict]) -> dict:
             "mean_credits_final": round(statistics.mean([r.get("credits_final") or 0 for r in rs]), 2) if rs else None,
             "total_credits": sum(r.get("credits") or 0 for r in rs),
             "web_backend": dict(Counter(str(r.get("web_backend")) for r in rs)),
+            # router: web-lane calls that reached the paid backend vs free calls (card APIs, Wikidata, ...) per question
+            "mean_web_paid": (round(statistics.mean([r["web_paid"] if r.get("web_paid") is not None
+                                                     else (r.get("web_calls") or 0) for r in rs]), 2) if rs else None),
+            "mean_free_calls": round(statistics.mean([r.get("free_calls") or 0 for r in rs]), 2) if rs else None,
+            "answer_by": dict(Counter(str(r.get("answer_by")) for r in rs)),
+            "by_lane": {k: {"n": len(g), "p50_ready_ms": pct([r["ready_ms"] for r in g], 50),
+                            "p90_ready_ms": pct([r["ready_ms"] for r in g], 90),
+                            "mean_web_paid": round(statistics.mean([r.get("web_paid") or 0 for r in g]), 2),
+                            "accuracy": (round(sum(1 for r in g if r["correct"]) / len([r for r in g if r["correct"] is not None]), 3)
+                                         if any(r["correct"] is not None for r in g) else None)}
+                        for k in sorted({str(r.get("answer_tier")) for r in rs})
+                        for g in [[r for r in rs if str(r.get("answer_tier")) == k]]},
             "draft_reuse_rate": round(sum(1 for r in rs if r["draft_reused"]) / len(rs), 3) if rs else None,
             "errors": sum(1 for r in rs if r["error"] or r["ready_ms"] is None),
             "split_questions": sum(1 for r in rs if (r["n_finals"] or 0) > 1),
@@ -376,6 +401,7 @@ def run_config(local_docs: int) -> dict:
                                                "draft_stable_ms": config.DRAFT_STABLE_MS,
                                                "audio_lane": config.AUDIO_LANE, "commit_tau": config.COMMIT_TAU},
             "semantic_endpoint": getattr(config, "SEMANTIC_ENDPOINT", None), "ear": config.EAR,
+            "router": getattr(config, "ROUTER", None),
             "flux_soft": getattr(config, "FLUX_SOFT", None), "arc_meta": getattr(config, "ARC_META", None),
             "sem_silence_ms": getattr(config, "SEM_SILENCE_MS", None),
             "sem_stable_ms": getattr(config, "SEM_STABLE_MS", None),
