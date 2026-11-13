@@ -183,9 +183,10 @@ async def forecast(p: Place) -> dict:
 
 def _rain(d: dict) -> str:
     if d.get("pop") is not None:
-        return f", {d['pop']}% chance of rain" if d["pop"] >= 20 else ""
+        kind = "snow" if "snow" in (d.get("cond") or "") else "rain"
+        return f", {d['pop']}% chance of {kind}" if d["pop"] >= 20 else ""
     mm = d.get("precip_mm") or 0.0
-    return f", {mm:g} mm of rain" if mm >= 0.2 else ""
+    return f", {mm:g} mm of precipitation" if mm >= 0.2 else ""
 
 
 def _day_name(date: str, off: int) -> str:
