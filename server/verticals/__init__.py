@@ -130,6 +130,36 @@ async def get_json(url: str, params: dict | None = None, timeout: float | None =
 BREAKER_FAILS = 2
 
 
+async def hedged(primary, fallback, delay_s: float = 0.25):
+    """First successful result of primary() and fallback(); fallback() starts after `delay_s` (or at once if primary
+    fails first). A slow or dead primary API then costs at most `delay_s`, not its full timeout."""
+    t1 = asyncio.ensure_future(primary())
+    tasks = {t1}
+    try:
+        done, _ = await asyncio.wait({t1}, timeout=delay_s)
+        if t1 in done and not t1.exception() and t1.result() is not None:
+            return t1.result()
+        t2 = asyncio.ensure_future(fallback())
+        tasks.add(t2)
+        pending = set(t for t in tasks if not t.done()) | ({t1} if t1.done() else set())
+        err = None
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for t in done:
+                if t.exception() is None and t.result() is not None:
+                    return t.result()
+                err = t.exception() or err
+        if err:
+            raise err
+        return None
+    finally:
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+            elif not t.cancelled():
+                t.exception()
+
+
 def now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
 

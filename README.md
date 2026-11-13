@@ -61,6 +61,15 @@ Tavily lane knobs (`server/config.py`): `TAVILY_SPEC_DEPTH`/`TAVILY_FINAL_DEPTH`
 with `uvicorn --app-dir tests fake_tavily:app --port 8799` + `TAVILY_API_KEY=tvly-fake TAVILY_BASE_URL=http://127.0.0.1:8799`.
 Rebuild the native tagger: see `vendor/arctag` (`cc -O3 -shared ... -framework Accelerate`, details in PROGRESS.md).
 
+Tiered router (`ROUTER=on|off`, default on; `server/router.py`): each question goes to the cheapest lane that can answer
+it. **Live-data cards** (`server/verticals/`: weather via Open-Meteo / MET Norway, FX via ECB-Frankfurter, crypto via
+Coinbase spot, local time via zoneinfo, sunrise/sunset via NOAA equations, units in pure Python) answer by themselves,
+without the model; **local facts** (`server/knowledge.py`: Wikidata properties, an 11k-article local Wikipedia lead
+index built by `index/build_knowledge.py`, Wiktionary) feed the model; the paid **web** lane runs only for fresh /
+open-ended questions or when the cheap lane comes back empty or weak. It runs inside `lanes.web`, so both race modes
+route alike. The UI chip says which lane answered; every card shows its source and "as of" time.
+`eval/router_latency.py` times each cheap lane cold.
+
 Degraded mode (DEMO_CHECKLIST.md): if the live web lane fails, it serves `runs/web_cache.json` (recorded Wikipedia
 responses for the eval set; `eval/record_web_cache.py`; `WEB_BACKEND=cache` forces it); if the answer model is
 unreachable, answers are the best-matching sentence of the top source. Both modes share the fallbacks; both are

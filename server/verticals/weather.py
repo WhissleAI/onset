@@ -169,14 +169,14 @@ async def forecast(p: Place) -> dict:
     if hit is not None:
         return hit
     tz = _tz(p)
-    data = None
-    if not host_down("api.open-meteo.com"):
-        try:
-            data = await _open_meteo(p)
-        except Exception:
-            data = None
+    from . import hedged
+    if host_down("api.open-meteo.com"):
+        data = await _met_no(p, tz)
+    else:
+        # Open-Meteo first; MET Norway joins after 250 ms (either may be slow / unreachable from a demo network)
+        data = await hedged(lambda: _open_meteo(p), lambda: _met_no(p, tz))
     if data is None:
-        data = await _met_no(p, tz)        # raises if both are down: the router falls back to the web
+        raise ConnectionError("no forecast")
     _cache.put(key, data)
     return data
 

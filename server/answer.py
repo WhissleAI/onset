@@ -503,7 +503,7 @@ class Race:
         loop = asyncio.get_running_loop()
         while self.by is None:
             if self.primary.tokens:
-                self.by = "llm"
+                self.by = getattr(self.primary, "by", None) or "llm"      # "card": the router's card answered
             elif (a := self._alt_answer()) is not None:
                 self.by, self.alt_text = "tavily", a
             elif self.primary.done and (self.alt.done() or self.primary.error is None):
