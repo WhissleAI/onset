@@ -23,7 +23,8 @@ from server import config, frame, lanes, searchcache, speculator  # noqa: E402
 
 fakes = ts.fakes          # the same autouse fixture (fake web / embeddings / answer stream)
 
-CALLS: list[dict] = []    # every lanes.web call: query, final, the plan, paid
+CALLS: list[dict] = []
+FACTS_DELAY = [0.0]        # the speculative fact lookup's latency (Wikidata SPARQL tail)    # every lanes.web call: query, final, the plan, paid
 
 
 def _plan_for(text: str, final: bool = False) -> lanes.RoutePlan:
@@ -68,7 +69,13 @@ async def fake_routed_web(query, topic="general", *, final=False, meter=None, fr
         CALLS.append({"q": query, "final": final, "lane": "wait", "paid": 0})
         raise lanes.Skip("key word not said yet")
     await asyncio.sleep(0.05)
+    if p.lane == "facts" and p.vertical == "wikidata" and meter.get("hedge_ms") == 0:
+        await asyncio.sleep(0.05)                    # the hedge: fact lookup raced against the web, the web wins
+        meter.update(tier="web", backend="fake", paid=1, hedge_won="web")
+        CALLS.append({"q": query, "final": final, "lane": "web", "paid": 1, "hedge": True})
+        return [lanes.Doc(id="web:hedge", title="Canberra", text="Canberra is the capital of Australia.", source="fake")]
     if p.lane == "facts" and p.vertical == "wikidata":
+        await asyncio.sleep(FACTS_DELAY[0] if not final else 0)
         meter.update(tier="facts", backend="facts", paid=0, credits=0.0, free_calls=1)
         CALLS.append({"q": query, "final": final, "lane": "facts", "paid": 0})
         return [lanes.Doc(id="wd:capital", title="Australia · Wikidata", text="Australia: capital: Canberra.",
@@ -86,6 +93,7 @@ async def fake_routed_web(query, topic="general", *, final=False, meter=None, fr
 @pytest.fixture(autouse=True)
 def _routed(fakes, monkeypatch):
     CALLS.clear()
+    FACTS_DELAY[0] = 0.0
     monkeypatch.setattr(config, "ROUTER", True)
     monkeypatch.setattr(config, "SPEC_EFF", True)
     monkeypatch.setattr(config, "CACHE_SEM", True)
@@ -179,6 +187,13 @@ def test_skip_is_free_unit():
         assert sp._paid() == 1                      # in flight: counted (its cheap lane may fall back to web)
         await f2.task
         assert sp._paid() == 0 and sp.web_used == 0
+
+        async def slow():
+            await asyncio.sleep(0.05)
+            return []
+        f3 = sp._fire("web", "weather dim", None, slow, {"no_paid": True})
+        assert sp._paid() == 0                      # a cheap-only lookup in flight is never paid (sc27)
+        await f3.task
     asyncio.run(go())
 
 
@@ -284,3 +299,90 @@ def test_facts_plan_one_lookup_and_a_draft_from_it():
     assert len([c for c in CALLS if c["lane"] == "facts"]) == 1
     assert m["drafts"] >= 1
     assert m["path"] in ("draft-reuse", "route-hit", "speculative-hit")
+
+
+# ----------------------------------------------------------------------------------------------- facts hedge
+def _hedge_case(monkeypatch, facts_s, web_s, final=True, no_paid=False, strong=True):
+    from server import router
+    calls = []
+
+    async def cheap(p, f, meter):
+        await asyncio.sleep(facts_s)
+        return [lanes.Doc(id="wd:1", title="Nvidia · Wikidata", text="founded by Jensen Huang", source="Wikidata",
+                          meta={"tier": "facts", "strong": strong})]
+
+    async def web():
+        calls.append("web")
+        await asyncio.sleep(web_s)
+        r = lanes.WebResult([lanes.Doc(id="w1", title="Nvidia", text="web text", source="wikipedia")])
+        r.backend = "wikipedia"
+        return r
+    monkeypatch.setattr(router, "_cheap", cheap)
+    monkeypatch.setattr(config, "ROUTER_FACTS_HEDGE_MS", 150)
+    f = frame.Frame(words="who founded the company nvidia".split(), intent="discourse.intent.qa_factoid",
+                    intent_p=0.9, content=("founded", "company", "nvidia"))
+    m = {"no_paid": True} if no_paid else {}
+
+    async def go():
+        return await router.route("founded company nvidia", f, final=final, meter=m, web_fn=web)
+    if no_paid and not final:
+        return None, m, calls
+    return asyncio.run(go()), m, calls
+
+
+def test_facts_fast_no_hedge(monkeypatch):
+    res, m, calls = _hedge_case(monkeypatch, 0.02, 0.05)
+    assert res[0].id == "wd:1" and m["paid"] == 0 and not calls and not m.get("route_hedged")
+
+
+def test_facts_slow_web_wins_the_hedge(monkeypatch):
+    res, m, calls = _hedge_case(monkeypatch, 0.6, 0.05)
+    assert res[0].id == "w1" and m["route_hedged"] and m["hedge_won"] == "web" and m["paid"] == 1
+
+
+def test_facts_slow_but_first_still_wins_and_counts_the_hedge(monkeypatch):
+    res, m, calls = _hedge_case(monkeypatch, 0.3, 1.0)
+    assert res[0].id == "wd:1" and m["hedge_won"] == "facts" and m["paid"] == 1 and calls == ["web"]
+
+
+def test_weak_fact_waits_for_the_web(monkeypatch):
+    res, m, calls = _hedge_case(monkeypatch, 0.2, 0.4, strong=False)
+    assert any(d.id == "w1" for d in res) and m["paid"] == 1
+
+
+def test_speculative_free_lookup_is_never_hedged(monkeypatch):
+    from server import router
+
+    async def go():
+        async def cheap(p, f, meter):
+            await asyncio.sleep(0.3)
+            return []
+        monkeypatch.setattr(router, "_cheap", cheap)
+        monkeypatch.setattr(config, "ROUTER_FACTS_HEDGE_MS", 50)
+        called = []
+
+        async def web():
+            called.append(1)
+            return lanes.WebResult([])
+        f = frame.Frame(words="who founded the company nvidia".split(), intent="discourse.intent.qa_factoid",
+                        intent_p=0.9, content=("founded", "company", "nvidia"))
+        with pytest.raises(lanes.Skip):
+            await router.route("q", f, final=False, meter={"no_paid": True}, web_fn=web)
+        assert not called
+    asyncio.run(go())
+
+
+def test_slow_speculative_fact_is_hedged_at_the_endpoint(monkeypatch):
+    monkeypatch.setattr(config, "ROUTER_FACTS_HEDGE_MS", 200)
+    FACTS_DELAY[0] = 3.0                              # the free lookup is stuck on SPARQL
+    m = _speak("what is the capital of Australia", gap=0.25)
+    assert "+hedge" in (m["path"] or "")
+    assert m["paid_calls"] == 1 and any(c.get("hedge") for c in CALLS)
+    assert m["ready_ms"] < 1500 and m.get("answer")
+
+
+def test_fast_speculative_fact_is_not_hedged(monkeypatch):
+    monkeypatch.setattr(config, "ROUTER_FACTS_HEDGE_MS", 200)
+    FACTS_DELAY[0] = 0.05
+    m = _speak("what is the capital of Australia", gap=0.25)
+    assert "+hedge" not in (m["path"] or "") and m["paid_calls"] == 0
