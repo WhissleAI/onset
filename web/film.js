@@ -502,7 +502,8 @@
         const l = X(b.t0), w = Math.max(0.4, X(b.t1) - X(b.t0));
         const px = (w / 100) * tw;
         const bw = (t) => textW(t, b.ans ? cw.bar + 2 : cw.bar, !b.ans) + 18;
-        const lab = px >= bw(b.label) ? b.label : !b.ans && px >= bw("search") ? "search" : "";
+        // stacked 3 deep the lanes are too thin for text: label only the answer bars then
+        const lab = !b.ans && nl > 2 ? "" : px >= bw(b.label) ? b.label : !b.ans && px >= bw("search") ? "search" : "";
         h += `<div class="fbar ${b.cls}" style="left:${l}%;width:${w}%;top:${top}%;height:${ht}%">${lab ? `<span>${esc(lab)}</span>` : ""}</div>`;
       }
       if (track._h !== h) { track.innerHTML = h; track._h = h; }
