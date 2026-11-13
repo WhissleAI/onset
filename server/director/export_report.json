@@ -1,0 +1,17 @@
+{
+ "file_bytes": 52025,
+ "params": 29191,
+ "int8_vs_float_max_dp": {
+  "eot": 0.00558,
+  "fire": 0.00556,
+  "draft": 0.00397
+ },
+ "numpy_stream_vs_torch_parallel_max_dp": {
+  "eot": 0.0,
+  "fire": 0.0,
+  "draft": 0.0,
+  "keep": 0.0
+ },
+ "numpy_ms_per_update_p50": 0.158,
+ "numpy_ms_per_update_p99": 0.279
+}

@@ -1,0 +1,31 @@
+{
+ "size": {
+  "d": 32,
+  "layers": 1,
+  "d_state": 16,
+  "head_dim": 16,
+  "buckets": 2048,
+  "emb": 8
+ },
+ "size_name": "s",
+ "params": 29191,
+ "F": 54,
+ "thr": {
+  "director_eot": [
+   0.6,
+   0.725
+  ],
+  "target_premature_val": 36.4,
+  "lr_eot": [
+   0.725,
+   0.725
+  ],
+  "director_fire": 0.22500000000000003,
+  "director_draft": 0.8750000000000003
+ },
+ "trained": {
+  "n_train_real": 7905,
+  "n_train": 7905,
+  "best_step": 1800
+ }
+}
