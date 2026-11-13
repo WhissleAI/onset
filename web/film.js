@@ -276,47 +276,36 @@
   }
 
   // ---------------------------------------------------------------- Arc read-out
-  // Known frame fields get fixed renderings; anything else the tagger adds (dialogue acts, events, number spans, PII
-  // flags…) is rendered generically so a richer read-out shows up without a UI change.
-  const KNOWN = new Set(["t", "mode", "ms", "intent", "p", "coarse", "slots", "content", "route", "corrected", "carried", "query",
-    "n", "command_complete", "final", "spans", "_rx", "_wall", "t_clip", "docs", "words"]);
+  // Arc read-out: a curated view of the frame (intent, dialogue act, typed slots with confidence, time, freshness,
+  // self-correction, carried entity, masking/safety flags, completeness, the search query)
   const human = (s) => String(s).replace(/^(discourse\.)?(intent|act|event|dialog(ue)?_?act|da)\./, "").replace(/[._]/g, " ").trim();
-  function genericChips(f) {
-    const out = [];
-    for (const [k, v] of Object.entries(f)) {
-      if (KNOWN.has(k) || v == null || v === false || v === "" || (Array.isArray(v) && !v.length)) continue;
-      const key = human(k);
-      if (v === true) out.push(`<span class="fc flag">${esc(key)}</span>`);
-      else if (typeof v === "number") out.push(`<span class="fc"><small>${esc(key)}</small>${esc(+v.toFixed(2))}</span>`);
-      else if (typeof v === "string") out.push(`<span class="fc"><small>${esc(key)}</small>${esc(human(v))}</span>`);
-      else if (Array.isArray(v)) {
-        for (const x of v.slice(0, 4)) {
-          if (Array.isArray(x)) out.push(`<span class="fc ${isNum(x[0]) ? "num" : ""}"><small>${esc(human(x[0]))}</small>${esc(x[1])}</span>`);
-          else if (x && typeof x === "object") {
-            const lab = x.label ?? x.type ?? x.name ?? x.kind ?? key;
-            const val = x.text ?? x.value ?? x.span ?? (x.p != null ? (+x.p).toFixed(2) : "");
-            out.push(`<span class="fc ${isNum(lab) ? "num" : ""}"><small>${esc(human(lab))}</small>${esc(val)}</span>`);
-          } else out.push(`<span class="fc"><small>${esc(key)}</small>${esc(human(x))}</span>`);
-        }
-      } else if (typeof v === "object") {
-        const ents = Object.entries(v).filter(([, y]) => y != null && y !== false && y !== "").slice(0, 3);
-        if (ents.length) out.push(`<span class="fc"><small>${esc(key)}</small>${esc(ents.map(([a, b]) => (b === true ? human(a) : `${human(a)} ${typeof b === "number" ? +b.toFixed(2) : b}`)).join(" · "))}</span>`);
-      }
-    }
-    return out;
-  }
   function renderRead() {
     const f = S.frame;
     if (!f) return;
     const parts = [];
+    // intent: the fine intent only when the tagger is confident in it, else the coarse one (a 0.26 "general joke" on a
+    // ramen question is the tagger's low-confidence guess, not what it understood)
     const it = f.intent ? f : S.lastIntent;
-    if (it && it.intent) parts.push(`<span class="fc intent"><small>intent</small>${esc(human(it.intent))}${it.p != null ? `<em>${(+it.p).toFixed(2)}</em>` : ""}</span>`);
+    if (it && it.intent) {
+      const fine = !(+it.p < 0.5) || !it.coarse;
+      parts.push(`<span class="fc intent"><small>intent</small>${esc(human(fine ? it.intent : it.coarse))}${fine && it.p != null ? `<em>${(+it.p).toFixed(2)}</em>` : ""}</span>`);
+    }
+    const ro = f.readout || {};
+    const acts = (ro.acts || []).filter((a) => a && a !== "statement");
+    if (acts.length) parts.push(`<span class="fc"><small>act</small>${esc(acts.map(human).join(", "))}</span>`);
     const slots = (f.slots && f.slots.length ? f.slots : (!f.corrected && S.lastSlots) || []);
-    for (const [t, v] of slots) parts.push(`<span class="fc ${isNum(t) ? "num" : "ent"}"><small>${esc(slotLabel(t))}</small>${esc(v)}</span>`);
+    const sconf = new Map((f.slot_conf || []).map(([t, v, c]) => [t + "|" + v, c]));
+    for (const [t, v] of slots) {
+      const c = sconf.get(t + "|" + v);
+      parts.push(`<span class="fc ${isNum(t) ? "num" : "ent"}"><small>${esc(slotLabel(t))}</small>${esc(v)}${c != null ? `<em>${(+c).toFixed(2)}</em>` : ""}</span>`);
+    }
+    if (ro.when_text || ro.when) parts.push(`<span class="fc num"><small>when</small>${esc(ro.when_text || ro.when)}</span>`);
+    if (ro.fresh) parts.push(`<span class="fc flag"><small>needs</small>${esc(human(ro.fresh))} results</span>`);
     if (f.corrected) parts.push(`<span class="fc flag corr">self-correction</span>`);
     if (f.carried) parts.push(`<span class="fc flag mem">“it” → ${esc(f.carried)}</span>`);
+    if ((ro.redacted || []).length) parts.push(`<span class="fc flag corr">personal info masked</span>`);
+    if (ro.jailbreak) parts.push(`<span class="fc flag corr">safety flag</span>`);
     if (f.command_complete) parts.push(`<span class="fc flag">question complete</span>`);
-    parts.push(...genericChips(f));
     if (f.query) parts.push(`<span class="fc query"><small>search</small>${esc(f.query)}</span>`);
     const box = $("#fRead");
     const html = parts.join("") || '<span class="f-muted">listening…</span>';
@@ -331,6 +320,8 @@
     const kids = () => Array.from(box.children).filter((c) => !c.classList.contains("intent") && !c.classList.contains("query") && !c.classList.contains("ent") && !c.classList.contains("num"));
     let dropped = 0;
     while (box.scrollHeight > box.clientHeight + 2 && kids().length) { kids().at(-1).remove(); dropped++; }
+    const ents = () => Array.from(box.querySelectorAll(".fc.ent, .fc.num"));
+    while (box.scrollHeight > box.clientHeight + 2 && ents().length) { ents().at(-1).remove(); dropped++; }
     if (dropped) { const more = document.createElement("span"); more.className = "fc more"; more.textContent = `+${dropped}`; box.insertBefore(more, box.querySelector(".query")); }
   }
 
