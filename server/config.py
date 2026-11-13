@@ -237,5 +237,6 @@ ROUTER_UA = os.environ.get("ROUTER_UA", "HeadStartDemo/0.1 (https://github.com/;
 # ROUTER_SPEC_HOLD_CONF ("unsure" what kind of question it is) and the turn isn't likely over; cheap card / fact
 # lookups fire speculatively, at most ROUTER_SPEC_CHEAP_MAX distinct plans per question.
 ROUTER_SPEC_HOLD_CONF = float(os.environ.get("ROUTER_SPEC_HOLD_CONF", "0.3"))
+ROUTER_SPEC_HOLD_LEADS = os.environ.get("ROUTER_SPEC_HOLD_LEADS", "1") == "1"   # ... also the generic wh- (leads) plan
 ROUTER_SPEC_CHEAP_MAX = int(os.environ.get("ROUTER_SPEC_CHEAP_MAX", "4"))
 KNOWLEDGE_DIR = Path(os.environ.get("KNOWLEDGE_DIR", ROOT / "index/data/knowledge"))

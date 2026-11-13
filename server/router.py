@@ -332,6 +332,12 @@ async def route(query: str, f: Frame, *, final: bool, meter: dict, web_fn):
             res.backend = p.lane
             return res
         meter["route_fallback"] = "empty" if not cheap else "weak"
+        if meter.get("no_paid") and not final:
+            # a SPECULATIVE cheap lookup (the speculator's cheap-only plan): no paid fallback mid-sentence; the
+            # endpoint decides (its final call does fall back to the web)
+            from .lanes import Skip
+            meter.update(tier="wait", backend="router", credits=0.0, paid=0)
+            raise Skip(f"{p.lane} lookup {meter['route_fallback']}: no paid fallback while speculating")
     web = await web_fn()
     backend = getattr(web, "backend", "") or meter.get("backend", "")
     paid = 0 if (getattr(web, "cached", False) or backend in ("cache", "router")) else 1

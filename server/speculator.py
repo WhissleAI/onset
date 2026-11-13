@@ -612,7 +612,14 @@ class Speculator:
         (plan conf < ROUTER_SPEC_HOLD_CONF: no card / fact / fresh / open-ended cue yet) and the frame is still
         growing (no likely end of turn yet): the next words usually decide the lane ("what's the ..." -> weather card).
         Corrections are never held (q27, sc27: the replacement is the final meaning)."""
-        if plan is None or plan.lane != "web" or plan.conf >= config.ROUTER_SPEC_HOLD_CONF:
+        if plan is None:
+            return False
+        weak = plan.lane == "web" and plan.conf < config.ROUTER_SPEC_HOLD_CONF
+        # the generic "stable factoid" plan (any wh- question: local leads first, paid web as their fallback) is the
+        # router's no-signal default while a question starts ("what's a hundred US dollars" -> currency card two
+        # words later): the same hold applies to its paid fallback
+        generic = config.ROUTER_SPEC_HOLD_LEADS and plan.lane == "facts" and plan.vertical == "leads"
+        if not (weak or generic):
             return False
         if f.dropped or f.cue:
             return False
@@ -628,7 +635,9 @@ class Speculator:
             return
         self.cheap_sigs.add(sig)
         self.web_used += 1                     # refunded when the router answers for free (see _fire.run)
-        self._fire("web", q, f, *self._web(q, f, final=False))
+        go, meter = self._web(q, f, final=False)
+        meter["no_paid"] = True                # cheap lane only: an empty / weak lookup is skipped, not sent to the web
+        self._fire("web", q, f, go, meter)
 
     def on_audio(self, wav: np.ndarray, route: str = "both", n_words: int = 0):
         """Audio lane: embed the spoken question itself (no words needed) and search the local moments index.
@@ -1008,7 +1017,9 @@ class Speculator:
             if x.lane in ("web", "final-web") and x.state == "done":
                 for d in x.docs:
                     if d.meta.get("card") and self._card_fits(d.meta["card"], question) and d.id in self.vecs:
-                        rest = [(y, sc) for y, sc in ranked if y.id != d.id]
+                        # other cards (an earlier partial's: "weather in chicago" for "... tomorrow") don't fit:
+                        # leave them out (two near-identical cards would read as one source twice)
+                        rest = [(y, sc) for y, sc in ranked if y.id != d.id and not y.meta.get("card")]
                         return [(d, float(self.vecs[d.id] @ qvec))] + rest[:4]
         return ranked
 

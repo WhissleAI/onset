@@ -251,3 +251,16 @@ def test_correction_is_not_held(monkeypatch):
     assert sp._route_hold(g, p)
     sp.eot_p = 0.9
     assert not sp._route_hold(g, p)
+
+
+def test_generic_factoid_plan_is_held_but_specific_facts_are_not():
+    sp = speculator.Speculator(lambda e: None)
+    g = frame.Frame(words="what's a hundred".split())
+    leads = lanes.RoutePlan(["facts", "web"])
+    leads.lane, leads.vertical, leads.conf = "facts", "leads", 0.5
+    assert sp._route_hold(g, leads)
+    wd = lanes.RoutePlan(["facts", "web"])
+    wd.lane, wd.vertical, wd.conf = "facts", "wikidata", 0.6     # a changing Wikidata property: web may be needed
+    assert not sp._route_hold(g, wd)
+    sp.eot_p = 0.5
+    assert not sp._route_hold(g, leads)

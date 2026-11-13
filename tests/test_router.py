@@ -201,6 +201,18 @@ def test_route_fact_and_fallback():
     assert called and m["tier"] == "web" and m["route_fallback"] == "empty" and res[0].id == "w1"
 
 
+def test_speculative_cheap_lookup_never_falls_back_to_paid_web():
+    """Integration: the speculator's cheap-only fires carry meter no_paid: an empty fact lookup mid-sentence is a free
+    Skip, not a paid web call (the endpoint's final call still falls back)."""
+    web, called = _web_spy()
+    m: dict = {"no_paid": True}
+    with pytest.raises(lanes.Skip):
+        asyncio.run(router.route("", F("who founded nowhere thing"), final=False, meter=m, web_fn=web))
+    assert not called and m["paid"] == 0 and m["route_fallback"] == "empty"
+    asyncio.run(router.route("", F("who founded nowhere thing"), final=True, meter={"no_paid": True}, web_fn=web))
+    assert called
+
+
 def test_route_api_down_falls_back_to_web(monkeypatch):
     verticals.use_transport(httpx.MockTransport(lambda req: httpx.Response(503)))
     web, called = _web_spy()

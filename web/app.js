@@ -252,6 +252,8 @@
           q.order.push(key);
         }
         if (e.ids) f.ids = e.ids;
+        if (e.tier) f.tier = e.tier;
+        if (e.reason) f.reason = e.reason;            // router: which tier served this web-lane call (card | facts | web | wait)
         if ((e.state === "done" || e.state === "stale" || e.revived) && e.took != null) { const d = HSResults.specDocs(e); if (d) f.docs = d; }
         pipeSpec(q, e);
         if (e.state === "fired") { f.t0 = e.ms; renderResults(mode); break; }
@@ -414,7 +416,10 @@
       pipe("spec", `${mem}${spec.length} early search${spec.length === 1 ? "" : "es"}${stale ? ` · ${stale} stale` : ""}`);
     }
     const cnt = {};
-    for (const f of fires) if (f.lane !== "draft") { const l = f.lane.replace("final-", ""); cnt[l] = (cnt[l] || 0) + 1; }
+    for (const f of fires) if (f.lane !== "draft") {
+      const t = f.tier === "card" || f.tier === "facts" ? f.tier : "";         // router: free tiers named as such
+      const l = t || f.lane.replace("final-", ""); cnt[l] = (cnt[l] || 0) + 1;
+    }
     pipe("lanes", Object.entries(cnt).map(([l, n]) => `${l} ${n}`).join(" · "));
   }
 
@@ -1063,8 +1068,10 @@
     } else {
       const f = r.f;
       const isFinal = f.lane.startsWith("final-");
-      laneCls = f.lane.replace("final-", "") + (isFinal ? " final" : "");
-      labelLane = f.lane.replace("final-", "");
+      // router tiers: a web-lane call served by a live-data card / local facts is labelled as such (free), not "web"
+      const tier = (f.tier === "card" || f.tier === "facts") ? f.tier : "";
+      laneCls = (tier ? "t-" + tier : f.lane.replace("final-", "")) + (isFinal ? " final" : "");
+      labelLane = tier || f.lane.replace("final-", "");
       labelQ = f.query;
       state = f.state === "fired" ? "live" : f.state;
       if (f.state === "fired") info = `${Math.round((r.t1 ?? f.t0) - f.t0)} ms…`;
@@ -1073,7 +1080,7 @@
       else if (f.state === "stale") info = f.staleAt != null && f.t1 != null && f.staleAt > f.t1 + 5 ? `stale @${f.staleAt}` : "cancelled: meaning changed";
       else if (f.state === "cancelled") info = "cancelled";
       else if (f.state === "error") info = "error";
-      else if (f.state === "skipped") info = "router: key word not said yet (free)";
+      else if (f.state === "skipped") info = "router: " + (f.reason || "key word not said yet") + " (free)";
       else if (f.took != null) info = `${f.took} ms · ${f.n ?? 0} docs`;
       if (f.used) info += " · fed answer";
       lab.title = [f.query, f.top && f.top.length ? "top: " + f.top.join(" | ") : "", f.error || ""].filter(Boolean).join("\n");

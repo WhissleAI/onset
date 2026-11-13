@@ -605,3 +605,11 @@ pre.raw { font: 11px/1.4 var(--mono); max-height: 240px; overflow: auto; backgro
 .lc-t { font-variant-numeric: tabular-nums; font-weight: 600; }
 .lc-p { color: var(--muted, #888); font-size: 11px; }
 .flag.ok { color: #0a7d4f; }
+/* timeline rows served by the router's free tiers; in the details view the card shrinks to its chip + one line
+   (the sources list below needs the room) */
+.lane.t-card { background: #0a7d4f; } .lane.t-facts { background: #3b5bdb; }
+.bar.t-card { --c: #0a7d4f; } .bar.t-facts { --c: #3b5bdb; }
+body:not(.minimal) .lane-card .lc-days, body:not(.minimal) .lane-card .lc-sub { display: none; }
+body:not(.minimal) .lane-card { padding: 4px 8px; margin-top: 4px; font-size: 12px; }
+body:not(.minimal) .lane-card .lc-h { margin-bottom: 0; }
+.lg.t-card { background: #0a7d4f; } .lg.t-facts { background: #3b5bdb; }
