@@ -79,6 +79,32 @@ NUMBER_TYPES = {"date", "time", "time_of_day", "duration", "money", "percent", "
 PII_REDACT = {"safety.pii.phone_number": "phone", "safety.pii.email": "email", "safety.pii.street_address": "address",
               "safety.pii.card_account_number": "card", "safety.pii.gov_id": "id", "safety.pii.date_of_birth": "birthday",
               "safety.pii.url_handle": "handle"}
+# Redact the identifying part only, so the search keeps what it needs (Arc tags "colorado", "there" and
+# "1600 pennsylvania avenue" all as street_address): a span is hidden only if its words have the shape of that kind of
+# data, and an address / birthday loses just its house number / year, keeping the street, city or day for the search.
+_STREET = {"street", "st", "avenue", "ave", "road", "rd", "lane", "ln", "drive", "dr", "boulevard", "blvd", "court",
+           "ct", "way", "place", "pl", "apartment", "apt", "suite", "unit", "terrace", "circle", "highway", "parkway"}
+_EMAILISH = {"at", "dot", "com", "gmail", "yahoo", "hotmail", "outlook", "underscore", "net", "org"}
+PROFANITY = set("fuck fucking fucked fucker shit shitty bullshit bitch bastard asshole dick damn crap piss cunt".split())
+
+
+def _pii_hide(kind: str, toks: list[str], a: int, b: int, raw: list[str] = ()) -> set:
+    idx = range(a, b)
+    nums = [i for i in idx if _numtok(toks[i])]
+    digits = sum(sum(c.isdigit() for c in toks[i]) or 1 for i in nums)
+    if kind in ("safety.pii.phone_number", "safety.pii.card_account_number", "safety.pii.gov_id"):
+        return set(idx) if digits >= 5 else set()          # an actual number, not "one" or "2024"
+    if kind in ("safety.pii.email", "safety.pii.url_handle"):
+        raw = [str(raw[i]) if i < len(raw) else toks[i] for i in idx]
+        return set(idx) if any("@" in w or "_" in w or w.lower().strip(".,") in _EMAILISH for w in raw) else set()
+    if kind == "safety.pii.street_address":
+        street = any(toks[i] in _STREET for i in idx)
+        return set(nums) if nums and (street or b - a >= 3) else set()   # house number only; street + city stay
+    if kind == "safety.pii.date_of_birth":                  # keep the day ("what happened on june fifth"), hide the year
+        return {i for i in nums if re.fullmatch(r"(19|20)\d\d", toks[i])}
+    return set(idx)
+
+
 # Relative time said in the question (Arc's typed entity.number.date / duration / time_of_day span, or the words):
 # drives Tavily freshness. Absolute dates ("in 2024", "March 3rd 2025") mean history: no freshness filter.
 _WHEN_DAY = re.compile(r"\b(today|tonight|right now|now|this morning|this afternoon|this evening|currently|live|"
@@ -486,10 +512,14 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
                        if x["tag"] == "discourse.assistant.device_directed"), None)
     f.jailbreak = any(x["tag"] == "safety.jailbreak.attempt" and x.get("on") for x in (cur.get("safety") or []))
     # personal data spans: their words stay out of the query, the slots and the entity phrases
-    pii = [s for s in spans if s["type"] in PII_REDACT and s["end"] <= len(toks)]
-    redact_tok = set()
-    for s in pii:
-        redact_tok.update(range(s["start"], s["end"]))
+    pii, redact_tok = [], set()
+    for s in spans:
+        if s["type"] in PII_REDACT and s["end"] <= len(toks):
+            hide = _pii_hide(s["type"], toks, s["start"], s["end"], words)
+            if hide:
+                pii.append(s)
+                redact_tok |= hide
+    redact_tok |= {i for i, t in enumerate(toks) if t in PROFANITY}   # never useful to search, never sent
     f.redact_tok = frozenset(redact_tok)
     f.redacted = tuple(dict.fromkeys(PII_REDACT[s["type"]] for s in pii))
     f.command_complete = bool(events_seen and "discourse.assistant.command_complete" in events_seen)

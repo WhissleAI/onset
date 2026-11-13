@@ -101,3 +101,16 @@ def test_stale_search_finishes_and_reports_docs_by_default(monkeypatch):
     assert landed and marked, [(e.get("query"), e.get("state"), len(e.get("docs") or [])) for e in ev if e["t"] == "spec"]
     assert not any(e.get("state") == "cancelled" for e in ev if e["t"] == "spec")
     assert all("Acronis" not in s for s in m["sources"][:3])
+
+
+def test_place_names_tagged_as_address_still_reach_search():
+    """Arc tags bare places ("colorado", "there") as street_address; only the identifying part is ever hidden."""
+    f = fr("i'm planning a ski trip to colorado what can i do there in winter")
+    assert "colorado" in f.query() and not f.redacted
+    g = fr("my birthday is june fifth what happened on that day in history")
+    assert "june" in g.query()
+
+
+def test_profanity_never_reaches_the_web_query():
+    f = fr("what the fuck is the capital of australia")
+    assert "fuck" not in f.query() and "australia" in f.query()
