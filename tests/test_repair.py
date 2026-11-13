@@ -209,3 +209,17 @@ def test_in_utterance_correction_unchanged():
         return m
     m = asyncio.run(go())
     assert "turkey" in m["query"] and "canada" not in m["query"]
+
+
+def test_extractive_fallback_prefers_the_converted_amount():
+    """With the answer model down (503s during the sc08 replays), the extractive fallback answers: it must pick the
+    sentence converting the asked amount in the asked direction, not the bare or inverse rate."""
+    from types import SimpleNamespace as N
+    docs = [N(title="1 EUR to USD - Euros to US Dollars Exchange Rate", meta={},
+              text="1 EUR equals 1.1 USD using the current mid-market exchange rate of $1.1061. Convert euros."),
+            N(title="100 EUR to USD", meta={}, text="100 EUR equals 110.61 USD at the mid-market rate of $1.1061."),
+            N(title="100 USD to EUR - US Dollars to Euros", meta={},
+              text="Convert US dollars to euros today. 100 USD equals 90.42 EUR at the mid-market rate of €0.9042.")]
+    a = answer.extractive("what's a hundred us dollars in euros at today's rate", docs)
+    assert a.startswith("100 USD equals 90.42 EUR") and a.endswith("[3]")
+    assert answer._amount_value("a hundred us dollars") == 100 and answer._amount_value("1.5 million yen") == 1.5e6
