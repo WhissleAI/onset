@@ -444,6 +444,11 @@ def apply_pii(f, out: dict | None, thr: float | None = None) -> bool:
     n = out["n"]
     k = min(n, W)
     hide = {n - k + j for j in range(k) if out["pii"][j] >= thr}
+    # entity names stay searchable ("colorado", "starbucks", "oakland" next to a phone number): a word inside a
+    # tagged entity mention is never hidden unless it carries digits (offline: over-hide of entity words 10 % -> 0 %)
+    men = {i for sp in (getattr(f, "spans", None) or []) if str(sp.get("type", "")).startswith("entity.mention")
+           for i in range(sp["start"], sp["end"])}
+    hide = {i for i in hide if not (i in men and not any(c.isdigit() for c in str(f.words[i])))}
     from .frame import PROFANITY
     hide |= {i for i, w in enumerate(f.words) if norm(w) in PROFANITY}
     f.redact_tok = frozenset(hide)

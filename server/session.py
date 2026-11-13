@@ -548,7 +548,7 @@ class Session:
                 f = self.frame or self._build()
                 out = None
                 try:
-                    out = self.dstream.step(director.session_record(self, f, self.last_ws, ev), self.wconf)
+                    out = self.dstream.step(director.session_record(self, f, self.last_ws, ev), self.wconf, f)
                 except Exception as e:                 # the director must never break the session: fall back
                     self.emit({"t": "error", "where": "director", "error": f"{type(e).__name__}: {e}"[:300]})
                     self.dstream = None

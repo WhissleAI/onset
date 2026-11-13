@@ -144,6 +144,9 @@ def test_apply_pii_replaces_rule_only_on_matching_words(monkeypatch):
     f.redact_tok = frozenset({2, 6})
     assert director.apply_pii(f, _out(words, pii=[0, 0, 0.9, 0.1, 0, 0, 0.2]))
     assert f.redact_tok == frozenset({2})
+    c = Frame(words=list(words), spans=[{"type": "entity.mention.place", "family": "entity", "start": 5, "end": 7}])
+    assert director.apply_pii(c, _out(words, pii=[0, 0, 0.9, 0, 0, 0.9, 0.9]))
+    assert c.redact_tok == frozenset({2})                          # a tagged place is never hidden
     g = Frame(words=list(words))
     g.redact_tok = frozenset({2})
     assert not director.apply_pii(g, _out(words[:-1], pii=[0.9] * 6)) and g.redact_tok == frozenset({2})
