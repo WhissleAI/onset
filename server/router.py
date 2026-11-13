@@ -316,7 +316,20 @@ async def route(query: str, f: Frame, *, final: bool, meter: dict, web_fn):
             raise Skip(p.why)
         p = Plan("web", p.vertical, 0.3, {}, p.why + " (final: web)")
     cheap: list = []
-    if p.lane in ("card", "facts"):
+    hedge_ms = meter.get("hedge_ms", config.ROUTER_FACTS_HEDGE_MS)
+    if p.lane == "facts" and hedge_ms is not None and hedge_ms >= 0 and not (meter.get("no_paid") and not final):
+        r = await _hedged_facts(p, f, meter, web_fn, hedge_ms / 1000, t)
+        if r is not None:
+            return r
+        cheap = meter.pop("_cheap", [])
+        strong = _strong(cheap, p)
+        if cheap and strong:
+            meter.update(tier=p.lane, tier_src=cheap[0].source, backend=p.lane, credits=0.0, paid=0)
+            res = WebResult(cheap)
+            res.backend = p.lane
+            return res
+        meter["route_fallback"] = "empty" if not cheap else "weak"
+    elif p.lane in ("card", "facts"):
         try:
             cheap = await asyncio.wait_for(_cheap(p, f, meter), config.ROUTER_LANE_TIMEOUT_S)
         except asyncio.CancelledError:
@@ -352,6 +365,71 @@ async def route(query: str, f: Frame, *, final: bool, meter: dict, web_fn):
     out.backend, out.credits, out.cached = backend, getattr(web, "credits", 0.0), getattr(web, "cached", False)
     out.answer = getattr(web, "answer", None)
     return out
+
+
+async def _hedged_facts(p: Plan, f: Frame, meter: dict, web_fn, hedge_s: float, t0: float):
+    """Facts lane with a hedge: Wikidata (entity search + SPARQL) has a fat tail (A/B: p50 ~240 ms, p90 ~700 ms vs
+    ~260 ms p90 for one web search), so if the fact lookup hasn't landed within ROUTER_FACTS_HEDGE_MS the paid web lane
+    starts too and the first GOOD result wins: a strong fact, else the web's docs (a weak / empty fact waits for the
+    web). Returns a WebResult, or None with the cheap docs in meter["_cheap"] (no hedge needed: the normal path
+    decides). A hedge that was sent counts as paid even if the fact won (the request was made)."""
+    from .lanes import WebResult
+    cheap_t = asyncio.ensure_future(asyncio.wait_for(_cheap(p, f, meter), config.ROUTER_LANE_TIMEOUT_S))
+
+    def cheap_result():
+        try:
+            return cheap_t.result()
+        except asyncio.CancelledError:
+            raise
+        except BaseException as e:
+            meter["route_error"] = f"{type(e).__name__}: {e}"[:120]
+            return []
+
+    try:
+        await asyncio.wait({cheap_t}, timeout=max(0.0, hedge_s))
+        if cheap_t.done():
+            meter["route_ms"] = round((time.perf_counter() - t0) * 1000)
+            meter["_cheap"] = cheap_result()
+            return None
+        meter["route_hedged"] = True
+        web_t = asyncio.ensure_future(web_fn())
+        pending = {cheap_t, web_t}
+        cheap, web = None, None
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            if cheap_t in done and cheap is None:
+                cheap = cheap_result()
+                meter["route_ms"] = round((time.perf_counter() - t0) * 1000)
+                if cheap and _strong(cheap, p):
+                    web_t.cancel()
+                    meter.update(tier=p.lane, tier_src=cheap[0].source, backend=p.lane, credits=0.0, paid=1,
+                                 hedge_won="facts")
+                    res = WebResult(cheap)
+                    res.backend = p.lane
+                    return res
+            if web_t in done and web is None:
+                try:
+                    web = web_t.result()
+                except asyncio.CancelledError:
+                    raise
+                except BaseException as e:
+                    meter["route_error"] = f"web: {type(e).__name__}: {e}"[:120]
+                    web = []
+                if web and len(web):
+                    cheap_t.cancel()
+                    backend = getattr(web, "backend", "") or meter.get("backend", "")
+                    paid = 0 if (getattr(web, "cached", False) or backend in ("cache", "router")) else 1
+                    meter.update(tier="web", tier_src=web[0].source or backend, paid=paid, hedge_won="web",
+                                 route_fallback="slow")
+                    return web
+        # neither gave a good result: whatever the fact lookup had, plus the (empty) web
+        meter.update(tier=p.lane if cheap else "web", paid=1, route_fallback="empty" if not cheap else "weak")
+        res = WebResult(list(cheap or []) + list(web or []))
+        res.backend = p.lane if cheap else (getattr(web, "backend", "") if web is not None else "")
+        return res
+    finally:
+        if not cheap_t.done():
+            cheap_t.cancel()
 
 
 # ------------------------------------------------------------------------------------------------- answer side

@@ -236,6 +236,9 @@ ROUTER_UA = os.environ.get("ROUTER_UA", "HeadStartDemo/0.1 (https://github.com/;
 # Router x speculation (integration): a PAID speculative web call waits while the router's plan confidence is below
 # ROUTER_SPEC_HOLD_CONF ("unsure" what kind of question it is) and the turn isn't likely over; cheap card / fact
 # lookups fire speculatively, at most ROUTER_SPEC_CHEAP_MAX distinct plans per question.
+# Facts lane hedge: a fact lookup (Wikidata search + SPARQL) still out after this many ms starts the paid web lane too;
+# the first good result wins (both modes; not for the speculator's free mid-sentence lookups). <0 disables.
+ROUTER_FACTS_HEDGE_MS = float(os.environ.get("ROUTER_FACTS_HEDGE_MS", "350"))
 ROUTER_SPEC_HOLD_CONF = float(os.environ.get("ROUTER_SPEC_HOLD_CONF", "0.3"))
 ROUTER_SPEC_HOLD_LEADS = os.environ.get("ROUTER_SPEC_HOLD_LEADS", "1") == "1"   # ... also the generic wh- (leads) plan
 ROUTER_SPEC_CHEAP_MAX = int(os.environ.get("ROUTER_SPEC_CHEAP_MAX", "4"))

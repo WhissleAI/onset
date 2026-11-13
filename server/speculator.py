@@ -484,7 +484,8 @@ class Speculator:
         router skips, not calls the router answered for free (meter paid == 0: a card / local fact). A call still in
         flight counts as paid (its cheap lane may fall back to the web)."""
         return sum(1 for x in self.fires if x.lane in ("web", "final-web") and x.state not in ("error", "skipped")
-                   and not x.meter.get("cached") and not x.meter.get("replayed") and x.meter.get("paid", 1) != 0)
+                   and not x.meter.get("cached") and not x.meter.get("replayed") and x.meter.get("paid", 1) != 0
+                   and not x.meter.get("no_paid"))      # a speculative cheap lookup can never reach the paid web
 
     def _decide(self, f: Frame) -> tuple[str, Fire | None]:
         """SPEC_EFF: does this frame's meaning need a new web search? ("fire", None) or (why not, the search whose
@@ -829,7 +830,9 @@ class Speculator:
                     m["pool_best"] = round(best, 3)
                     if same:
                         m["path"] = "speculative-hit"
-                        if pending:
+                        if pending and fplan is not None and fplan.lane == "facts":
+                            await self._wait_or_hedge([x for x in same if x.state == "fired"], f, q, m)
+                        elif pending:
                             # don't let a slow lane hold the answer hostage: answer with what has landed after the cap
                             await asyncio.wait(pending, timeout=config.PENDING_CAP_S)
                     elif fplan is not None and fplan.cheap_only and f.route in ("web", "both"):
@@ -838,11 +841,18 @@ class Speculator:
                         # web if the cheap lane comes back empty or weak). No paid budget involved.
                         sf = self.sig_fire.get(fplan.sig)
                         if sf is not None and sf.state == "fired" and sf.task:
-                            await asyncio.wait([sf.task], timeout=config.PENDING_CAP_S)   # same lookup in flight
+                            if fplan.lane == "facts":
+                                await self._wait_or_hedge([sf], f, q, m)
+                            else:
+                                await asyncio.wait([sf.task], timeout=config.PENDING_CAP_S)   # same lookup in flight
+                            if any(x.lane == "final-web" for x in self.fires):
+                                sf = None                   # hedged: the final call below already answered
                         if fplan.lane == "card" and self._fitting_card(qtext):
                             m["path"] = "card-hit"
                         elif sf is not None and sf.state == "done" and sf.docs and fplan.lane == "facts":
                             m["path"] = "route-hit"             # the same fact lookup (same plan args) already landed
+                        elif any(x.lane == "final-web" for x in self.fires):
+                            pass                                # the hedge's final call answered (path set there)
                         else:
                             m["path"] = f"route-{fplan.lane}"
                             await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True)).task,
@@ -1006,6 +1016,37 @@ class Speculator:
         await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True, qvec_task=qvec_task)).task,
                              return_exceptions=True)
         return alt
+
+    async def _wait_or_hedge(self, fires: list, f: Frame, q: str, m: dict):
+        """A speculative FACT lookup still in flight at the endpoint (Wikidata's SPARQL tail): wait for it until
+        ROUTER_FACTS_HEDGE_MS after it was sent; if it is still out, one final call races the fact lookup against the
+        paid web (router hedge_ms=0: both at once, the first good result wins), so a slow SPARQL query costs one paid
+        call instead of up to PENDING_CAP_S of waiting. Free mid-sentence lookups stay free."""
+        tasks = [x.task for x in fires if x.task and not x.task.done()]
+        if not tasks:
+            return
+        hedge = config.ROUTER_FACTS_HEDGE_MS
+        if hedge is None or hedge < 0:
+            await asyncio.wait(tasks, timeout=config.PENDING_CAP_S)
+            return
+        left = min(config.PENDING_CAP_S, max(0.0, min(x.t_fire for x in fires) + hedge / 1000 - time.perf_counter()))
+        if left > 0:
+            await asyncio.wait(tasks, timeout=left)
+        if all(t.done() for t in tasks) and any(x.docs for x in fires):
+            return
+        m["path"] = (m.get("path") or "") + "+hedge"
+        go, meter = self._web(q, f, final=True)
+        meter["hedge_ms"] = 0
+        final = self._fire("final-web", q, f, go, meter).task
+        # whichever lands first with docs: the spec lookup (free) or the hedge (fact or web)
+        waits = {final} | {t for t in tasks if not t.done()}
+        deadline = time.perf_counter() + config.PENDING_EMPTY_S
+        while waits and time.perf_counter() < deadline:
+            done, waits = await asyncio.wait(waits, timeout=deadline - time.perf_counter(),
+                                             return_when=asyncio.FIRST_COMPLETED)
+            if any(x.docs for x in fires) or (final.done() and not final.cancelled()
+                                               and any(x.lane == "final-web" and x.docs for x in self.fires)):
+                break
 
     @staticmethod
     def _card_fits(card, question: str) -> bool:
