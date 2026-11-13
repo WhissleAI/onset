@@ -3,6 +3,8 @@
 Client -> server
   binary frame                        Float32Array (little-endian) mono 16 kHz PCM, any length (100 ms recommended)
   {"t":"start","modes":["headstart","baseline"], "domain":"assistant"}   start a run (both modes race on one ear)
+                                    "open": true = open mic (clicked, keeps listening): a statement that is not a
+                                    request gets a "heard" event instead of a search + answer; push-to-talk omits it
   {"t":"stop"}                        flush the ear (closes the open utterance) and end the run
   {"t":"replay","file":"q01.wav","modes":[...]}   server streams eval/audio/<file> through the ear in real time
 Server -> client: JSON events, each with "mode" ("headstart" | "baseline" | "ear" | "sys"):
@@ -10,7 +12,8 @@ Server -> client: JSON events, each with "mode" ("headstart" | "baseline" | "ear
   ear    {"t":"ear","kind":"partial|final|arc_command_complete|connected|fallback|warning|error","ear":"arc|deepgram",...}
          (ready and /api/health carry "ear": the ear new runs use, "ear_requested": env EAR; a run that falls back
          from Deepgram to Arc says so with a "fallback" ear event)
-  per mode: words, frame, spec, endpoint, sources, answer, answer_error, metric   (see server/speculator.py, session.py)
+  per mode: words, frame, spec, endpoint, sources, answer, answer_error, metric, heard (open mic: a statement, not
+         answered)   (see server/speculator.py, session.py). Each carries "q": the id of the question it belongs to.
 """
 from __future__ import annotations
 
@@ -281,6 +284,8 @@ async def ws_endpoint(ws: WebSocket):
                 if t == "start":
                     for s in run.sessions:            # push-to-talk: follow-ups keep the conversation
                         s.import_memory(memory.get(s.mode))
+                        # open mic (clicked, keeps listening; not push-to-talk): statements are heard, not answered
+                        s.open_mic = bool(data.get("open"))
                 else:
                     memory.clear()                    # a replay starts a fresh conversation
                 if t == "replay":
