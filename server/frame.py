@@ -295,6 +295,32 @@ def repair_end(toks: list[str]) -> bool:
     return any(len(t) >= len(pat) and tuple(t[-len(pat):]) == pat for pat in REPAIR_TAIL)
 
 
+# A turn that ends on a function word is cut mid-phrase ("is it bad to take a" | "ibuprofen on an empty stomach":
+# Flux's own EndOfTurn split showcase sc15 there). Endings that close ordinary questions are exempt: "what time is it"
+# never ends on "is", but "where it is", "what's going on", "who do I talk to" do.
+DANGLING = {"a", "an", "the", "to", "of", "for", "in", "on", "with", "and", "or", "my", "your", "is", "are"}
+_DANGLE_OK = {("it", "is"), ("he", "is"), ("she", "is"), ("that", "is"), ("this", "is"), ("there", "is"),
+              ("what", "is"), ("where", "is"), ("who", "is"), ("they", "are"), ("you", "are"), ("we", "are"),
+              ("there", "are"), ("what", "are"), ("where", "are"), ("who", "are"), ("going", "on"), ("turn", "on"),
+              ("turned", "on"), ("go", "on"), ("goes", "on"), ("carry", "on"), ("hold", "on"), ("talk", "to"),
+              ("listen", "to"), ("go", "to"), ("looking", "for"), ("in", "on"), ("come", "on"), ("log", "in"),
+              ("sign", "in"), ("plug", "in"), ("check", "in"), ("go", "with"), ("goes", "with"), ("made", "of"),
+              ("think", "of"), ("afraid", "of"), ("used", "to")}
+
+
+def dangling_end(toks: list[str]) -> bool:
+    """Does this turn end on a function word that needs a continuation ("is it bad to take a")?"""
+    t = [x for x in toks if x]
+    if len(t) < 2 or t[-1] not in DANGLING:
+        return False
+    return (t[-2], t[-1]) not in _DANGLE_OK
+
+
+def unfinished(toks: list[str]) -> bool:
+    """The turn was cut off: mid-correction ("..., sorry") or mid-phrase ("... to take a")."""
+    return repair_end(toks) or dangling_end(toks)
+
+
 # --- conversions: "what's a hundred US dollars in euros", "how many kilometers is 26 miles" ----------------------------
 _CURRENCY = set("""dollar dollars usd buck bucks euro euros eur pound pounds sterling gbp quid yen jpy yuan rmb renminbi
 rupee rupees inr peso pesos franc francs chf won ruble rubles rouble roubles rand real reais lira liras dirham dirhams

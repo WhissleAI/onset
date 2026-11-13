@@ -170,7 +170,8 @@ class Session:
         """This turn's own (fresh) words -> the words of the question being heard. The ear can end a turn inside a
         self-correction (Flux fires EndOfTurn at "what's the weather in Boston, sorry," and hears "I mean Denver" as
         a new turn). A turn that starts within REPAIR_GAP_S of the previous one and either opens with a repair marker
-        or follows a turn that ended on one is the same question: the previous turn's words are prepended, so the
+        or follows a turn that ended on one (or on a dangling function word: "is it bad to take a" | "ibuprofen on an
+        empty stomach") is the same question: the previous turn's words are prepended, so the
         frame's correction logic sees "Boston, sorry, I mean Denver" and asks about Denver; any answer already given
         to the previous turn is superseded. None = the words so far might start a marker ("I" of "I mean"): wait."""
         if not ws:
@@ -369,6 +370,8 @@ class Session:
         and keep the speculator warm: the ear's final confirms or extends it. by = what fired it (tagger: our gate +
         silence; eager: the ear's own early end-of-turn, Deepgram Flux EagerEndOfTurn)."""
         sig = meaning(f)
+        if framemod.dangling_end([framemod.norm(w) for w in self.words]):
+            return False                           # "is it bad to take a": mid-phrase, never complete
         if self.busy or not f.has_content() or (self.soft is not None and self.soft["sig"] == sig):
             return False
         if self.final_task is not None and not self.final_task.done():
@@ -548,7 +551,7 @@ class Session:
         self.last_answered_end = max(self.last_answered_end, ws[-1].get("end") or 0.0)
         self.last_answered_words = [framemod.norm(w) for w in self.words]
         self.last_closed = {"ws": list(ws), "end": ws[-1].get("end") or 0.0, "job": job,
-                            "trailing": framemod.repair_end([framemod.norm(clean(w["text"])) for w in ws])}
+                            "trailing": framemod.unfinished([framemod.norm(clean(w["text"])) for w in ws])}
         self._new_question()
         return job
 
@@ -560,9 +563,10 @@ class Session:
         ws = self._join(self._fresh(ws or []), final=True)
         if not ws:
             return None
-        if config.REPAIR_HOLD_S > 0 and framemod.repair_end([framemod.norm(clean(w["text"])) for w in ws]):
-            # the turn ended mid-correction ("... in Boston, sorry,"): give the correction a moment to arrive as the
-            # next turn before answering (it would be answered for Boston). _join merges or releases it.
+        if config.REPAIR_HOLD_S > 0 and framemod.unfinished([framemod.norm(clean(w["text"])) for w in ws]):
+            # the turn ended mid-correction ("... in Boston, sorry,") or mid-phrase ("is it bad to take a"): give the
+            # rest a moment to arrive as the next turn before answering (it would be answered for Boston / for the
+            # fragment). _join merges or releases it.
             h = self.held = {"ws": ws, "ev": asyncio.Event(), "merged": False, "job": None}
             self.emit({"t": "repair_hold", "ms": self.spec.ms(), "words": [framemod.norm(w["text"]) for w in ws]})
             try:

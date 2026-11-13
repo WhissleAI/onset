@@ -223,3 +223,45 @@ def test_extractive_fallback_prefers_the_converted_amount():
     a = answer.extractive("what's a hundred us dollars in euros at today's rate", docs)
     assert a.startswith("100 USD equals 90.42 EUR") and a.endswith("[3]")
     assert answer._amount_value("a hundred us dollars") == 100 and answer._amount_value("1.5 million yen") == 1.5e6
+
+
+# ----------------------------------------------------------------------------- dangling function word (sc15)
+def test_dangling_end():
+    assert frame.dangling_end("is it bad to take a".split())
+    assert frame.dangling_end("what's the capital of".split())
+    assert frame.unfinished("is it bad to take a".split())
+    for ok in ["do you know where it is", "what's going on", "who should i talk to", "what is it made of",
+               "is it bad to take ibuprofen on an empty stomach", "a"]:
+        assert not frame.dangling_end(ok.split()), ok
+
+
+@pytest.mark.parametrize("mode", ["baseline", "headstart"])
+def test_dangling_turn_is_held_and_merged(mode, monkeypatch):
+    """sc15 as Flux split it: "is it bad to take a" | "ibuprofen on an empty stomach". One answer, to the whole."""
+    monkeypatch.setattr(config, "SEMANTIC_ENDPOINT", True)
+
+    async def go():
+        s, ev = await _two_turns(mode, "is it bad to take a", "ibuprofen on an empty stomach", 0.35)
+        s.close()
+        return s, ev
+    s, ev = asyncio.run(go())
+    assert any(e["t"] == "repair_hold" for e in ev)
+    assert len(s.history) == 1, [m.get("question") for m in s.history]
+    assert s.history[0]["question"] == "is it bad to take a ibuprofen on an empty stomach"
+    assert "ibuprofen" in s.history[0]["query"]
+    # no early (soft) answer to the fragment either
+    assert not any(e["t"] == "endpoint" and e["frame"]["n"] == 6 for e in ev)
+
+
+def test_dangling_turn_merged_after_hold_expired(monkeypatch):
+    """The hold ran out (slow continuation, still within the gap): the fragment's answer is superseded."""
+    monkeypatch.setattr(config, "REPAIR_HOLD_S", 0.05)
+
+    async def go():
+        s, ev = await _two_turns("baseline", "is it bad to take a", "ibuprofen on an empty stomach", 1.0,
+                                 wait_first=True)
+        s.close()
+        return s, ev
+    s, ev = asyncio.run(go())
+    assert [m["question"] for m in s.history] == ["is it bad to take a ibuprofen on an empty stomach"]
+    assert len(s.superseded) == 1 and s.superseded[0]["question"] == "is it bad to take a"
