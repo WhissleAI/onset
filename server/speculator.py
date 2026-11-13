@@ -126,6 +126,8 @@ class Speculator:
         self.uncovered: dict = {}                # meaning_sig -> Coverage of a pool that failed the draft-time check
         self.parent_of: dict[str, Fire] = {}
         self.cheap_sigs: set = set()             # router plans (vertical + args) already looked up speculatively
+        self.sig_fire: dict = {}                 # plan sig -> the speculative cheap lookup for it
+        self.cheap_parent: dict[str, Fire] = {}  # query -> the cheap lookup of the same plan (drafts borrow it)
 
     # ------------------------------------------------------------------ helpers
     def ms(self, t=None):
@@ -631,13 +633,17 @@ class Speculator:
         the paid web itself when the cheap lane comes back empty: counted then)."""
         q = f.query()
         sig = getattr(plan, "sig", None) or (plan.lane, plan.vertical, q)
-        if sig in self.cheap_sigs or len(self.cheap_sigs) >= config.ROUTER_SPEC_CHEAP_MAX:
+        if sig in self.cheap_sigs:
+            if sig in self.sig_fire:
+                self.cheap_parent[q] = self.sig_fire[sig]   # same lookup, more words: drafts borrow its result
+            return
+        if len(self.cheap_sigs) >= config.ROUTER_SPEC_CHEAP_MAX:
             return
         self.cheap_sigs.add(sig)
         self.web_used += 1                     # refunded when the router answers for free (see _fire.run)
         go, meter = self._web(q, f, final=False)
         meter["no_paid"] = True                # cheap lane only: an empty / weak lookup is skipped, not sent to the web
-        self._fire("web", q, f, go, meter)
+        self.sig_fire[sig] = self._fire("web", q, f, go, meter)
 
     def on_audio(self, wav: np.ndarray, route: str = "both", n_words: int = 0):
         """Audio lane: embed the spoken question itself (no words needed) and search the local moments index.
@@ -708,7 +714,10 @@ class Speculator:
         q = f.query()
         mine = [x for x in self.fires if x.query == q and x.lane in ("web", "local")]
         borrowed = False
-        if config.SPEC_EFF and not any(x.lane == "web" for x in mine) and q in self.parent_of:
+        if not any(x.lane == "web" for x in mine) and q in self.cheap_parent:
+            mine.append(self.cheap_parent[q])       # router: the same card / fact lookup (same plan args): no
+            #                                         coverage check needed, it is the answer's own source
+        elif config.SPEC_EFF and not any(x.lane == "web" for x in mine) and q in self.parent_of:
             mine.append(self.parent_of[q])          # no search of its own: the search that covers its meaning
             borrowed = True
         ready = [x for x in mine if x.state == "done"]
@@ -827,8 +836,13 @@ class Speculator:
                         # router: a live-data card / local fact question. A card already in the pool that fits the
                         # final words answers it; else one cheap lookup now (the router itself falls back to the paid
                         # web if the cheap lane comes back empty or weak). No paid budget involved.
+                        sf = self.sig_fire.get(fplan.sig)
+                        if sf is not None and sf.state == "fired" and sf.task:
+                            await asyncio.wait([sf.task], timeout=config.PENDING_CAP_S)   # same lookup in flight
                         if fplan.lane == "card" and self._fitting_card(qtext):
                             m["path"] = "card-hit"
+                        elif sf is not None and sf.state == "done" and sf.docs and fplan.lane == "facts":
+                            m["path"] = "route-hit"             # the same fact lookup (same plan args) already landed
                         else:
                             m["path"] = f"route-{fplan.lane}"
                             await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True)).task,

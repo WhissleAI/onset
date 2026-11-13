@@ -70,6 +70,14 @@ open-ended questions or when the cheap lane comes back empty or weak. It runs in
 route alike. The UI chip says which lane answered; every card shows its source and "as of" time.
 `eval/router_latency.py` times each cheap lane cold.
 
+Router x speculation (`SPEC_EFF=1`, `server/searchcache.py`): `lanes.plan(frame)` gives the speculator the router's lanes.
+A card / fact plan never spends a paid web call while the user speaks: it fires a free lookup per distinct plan
+(no paid fallback mid-sentence), and at the endpoint a fitting card answers, else one cheap lookup (which may fall back
+to the web). Web plans get the meaning-change fire policy, pool reuse + coverage and `SPEC_PAID_MAX=2`; a weak plan
+(`ROUTER_SPEC_HOLD_CONF` 0.3, or the generic wh- "leads" plan) holds its paid fire until the turn is probably over.
+The cross-question search cache serves web-only plans and stores paid web docs only (never cards / facts). PROGRESS.md
+"Integration" has the A/B.
+
 Degraded mode (DEMO_CHECKLIST.md): if the live web lane fails, it serves `runs/web_cache.json` (recorded Wikipedia
 responses for the eval set; `eval/record_web_cache.py`; `WEB_BACKEND=cache` forces it); if the answer model is
 unreachable, answers are the best-matching sentence of the top source. Both modes share the fallbacks; both are

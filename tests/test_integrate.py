@@ -32,6 +32,10 @@ def _plan_for(text: str, final: bool = False) -> lanes.RoutePlan:
         p = lanes.RoutePlan(["card"])
         p.lane, p.vertical, p.conf, p.why = "card", "weather", 0.92, "weather forecast"
         p.sig = ("card", "weather", low.split(" in ")[-1] if " in " in low else "")
+    elif "capital" in low:
+        p = lanes.RoutePlan(["facts"])
+        p.lane, p.vertical, p.conf, p.why = "facts", "wikidata", 0.85, "Wikidata capital"
+        p.sig = ("facts", "wikidata", "capital")
     elif "wait" in low:
         p = lanes.RoutePlan(["facts", "web"])        # a fact question whose subject may not be said yet
         p.lane, p.conf, p.why = "facts", 0.5, "stable factoid"
@@ -64,6 +68,11 @@ async def fake_routed_web(query, topic="general", *, final=False, meter=None, fr
         CALLS.append({"q": query, "final": final, "lane": "wait", "paid": 0})
         raise lanes.Skip("key word not said yet")
     await asyncio.sleep(0.05)
+    if p.lane == "facts" and p.vertical == "wikidata":
+        meter.update(tier="facts", backend="facts", paid=0, credits=0.0, free_calls=1)
+        CALLS.append({"q": query, "final": final, "lane": "facts", "paid": 0})
+        return [lanes.Doc(id="wd:capital", title="Australia · Wikidata", text="Australia: capital: Canberra.",
+                          source="Wikidata", meta={"tier": "facts", "snapshot": "Wikidata"})]
     if p.lane == "card":
         meter.update(tier="card", backend="card", paid=0, credits=0.0, free_calls=2)
         CALLS.append({"q": query, "final": final, "lane": "card", "paid": 0})
@@ -264,3 +273,14 @@ def test_generic_factoid_plan_is_held_but_specific_facts_are_not():
     assert not sp._route_hold(g, wd)
     sp.eot_p = 0.5
     assert not sp._route_hold(g, leads)
+
+
+def test_facts_plan_one_lookup_and_a_draft_from_it():
+    """A cheap-only plan is looked up once per plan (same args); later partials borrow that lookup for their draft
+    instead of firing again, and the endpoint reuses it (no second lookup, no paid call)."""
+    ev = []
+    m = _speak("so tell me what is the capital city of the country of Australia", events=ev, gap=0.3)
+    assert m["paid_calls"] == 0
+    assert len([c for c in CALLS if c["lane"] == "facts"]) == 1
+    assert m["drafts"] >= 1
+    assert m["path"] in ("draft-reuse", "route-hit", "speculative-hit")
