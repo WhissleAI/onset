@@ -334,3 +334,43 @@ Real A/B EAR=flux vs EAR=arc (eval/run_ab.py, showcase sc01–sc10, WEB_BACKEND=
 | **flux** | **headstart** | **1197 / 1167** | **244** | **0.000** | eager 9 |
 (Same 10 with the 432 Tavily key, i.e. no speculation: flux HS 1640/1830 vs arc HS 2676/2901; endpoint 261 vs 630.)
 runs/ab_ear_{arc,flux}{,_wiki}.json.
+
+## Confidence fusion + learned end of turn + search director (branch confidence-fusion; server/confidence.py, server/director.py)
+**Fusion layer** (`server/confidence.py`): per-word confidence = logistic over Flux word conf, revision history
+(`WordTrack`: changes / updates held), last-word position, the tagger span covering the word (score margin, ver).
+Out-of-fold on 2,295 real train traces (director dataset): AUC 0.917 (Flux conf alone) → **0.973**, Brier .0194 → .0150
+(2.3 % of words get revised). Per-slot conf = min word conf × type conf (score vs alt); key conf = weakest content word.
+Frames carry `wconf`, `key_conf`, `slot_conf`; words events `fconf`. Arc audio names/numbers: only at flush (after the
+turn), state always `not_in_list`, span_p .03–.18 → no mid-utterance use (`arc_name_boost` kept for a linked catalog).
+
+**Fused end of turn (FLUX_SOFT=fused, default on this branch)**: logistic on Flux end_of_turn_confidence, pause since the
+last word, tagger command_complete at the last word (+ score), gate / act / slot-end / content, Arc cc_p / cc event /
+for-me, word count, last-word Flux conf; scored on EVERY Flux update (not only Eager), one threshold on Eager, one on
+updates (eval/fit_confidence.py, nested CV; eval/conf_features.py builds the features from real traces).
+- 80 real Flux traces (nested CV): eager 212 / 242 / 599 ms (p50 / mean / p90), 26.2 premature /100 q; eager+arc
+  237 / 288 / 651, 10.0; **fused 174 / 223 / 591, 8.8**. Ablations: dropping Arc, tagger, last-word conf or pause each hurts.
+- Live-path bug found + fixed: the ear forwarded words only when the TEXT changed, so pause / last-word-conf were stale
+  (+15 ms p50, +49 ms mean, 17/80 questions off); `on_turn_tick(ev, words)` now refreshes timings + confidences.
+- Shipped model: refit on the director dataset's 2,295-trace train split, thresholds 0.725 / 0.725 chosen on val
+  (≤ 30 premature /100 q on val): original 80 213 ms / 12.5 (out-of-sample), synthetic test 279 / 29.2 (eager 251 / 54).
+- **Real A/B** (EAR=flux, Wikipedia lane, 29 showcase q; runs/ab_cfw_{default,fused}.json): HS p50 1339 → **1239** ms,
+  p90 2562 → **2166**, mean 1534 → 1373, accuracy 13/15 → 14/15, paired median −112 ms (fused faster 19/29), web
+  calls 4.93 → 4.86 /q; baseline 2087 ms. Tavily A/B of the old default (runs/ab_cf_default.json): BL 1692 / HS 1152 ms
+  p50, 1.0 vs 4.5 credits /q, accuracy 15/15 vs 13/15 (sc07: Haiku echoed a flour-weights table from the speculative
+  pool; sc15: Flux's own EndOfTurn split the question — both correct under default and fused on Wikipedia).
+
+**Speculation defaults from the Flux-trace simulator** (`sim/flux_traces.py`, `--flux`; new measured Tavily latency
+profile `tavily_fast`; 80 traces × 3 seeds; runs/sim_flux_grid.json): SPEC_CONF=1 (hold a fire one update when the key
+word's fused conf < 0.6): wasted fires 1.03 → 0.82 /q, fires 3.85 → 3.49, p50 unchanged; FLUX_TICK=1 (speculator ticks on
+unchanged Flux updates): draft reuse .03 → .13; DRAFT_ON_LAND=0 (on: +0.9 drafts /q for the same reuse).
+
+**Confidence-weighted queries** (eval/confq_eval.py; 12 Tavily credits, 6 judge calls): quoting confident multi-word
+entities changed 10/80 final queries, P@5 .64 → .62, top-1 .60 → .60, nDCG .841 → .842 (no effect); dropping
+low-confidence non-entity words changed 0 (no final Flux word is < 0.5 fused conf). Not shipped.
+
+**Arc Transcriber mid-utterance** (eval/transcriber_eval.py, 33 questions > 3.5 s): command_complete AUC for "these words
+are the whole question" 0.68 (Transcriber) vs 0.84 (Mini) over all updates, 0.71 vs 0.79 in the decision window; its
+read-out is 1.32 s stale (Mini 0.35 s). Not used.
+
+**Search director** (server/director.py runtime, numpy int8 Mamba-3; trained in PromptingNemo-private
+recipes/headstart_director): see the section below.
