@@ -759,10 +759,21 @@ class Speculator:
                 if reuse_draft is None and not self.rank(qvec, 1) and live():
                     # nothing to answer from yet (a slow search past PENDING_CAP_S): an answer with no sources is
                     # worse than a late one, so wait for whatever is still on the wire
-                    pending = [x.task for x in self.fires if x.state == "fired" and x.task and x.lane != "audio"]
+                    # (stale searches too: an ASR revision marks a search stale while it is still on the wire)
+                    pending = [x.task for x in self.fires if x.task and not x.task.done() and x.lane != "audio"]
                     if pending:
                         m["waited_empty"] = True
                         await asyncio.wait(pending, timeout=config.PENDING_EMPTY_S)
+                    if (not self.rank(qvec, 1) and live() and f.route in ("web", "both")
+                            and not any(x.lane == "final-web" for x in self.fires)
+                            and (self._plan(f) is None or "web" in self._plan(f))):
+                        # every search so far came back empty: search the final question (over the budget if it
+                        # must be: the calls that were spent bought nothing to answer from)
+                        if self._paid() >= config.SPEC_PAID_MAX:
+                            m["budget_override"] = "empty-pool"
+                        m["path"] = (m.get("path") or "") + "+empty-retry"
+                        await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True)).task,
+                                             return_exceptions=True)
         finally:
             if not qvec_task.done():
                 qvec_task.cancel()
@@ -857,8 +868,9 @@ class Speculator:
         answer race or None."""
         self.final_q.add(q)                      # no speculative search for this meaning after this point
         why, parent = self._decide(f)
-        if why == "hold" or (parent is not None and parent.state == "fired"):
-            inflight = [x.task for x in self.fires if x.lane in ("web", "final-web") and x.state == "fired" and x.task]
+        inflight = [x.task for x in self.fires if x.lane in ("web", "final-web") and x.task and not x.task.done()]
+        if why == "hold" or (parent is not None and parent.state == "fired") or (inflight and not self.rank(qvec, 1)):
+            inflight = [x.task for x in self.fires if x.lane in ("web", "final-web") and x.task and not x.task.done()]
             if inflight:                         # an earlier search of this meaning is still on the wire
                 await asyncio.wait(inflight, timeout=config.PENDING_CAP_S)
             why, parent = self._decide(f)
@@ -874,8 +886,12 @@ class Speculator:
             m["path"] = "pool-reuse"
             return None
         if self._paid() >= config.SPEC_PAID_MAX:
-            m["path"] = "budget-pool"            # hard cap: answer from what was fetched
-            return None
+            if self.rank(qvec, 1):
+                m["path"] = "budget-pool"        # hard cap: answer from what was fetched
+                return None
+            # the budget went on searches that brought nothing (ASR-garbled partials): answering with no sources at
+            # all is worse than one more call; flagged so it shows up in the metric
+            m["budget_override"] = "empty-pool"
         m["path"] = "coverage-miss" if related else "speculative-miss"
         alt = self._answer_race(q, f)
         await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True, qvec_task=qvec_task)).task,

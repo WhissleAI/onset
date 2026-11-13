@@ -228,3 +228,18 @@ def test_end_of_turn_score_releases_a_waiting_search():
     sp = speculator.Speculator(lambda e: None)
     sp.on_eot(0.9)                                  # no frame yet: nothing to do, no crash
     assert sp.eot_p == 0.9
+
+
+def test_budget_spent_on_empty_results_still_answers_with_sources(monkeypatch):
+    # the speculative search brought nothing (ASR-garbled partial): the endpoint may not answer with no sources
+    monkeypatch.setattr(config, "SPEC_PAID_MAX", 1)
+    calls = []
+
+    async def web(query, topic="general", **kw):
+        calls.append(query)
+        await asyncio.sleep(0.05)
+        return [] if len(calls) == 1 else await ts.fake_web(query)
+    monkeypatch.setattr(lanes, "web", web)
+    m, _ = asyncio.run(ts.speak("who founded the company Nvidia", "headstart", endpoint_delay=0.9))
+    assert len(calls) == 2 and m.get("budget_override") == "empty-pool"
+    assert m["n_sources"] > 0

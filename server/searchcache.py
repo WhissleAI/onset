@@ -182,8 +182,10 @@ def coverage(key: QKey, ranked, searched=(), k: int = 5) -> Coverage:
     words = set()
     for d, _ in top:
         words |= {stem(w) for w in norm(f"{d.title} {d.text}").replace("-", " ").split()}
+    from .narrow import GENERIC
     ent = (sum(_tok_in(t, words) for t in key.subject) / len(key.subject)) if key.subject else 1.0
-    terms = (sum(_tok_in(t, words) for t in key.terms) / len(key.terms)) if key.terms else 1.0
+    tt = [t for t in key.terms if t not in GENERIC] or list(key.terms)    # spoken filler ("exactly") doesn't count
+    terms = (sum(_tok_in(t, words) for t in tt) / len(tt)) if tt else 1.0
     ok = sim >= config.SPEC_COVER_SIM and ent >= config.SPEC_COVER_ENT and terms >= config.SPEC_COVER_TERMS
     return Coverage(ok, sim, ent, terms)
 

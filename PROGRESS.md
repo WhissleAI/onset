@@ -334,3 +334,69 @@ Real A/B EAR=flux vs EAR=arc (eval/run_ab.py, showcase sc01–sc10, WEB_BACKEND=
 | **flux** | **headstart** | **1197 / 1167** | **244** | **0.000** | eager 9 |
 (Same 10 with the 432 Tavily key, i.e. no speculation: flux HS 1640/1830 vs arc HS 2676/2901; endpoint 261 vs 630.)
 runs/ab_ear_{arc,flux}{,_wiki}.json.
+
+## Search efficiency: search the subject, not the sentence (branch search/spec-efficiency; agent S)
+Problem: Head Start spent ~4.5 paid web calls per question (1.0 for the baseline); most fires repeated the same
+subject with one more word. SPEC_EFF=1 (default; SPEC_EFF=0 = the old per-word policy):
+- `server/searchcache.py` `qkey(frame)`: canonical key = search topic (Tavily topic / time range; news-intent flicker
+  ignored), subject (entity mentions + phrases + carried referent), stemmed content terms (Flux's half-heard last
+  word "celt" matches "celtics" by prefix), typed numbers / dates. `relation(new, old)`: same | subsumed | extends
+  (same subject, more words, or a date added) | grows (entity phrase got longer: skipped only if the earlier results
+  already name it) | None (meaning changed: correction, new entity, changed number/date/topic -> search).
+- Fire policy (speculator `_spec_web`): a new meaning is searched once it has held SPEC_SETTLE_MS=350, or at once
+  when the fused end-of-turn score >= SPEC_EOT_FIRE=0.3 (Flux; other ears: the tagger gate releases a first search
+  that names its subject). Hard SPEC_PAID_MAX=2 paid calls per question incl. the final; the last call waits
+  SPEC_LAST_SETTLE_MS=650 (or the end-of-turn score) so a half-heard replacement ("pride" -> "pride and prejudice")
+  can't spend it. Skips are events (`spec_skip`) and counted in the metric (`web_skipped`).
+- Pool reuse: a partial that extends an earlier search drafts from that search's pool, re-ranked with EmbeddingGemma,
+  only if `coverage()` passes (best cosine >= SPEC_COVER_SIM 0.5, every subject token named in the top 5, >= 50 % of
+  terms, and for live families a search that asked for the same topic + dates); a coverage failure spends the next
+  call on that meaning. At the endpoint: same meaning searched -> wait for it; covered -> `pool-reuse`; else one
+  final search (`coverage-miss` / `speculative-miss`) unless the budget is spent (`budget-pool`). Nothing landed
+  yet -> wait PENDING_EMPTY_S=3 for in-flight searches rather than answer with no sources (all paths).
+- Cross-question search cache (CACHE_SEM=1): exact key, then an embedding nearest neighbour among entries with the
+  same topic + subject + numbers (CACHE_NN_SIM 0.92). TTL: live (news/sports/weather/prices) 10 min, general 6 h,
+  stable (definitions, conversions, recipes, reference) 3 days. Both modes share it, but only entries fetched before
+  the asking question started count (a Head Start search never answers the same question's baseline). Optional
+  persistence CACHE_PERSIST=1 -> runs/search_cache.json (docs only, <= CACHE_MAX 400 entries). Hits are labelled:
+  meter `semcache` + `as_of`, docs `cached` + `as_of`, metric `search_cached` / `search_cached_as_of`, UI badge
+  "cache HH:MM". eval/run_ab.py `--search-cache per-run` (default: cleared before every run) | shared | off.
+- Router hook for agent R: `lanes.plan(frame) -> [lane names]` if it exists; web speculation / the final web call
+  happen only when the plan includes "web".
+
+Simulator (sim/spec_eff.py; 80 real Flux traces x 3 seeds; accuracy proxy = expected keyword in the answer's
+sources; fake build_prompt fixed: it rejected the answer hint, so every simulated answer had been the extractive
+fallback):
+| profile | policy | p50 | p90 | paid calls/q | wasted fires/q | draft reuse | src keyword ok | lead of 1st useful fire |
+|---|---|---|---|---|---|---|---|---|
+| wikipedia | old | 1182 | 1578 | 3.52 | 0.86 | .267 | .755 | 782 |
+| wikipedia | new | 1221 | 1611 | 1.27 | 0.15 | .312 | .736 | -84 |
+| wikipedia | new, SPEC_PAID_MAX=3 | 1226 | 1611 | 1.31 | 0.17 | .308 | .755 | -84 |
+| wikipedia | baseline | 1739 | 2331 | 1.00 | - | - | .717 | - |
+| tavily latency | old | 1804 | 2173 | 3.52 | 0.93 | .046 | .704 | 865 |
+| tavily latency | new | 1857 | 2422 | 1.29 | 0.17 | .071 | .767 | -56 |
+| tavily latency | baseline | 2424 | 3025 | 1.00 | - | - | .774 | - |
+Search cache: off = per-pass shared = identical (no two of the 80 questions share a key / subject); a cache kept
+across repeated passes (a demo booth replaying the set) -> 0.03 paid calls/q, p50 965 ms (that is the "repeated
+runs flatter the numbers" effect: the A/B clears it per run). Arc ear (no fused end-of-turn score; old sim traces):
+old 1186 ms / 2.24 calls -> new 1314 ms / 1.16 calls (fallback ear: a known regression; SPEC_EFF=0 restores).
+The "lead" is now negative: the first useful search goes out after the last word (on the end-of-turn score) but
+before the endpoint; the head start comes from beating the endpoint, not from mid-sentence results.
+
+Real A/B (Wikipedia lane, EAR=flux, both modes, search cache cleared per run; commit cccb165; runs/s/ab_*.json,
+not committed). Old = SPEC_EFF=0 at the same commit. Paid calls on Wikipedia = calls that would be paid on Tavily.
+| set | policy | mode | p50 | p90 | accuracy | paid calls/q (web-routed) | wasted fires/q | draft reuse | p50 lead 1st useful fire |
+|---|---|---|---|---|---|---|---|---|---|
+| showcase (29) | old | HS | 1272 | 2619 | 13/15 | 4.93 | 1.34 | 3/29 | 1138 |
+| showcase (29) | new | HS | 1243 | 1758 | 14/15 | 1.48 | 0.14 | 12/29 | 406 |
+| showcase (29) | old / new | BL | 2002 / 1797 | 3314 / 2262 | 13/15 / 13/15 | 1 | - | - | - |
+| eval (58: 38 web + 20 local) | old | HS | 1272 | 1923 | 58/58 | 2.19 (3.32) | 1.33 | 26/58 | 480 |
+| eval (58) | new | HS | 1475 | 2225 | 55/58 | 0.84 (1.29) | 0.79 | 22/58 | 98 |
+| eval (58) | old / new | BL | 1994 / 2060 | 2542 / 2707 | 57/58 / 55/58 | 0.66 (1) | - | - | - |
+The eval-new run caught a slow answer-model window: ready - sources (answer-model time) rose ~200-260 ms in EVERY
+group of that run, including the baseline and the 20 local questions the web policy never touches (local HS
+1129 -> 1404 ms). The search-side number, endpoint -> sources, moved +78 ms on web questions (580 -> 658). Of the 3
+new HS misses, q05 and q08 had the right sources (answer-model wording; q08 was also missed by BL in that run); q07 exposed two
+bugs fixed after the run: (1) the "nothing landed" wait ignored searches that went stale while on the wire,
+(2) a budget spent on ASR-garbled partials whose results were empty left no sources -> now one final search over the
+budget, flagged `budget_override: empty-pool` (and an empty speculative hit retries the final query).
