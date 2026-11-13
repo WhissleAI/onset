@@ -162,6 +162,8 @@ class Run:
         await asyncio.shield(self._stop)
 
     async def _do_stop(self):
+        for s in self.sessions:
+            s.end_of_audio()                     # a final held for its continuation is answered now
         try:
             await self.ear.flush()
         except Exception as e:

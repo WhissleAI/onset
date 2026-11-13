@@ -220,6 +220,7 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
                 await asyncio.sleep(0.003)
             await ear.feed(np.zeros(CHUNK, np.float32))
         n_finals_before_flush = sum(1 for e in ear_events if e.get("kind") == "final")
+        sess.end_of_audio()                  # like server/app.py at the end of a replay: no more audio is coming
         await ear.flush()
         # semantic endpointing answers from on_partial via session.final_task (not an ear final); wait for it too
         seen = set()

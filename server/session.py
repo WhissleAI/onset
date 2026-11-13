@@ -81,6 +81,7 @@ class Session:
         self.held: dict | None = None          # a final that ended on a repair marker, waiting for its correction
         self.last_closed: dict | None = None   # the last closed question (a correction right after it reopens it)
         self.superseded: list[dict] = []       # metrics of answers replaced by a spoken correction (not in history)
+        self.audio_ended = False               # the speaker stopped (push-to-talk release / end of replay): no holds
         self._new_question()
 
     def set_t0(self, t0: float):
@@ -563,7 +564,7 @@ class Session:
         ws = self._join(self._fresh(ws or []), final=True)
         if not ws:
             return None
-        if config.REPAIR_HOLD_S > 0 and framemod.unfinished([framemod.norm(clean(w["text"])) for w in ws]):
+        if config.REPAIR_HOLD_S > 0 and not self.audio_ended and framemod.unfinished([framemod.norm(clean(w["text"])) for w in ws]):
             # the turn ended mid-correction ("... in Boston, sorry,") or mid-phrase ("is it bad to take a"): give the
             # rest a moment to arrive as the next turn before answering (it would be answered for Boston / for the
             # fragment). _join merges or releases it.
@@ -701,6 +702,14 @@ class Session:
         if self.carry_pool:
             self.spec.seed(self.carry_pool)
         self.spec.context = self.context
+
+    def end_of_audio(self):
+        """No more audio is coming (the user released push-to-talk, the replay ended): a held final has no
+        continuation to wait for, answer it now."""
+        self.audio_ended = True
+        if self.held is not None:
+            self.held["ev"].set()
+            self.held = None
 
     def close(self):
         if self.closed:

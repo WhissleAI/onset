@@ -265,3 +265,20 @@ def test_dangling_turn_merged_after_hold_expired(monkeypatch):
     s, ev = asyncio.run(go())
     assert [m["question"] for m in s.history] == ["is it bad to take a ibuprofen on an empty stomach"]
     assert len(s.superseded) == 1 and s.superseded[0]["question"] == "is it bad to take a"
+
+
+def test_end_of_audio_releases_a_held_final():
+    """Push-to-talk released right after "who founded the": no continuation is coming, answer without the hold."""
+    async def go():
+        t0 = time.perf_counter()
+        s = Session(lambda e: None, mode="baseline", t0=t0)
+        ws = await _turn(s, t0, "who founded the", 0.2)
+        task = asyncio.create_task(s.on_final(ws))
+        await asyncio.sleep(0.05)
+        t = time.perf_counter()
+        s.end_of_audio()
+        m = await task
+        s.close()
+        return m, time.perf_counter() - t
+    m, waited = asyncio.run(go())
+    assert m is not None and m["question"] == "who founded the" and waited < config.REPAIR_HOLD_S
