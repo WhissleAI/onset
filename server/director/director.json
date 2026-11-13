@@ -8,24 +8,35 @@
   "emb": 8
  },
  "size_name": "s",
- "params": 29191,
- "F": 54,
+ "params": 32449,
+ "F": 140,
  "thr": {
   "director_eot": [
-   0.6,
-   0.725
+   0.7,
+   0.75
   ],
-  "target_premature_val": 36.4,
+  "target_premature_val": 36.8,
   "lr_eot": [
    0.725,
    0.725
   ],
-  "director_fire": 0.22500000000000003,
-  "director_draft": 0.8750000000000003
+  "director_fire": 0.17500000000000004,
+  "director_draft": 0.9000000000000004,
+  "director_addr": 0.2405,
+  "director_pii": 0.4,
+  "director_route": 0.8
  },
+ "v2": true,
+ "groups": [
+  "pros",
+  "tag",
+  "arc",
+  "ear"
+ ],
  "trained": {
-  "n_train_real": 7905,
-  "n_train": 7905,
-  "best_step": 1800
+  "n_train_real": 11957,
+  "n_train": 12589,
+  "best_step": 2800,
+  "run": "PromptingNemo-private headstart-director recipes/headstart_director runs/sweep5/v2_s0"
  }
 }
