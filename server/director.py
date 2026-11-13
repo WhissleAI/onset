@@ -140,6 +140,156 @@ def session_record(sess, f, ws: list[dict], ev: str) -> dict:
             "arc_cc_p": a.get("cc_p"), "arc_cc_t": cc_t, "arc_for_me": a.get("for_me")}
 
 
+# ---------------------------------------------------------------------------------------------- v2 input streams
+# Director v2 adds four input streams to the per-update step (each its own group, so the recipe can ablate it):
+#   pros  pause / prosody timing from Flux's word times (no audio needed)
+#   tag   the rest of the Arc Tagger read-out: PII / safety, typed number spans, entity kinds, the router's plan
+#         (lane, vertical, route conf: server/router.py on the live frame) and whether the plan just changed
+#   arc   Arc Mini audio heads the assistant domain doesn't ship (overlap, speaker change, emotion, arousal, statement /
+#         backchannel acts, music / laughter / degraded audio) + the audio level (server/arcmeta.ArcExtra)
+#   ear   the Arc ear's OWN words next to Flux's: agreement, who is ahead in time, Arc's own endpoint
+# Records without a stream (traces featurized before v2, or a live session without ARC_META) carry its `*_ok` = 0.
+LANES = ["card", "facts", "web", "wait"]
+VERTS = ["units", "fx", "time", "sun", "weather", "wikidata", "define", "whois", "leads"]
+PII_K = ["phone_number", "email", "street_address", "card_account_number", "date_of_birth"]
+NUM_K = ["date", "time_of_day", "duration", "money", "percent", "count", "measure", "ordinal", "ref_number"]
+MEN_K = ["person", "organization", "place", "work_product"]
+X2F = ["speech", "sil", "ovl", "degr", "music", "laugh", "noneng", "chg", "intr", "yld"]
+X2U = ["st", "q", "op", "cr", "bc", "ans", "dd", "e_neu", "e_hap", "e_ang", "e_sad", "e_sur", "a_lo", "a_hi"]
+GROUPS = {
+    "pros": ["last_dur", "prev_dur", "lengthen", "gap_last", "gap_max", "rate", "since_start", "pause_rel"],
+    "tag": ([f"pii_{k}" for k in PII_K] + ["pii_other", "pii_any", "profanity"] + [f"num_{k}" for k in NUM_K] +
+            ["n_num"] + [f"men_{k}" for k in MEN_K] + [f"lane_{k}" for k in LANES] + ["local"] +
+            [f"vert_{k}" for k in VERTS] + ["route_conf", "plan_changed", "skip_web"]),
+    "arc": (["x2_ok"] + [f"x_{k}" for k in X2F] + ["x_nspk", "x_spk_other", "x_lvl_rel", "x_lvl3_rel", "x_utt_ok"] +
+            [f"u_{k}" for k in X2U]),
+    "ear": ["aw_ok", "aw_ratio", "aw_jacc", "aw_last_in", "aw_ahead", "aw_more", "aw_final_recent", "aw_open",
+            "aw_n_final"],
+}
+GROUP_ORDER = ["pros", "tag", "arc", "ear"]
+WF2 = 6          # per-word features of the pii head: in a PII span, hidden by frame._pii_hide, in an entity mention,
+                 # has a digit, digit count, email-ish token
+
+
+def frame_of(r: dict):
+    """The tagger frame a record describes (frame.build on its words / spans / intents: == the live Session frame)."""
+    from . import frame as fr
+    ev = {"discourse.assistant.command_complete"} if (r.get("cc_at") is not None and
+                                                       r["cc_at"] == len(r["words"]) - 1) else set()
+    return fr.build(r["words"], r["spans"], {"intent": r.get("intent") or [], "act": r.get("act") or []}, ev, None,
+                    local_ok=bool(r.get("local_ok")))
+
+
+def plan_of(f):
+    from . import router
+    try:
+        p = router.plan(f)
+    except Exception:  # noqa: BLE001
+        return None
+    return p
+
+
+def step_feats2(r: dict, prev: dict | None, f=None, plan=None, groups=GROUP_ORDER) -> np.ndarray:
+    """The v2 streams for one update (see GROUPS). f / plan: the live frame and router plan when the Session has them
+    (else rebuilt from the record). Returns the concatenation of `groups` in GROUP_ORDER."""
+    d = {}
+    n = len(r["words"])
+    ends = r["ends"]
+    starts = r.get("starts")
+    if "pros" in groups:
+        if starts and len(starts) == n:
+            durs = [max(0.0, e - s) for s, e in zip(starts, ends)]
+            gaps = [max(0.0, starts[i] - ends[i - 1]) for i in range(1, n)]
+            pd_ = float(np.mean(durs[-6:-1])) if n > 1 else 0.25
+            med_gap = float(np.median(gaps)) if gaps else 0.05
+            d.update(last_dur=min(durs[-1], 1.0), prev_dur=min(pd_, 1.0), lengthen=min(durs[-1] / (pd_ + 0.05), 4) / 4,
+                     gap_last=min(gaps[-1], 1.0) if gaps else 0.0, gap_max=min(max(gaps), 1.5) / 1.5 if gaps else 0.0,
+                     rate=min(n / (ends[-1] - starts[0] + 0.1), 6) / 6,
+                     since_start=min(r["t"] - starts[0], 15) / 15 if "t" in r else 0.0,
+                     pause_rel=min(max(r["pause"], 0) / (med_gap + 0.1), 10) / 10)
+    if "tag" in groups:
+        if f is None:
+            f = frame_of(r)
+        if plan is None:
+            plan = plan_of(f)
+        sp = r["spans"]
+        for k in PII_K:
+            d[f"pii_{k}"] = float(any(s["type"] == f"safety.pii.{k}" for s in sp))
+        d["pii_other"] = float(any(s.get("family") == "pii" and s["type"].split(".")[-1] not in PII_K for s in sp))
+        d["pii_any"] = float(bool(f.redact_tok))
+        from .frame import PROFANITY
+        d["profanity"] = float(any(norm(w) in PROFANITY for w in r["words"]))
+        for k in NUM_K:
+            d[f"num_{k}"] = float(any(s["type"] == f"entity.number.{k}" for s in sp))
+        d["n_num"] = min(sum(s.get("family") == "number" and s["type"] != "entity.numeral" for s in sp), 4) / 4
+        for k in MEN_K:
+            d[f"men_{k}"] = float(any(s["type"] == f"entity.mention.{k}" for s in sp))
+        lane = plan.lane if plan is not None else ""
+        for k in LANES:
+            d[f"lane_{k}"] = float(lane == k)
+        d["local"] = float(getattr(f, "route", "web") == "local")
+        for k in VERTS:
+            d[f"vert_{k}"] = float(plan is not None and plan.vertical == k)
+        d["route_conf"] = float(plan.conf) if plan is not None else 0.0
+        sig = (lane, plan.vertical if plan is not None else "")
+        d["plan_changed"] = float(prev is None or prev.get("_plan_sig") != sig)
+        d["skip_web"] = float(plan is not None and plan.skip_web)
+        r["_plan_sig"] = sig
+    if "arc" in groups:
+        x = r.get("x2")
+        if x:
+            d["x2_ok"] = 1.0
+            for k in X2F:
+                d[f"x_{k}"] = float(x.get(k) or 0.0)
+            d["x_nspk"] = min(x.get("nspk") or 0, 4) / 4
+            d["x_spk_other"] = float((x.get("spk") or 0) > 0)
+            lv, ref, l3 = x.get("lvl"), x.get("lvl_ref"), x.get("lvl3")
+            d["x_lvl_rel"] = float(np.clip(((lv if lv is not None else -100) - (ref or -100)) / 30, -1, 1))
+            d["x_lvl3_rel"] = float(np.clip(((l3 if l3 is not None else -100) - (ref or -100)) / 30, -1, 1))
+            u = x.get("utt")
+            d["x_utt_ok"] = float(bool(u))
+            for k in X2U:
+                d[f"u_{k}"] = float((u or {}).get(k) or 0.0)
+    if "ear" in groups:
+        aw, af = r.get("aw"), r.get("af")
+        if aw is not None:
+            d["aw_ok"] = 1.0
+            t0 = (starts[0] if starts else (ends[0] - 0.3)) - 0.3
+            fin = [u for u in (af or []) if u[2] is not None and u[2] > t0]
+            arc_w = [norm(w) for u in fin for w in (u[0] or "").split()] + [norm(w[0]) for w in aw]
+            arc_w = [w for w in arc_w if w]
+            fw = [norm(w) for w in r["words"]]
+            A, B = set(arc_w), set(w for w in fw if w)
+            d["aw_ratio"] = min(len(arc_w) / max(1, n), 2) / 2
+            d["aw_jacc"] = len(A & B) / max(1, len(A | B))
+            d["aw_last_in"] = float(bool(fw) and fw[-1] in A)
+            a_end = max([w[2] for w in aw if w[2] is not None] + [u[2] for u in fin], default=None)
+            d["aw_ahead"] = float(np.clip((a_end - ends[-1]) if a_end is not None else -1.0, -1, 1))
+            d["aw_more"] = float(any(w[1] is not None and w[1] > ends[-1] + 0.05 for w in aw))
+            d["aw_final_recent"] = float(any(u[2] is not None and abs(u[2] - ends[-1]) <= 0.6 for u in fin))
+            d["aw_open"] = float(bool(aw))
+            d["aw_n_final"] = min(len(fin), 3) / 3
+    names = [k for g in GROUP_ORDER if g in groups for k in GROUPS[g]]
+    return np.array([d.get(k, 0.0) for k in names], np.float32)
+
+
+def word_feats2(r: dict, f=None) -> np.ndarray:
+    """[W, WF2] per word of the last W (same alignment as step_tokens' wtok): the pii head's word inputs."""
+    if f is None:
+        f = frame_of(r)
+    ws = r["words"]
+    n = len(ws)
+    out = np.zeros((W, WF2), np.float32)
+    for j, i in enumerate(range(max(0, n - W), n)):
+        w = str(ws[i])
+        in_pii = any(s.get("family") == "pii" and s["start"] <= i < s["end"] for s in r["spans"])
+        in_men = any(s["type"].startswith("entity.mention") and s["start"] <= i < s["end"] for s in r["spans"])
+        nd = sum(c.isdigit() for c in w)
+        out[j] = (float(in_pii), float(i in f.redact_tok), float(in_men), float(nd > 0), min(nd, 10) / 10,
+                  float("@" in w or "_" in w or norm(w) in ("dot", "gmail", "com", "yahoo", "hotmail", "outlook")))
+    return out
+
+
 # ---------------------------------------------------------------------------------------------- numpy forward
 def _gelu(x):
     return 0.5 * x * (1.0 + np.vectorize(math.erf)(x / math.sqrt(2.0)))
