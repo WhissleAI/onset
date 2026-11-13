@@ -107,7 +107,10 @@ async def get_json(url: str, params: dict | None = None, timeout: float | None =
     st["calls"] += 1
     to = config.ROUTER_TIMEOUT_S if timeout is None else timeout
     try:
-        r = await asyncio.wait_for(client().get(url, params=params, headers=headers), to)
+        # per-request httpx timeout too: the client's default (ROUTER_TIMEOUT_S per phase) would otherwise cut a
+        # slower host (SPARQL, MET Norway) off before its own deadline
+        r = await asyncio.wait_for(client().get(url, params=params, headers=headers,
+                                                timeout=httpx.Timeout(to, connect=min(to, 1.0))), to)
         if r.status_code >= 500:
             r.raise_for_status()
     except asyncio.CancelledError:
