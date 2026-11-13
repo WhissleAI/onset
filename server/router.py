@@ -265,7 +265,7 @@ async def _cheap(p: Plan, f: Frame, meter: dict) -> list:
             wd = [] if isinstance(wd, BaseException) else wd
             ld = [] if isinstance(ld, BaseException) else ld
             if wd:
-                return wd + ld[:1]                     # the fact + its article's lead for context
+                return wd + [d for d in ld[:1] if d.score >= 0.72]     # the fact + its article's lead for context
             return ld
         if v == "define":
             n()
@@ -273,7 +273,7 @@ async def _cheap(p: Plan, f: Frame, meter: dict) -> list:
                                           knowledge.leads(text_of(f), 2, p.args["word"]), return_exceptions=True)
             wt = [] if isinstance(wt, BaseException) else wt
             ld = [] if isinstance(ld, BaseException) else ld
-            return wt + ld[:1]
+            return wt + [d for d in ld[:1] if d.score >= 0.72]
         if v == "whois":
             n()
             ld, ws = await asyncio.gather(knowledge.leads(text_of(f), 3, p.args["subject"]),
@@ -281,7 +281,7 @@ async def _cheap(p: Plan, f: Frame, meter: dict) -> list:
             ld = [] if isinstance(ld, BaseException) else ld
             ws = [] if isinstance(ws, BaseException) else ws
             seen = {d.url for d in ws}
-            return ws + [d for d in ld if d.url not in seen]
+            return ws + [d for d in ld if d.url not in seen and (d.score >= 0.72 or not ws)]
         if v == "leads":
             return await knowledge.leads(text_of(f), 3)
     finally:
@@ -386,6 +386,13 @@ def pick_card(question: str, docs) -> tuple[int, dict] | None:
         if c and card_fits(c, question):
             return i, c
     return None
+
+
+def reset_caches():
+    """Forget every cached card / fact (eval: each A/B run starts cold, so neither mode reads the other's lookups)."""
+    from .verticals import fx as _fx, geo as _geo, weather as _wx
+    for c in (_fx._cache, _fx._crypto, _geo._cache, _wx._cache, knowledge._cache):
+        c.clear()
 
 
 async def warm():

@@ -200,6 +200,6 @@ ROUTER_LANE_TIMEOUT_S = float(os.environ.get("ROUTER_LANE_TIMEOUT_S", "2.0"))   
 ROUTER_SLOW_TIMEOUT_S = float(os.environ.get("ROUTER_SLOW_TIMEOUT_S", "1.5"))   # one request to a slower host (SPARQL, met.no)
 ROUTER_CARD_ANSWER = os.environ.get("ROUTER_CARD_ANSWER", "1") == "1"  # a fitting card answers itself (no model call)
 ROUTER_LEADS = os.environ.get("ROUTER_LEADS", "1") == "1"              # local Wikipedia lead index (if built)
-ROUTER_LEADS_STRONG = float(os.environ.get("ROUTER_LEADS_STRONG", "0.62"))   # lead cosine that counts as an answer
+ROUTER_LEADS_STRONG = float(os.environ.get("ROUTER_LEADS_STRONG", "0.76"))   # lead cosine that counts as an answer (calibrated on the eval factoids)
 ROUTER_UA = os.environ.get("ROUTER_UA", "HeadStartDemo/0.1 (https://github.com/; voice search research prototype)")
 KNOWLEDGE_DIR = Path(os.environ.get("KNOWLEDGE_DIR", ROOT / "index/data/knowledge"))

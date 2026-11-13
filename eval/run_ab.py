@@ -198,6 +198,8 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         e["_wall"] = time.perf_counter()
         ear_events.append(e)
 
+    from server import router as _router
+    _router.reset_caches()       # ROUTER: cold card / fact lookups per run (A/B-honest: no mode reads the other's)
     sess = Session(emit, mode=mode)
     from server import config as _cfg, ear as _ear
     ear = ArcEar([sess], on_event=on_ear) if _cfg.EAR in ("arc", "") else _ear.make_ear([sess], on_event=on_ear)
