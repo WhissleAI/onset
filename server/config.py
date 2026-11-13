@@ -132,7 +132,7 @@ FLUX_KEYTERMS = [t.strip() for t in os.environ.get("FLUX_KEYTERMS", "").split(",
 # turn model already judged the pause); "eager+gate" = only if our tagger gate (session.gate_open) also agrees;
 # "eager+arc" = now if Arc's command_complete (ARC_META) fired near the last word, else when it does while the words
 # hold; "off" = ignore eager events (the tagger+silence semantic endpoint still runs on Flux's words either way).
-FLUX_SOFT = os.environ.get("FLUX_SOFT", "eager").strip().lower()
+FLUX_SOFT = os.environ.get("FLUX_SOFT", "fused").strip().lower()
 # Arc audio metadata on the cloud ear's words (server/arcmeta.py): mini | transcriber | off. Arc runs its heads in
 # external-transcript mode (no decoder): for-me (device-directed), command_complete, act/intent, speaker role, events.
 ARC_META = os.environ.get("ARC_META", "mini").strip().lower()
@@ -163,14 +163,20 @@ ANSWER_MAX_RETRIES = int(os.environ.get("ANSWER_MAX_RETRIES", "2"))     # SDK re
 # Confidence-aware speculation (server/confidence.py fused word confidence; only when the ear gives word confidences):
 # a query whose weakest content word is below SPEC_CONF_LO waits for one more ear update before it spends a web call;
 # drafts start only when the key words are >= SPEC_CONF_DRAFT. Measured in the simulator on real Flux traces.
-SPEC_CONF = os.environ.get("SPEC_CONF", "0") == "1"
+SPEC_CONF = os.environ.get("SPEC_CONF", "1") == "1"
 SPEC_CONF_LO = float(os.environ.get("SPEC_CONF_LO", "0.6"))
 SPEC_CONF_DRAFT = float(os.environ.get("SPEC_CONF_DRAFT", "0.0"))
 # Flux sends a TurnInfo every ~240 ms but the session only sees CHANGED words: FLUX_TICK=1 also ticks the speculator on
 # unchanged updates (stability timers, drafts whose searches landed after the last word). DRAFT_ON_LAND=1 checks for
 # a draft the moment a search lands instead of at the next ear update.
 FLUX_TICK = os.environ.get("FLUX_TICK", "1") == "1"
-DRAFT_ON_LAND = os.environ.get("DRAFT_ON_LAND", "1") == "1"
+DRAFT_ON_LAND = os.environ.get("DRAFT_ON_LAND", "0") == "1"
+# Search director (server/director.py: tiny streaming Mamba-3, numpy int8): DIRECTOR=on steps it on every Flux update;
+# FLUX_SOFT=director answers on its end-of-turn head; DIRECTOR_SPEC=1 lets its fire / draft heads gate speculation;
+# DIRECTOR_KEEP=1 builds the final query from its keep head. Any failure falls back to FLUX_SOFT=fused.
+DIRECTOR = os.environ.get("DIRECTOR", "off").strip().lower() in ("1", "on", "true")
+DIRECTOR_SPEC = os.environ.get("DIRECTOR_SPEC", "0") == "1"
+DIRECTOR_KEEP = os.environ.get("DIRECTOR_KEEP", "0") == "1"
 STALE_CANCEL = os.environ.get("STALE_CANCEL", "0") == "1"   # cancel in-flight searches the speaker revised away
 WEB_BREAKER_FAILS = int(os.environ.get("WEB_BREAKER_FAILS", "2"))   # consecutive primary-backend failures before the cache takes over
 MEMORY_TTL_S = float(os.environ.get("MEMORY_TTL_S", "180"))   # push-to-talk follow-ups keep context this long

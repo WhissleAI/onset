@@ -1,0 +1,450 @@
+{
+ "n": 80,
+ "credits": 12.0,
+ "judge_calls": 6,
+ "variants": {
+  "quote": {
+   "summary": {
+    "n_changed": 10,
+    "n_scored": 10,
+    "p5": [
+     0.64,
+     0.62
+    ],
+    "g5": [
+     1.0,
+     0.98
+    ],
+    "top1": [
+     0.6,
+     0.6
+    ],
+    "ndcg": [
+     0.841,
+     0.842
+    ],
+    "any2": [
+     0.7,
+     0.7
+    ]
+   },
+   "rows": [
+    {
+     "id": "q03",
+     "base": "apollo eleven land moon",
+     "quote": "\"apollo eleven\" land moon",
+     "base_m": {
+      "p5": 0.6,
+      "g5": 0.6,
+      "top1": 0,
+      "ndcg": 1.0,
+      "any2": 0
+     },
+     "quote_m": {
+      "p5": 0.6,
+      "g5": 0.6,
+      "top1": 0,
+      "ndcg": 1.0,
+      "any2": 0
+     }
+    },
+    {
+     "id": "q05",
+     "base": "tall mount everest",
+     "quote": "tall \"mount everest\"",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     },
+     "quote_m": {
+      "p5": 1.0,
+      "g5": 1.8,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     }
+    },
+    {
+     "id": "q07",
+     "base": "entered berlin wall fall",
+     "quote": "entered \"berlin wall\" fall",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 0.9828920819566878,
+      "any2": 1
+     },
+     "quote_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 0.9828920819566878,
+      "any2": 1
+     }
+    },
+    {
+     "id": "q33",
+     "base": "first president united states",
+     "quote": "first president \"united states\"",
+     "base_m": {
+      "p5": 0.0,
+      "g5": 0.0,
+      "top1": 0,
+      "ndcg": 0.0,
+      "any2": 0
+     },
+     "quote_m": {
+      "p5": 0.0,
+      "g5": 0.0,
+      "top1": 0,
+      "ndcg": 0.0,
+      "any2": 0
+     }
+    },
+    {
+     "id": "q34",
+     "base": "weather san francisco November 12 2026 forecast",
+     "quote": "weather \"san francisco\" November 12 2026 forecast",
+     "base_m": {
+      "p5": 1.0,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     },
+     "quote_m": {
+      "p5": 0.6,
+      "g5": 0.6,
+      "top1": 0,
+      "ndcg": 1.0,
+      "any2": 0
+     }
+    },
+    {
+     "id": "q47",
+     "base": "weather new york November 14 2026 forecast",
+     "quote": "weather \"new york\" November 14 2026 forecast",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 0.8,
+      "top1": 0,
+      "ndcg": 0.9828920819566879,
+      "any2": 0
+     },
+     "quote_m": {
+      "p5": 0.8,
+      "g5": 1.4,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     }
+    },
+    {
+     "id": "sc02",
+     "base": "kansas city chiefs win game November 8 2026",
+     "quote": "\"kansas city chiefs\" win game November 8 2026",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 1.0,
+      "top1": 1,
+      "ndcg": 0.9751957567060058,
+      "any2": 1
+     },
+     "quote_m": {
+      "p5": 0.8,
+      "g5": 1.0,
+      "top1": 1,
+      "ndcg": 0.9751957567060058,
+      "any2": 1
+     }
+    },
+    {
+     "id": "sc04",
+     "base": "manchester united playing next match",
+     "quote": "\"manchester united\" playing next match",
+     "base_m": {
+      "p5": 0.6,
+      "g5": 0.8,
+      "top1": 0,
+      "ndcg": 0.5610188271306912,
+      "any2": 1
+     },
+     "quote_m": {
+      "p5": 0.6,
+      "g5": 0.8,
+      "top1": 0,
+      "ndcg": 0.5610188271306912,
+      "any2": 1
+     }
+    },
+    {
+     "id": "sc18",
+     "base": "apple store fifth avenue new york open twenty four hours",
+     "quote": "apple store fifth avenue \"new york\" open twenty four hours",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 0.9047172294870752,
+      "any2": 1
+     },
+     "quote_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 0.9047172294870752,
+      "any2": 1
+     }
+    },
+    {
+     "id": "sc21",
+     "base": "long flight new york london",
+     "quote": "long flight \"new york\" london",
+     "base_m": {
+      "p5": 0.2,
+      "g5": 0.4,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     },
+     "quote_m": {
+      "p5": 0.2,
+      "g5": 0.4,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     }
+    }
+   ]
+  },
+  "drop": {
+   "summary": {
+    "n_changed": 0,
+    "n_scored": 0
+   },
+   "rows": []
+  },
+  "both": {
+   "summary": {
+    "n_changed": 10,
+    "n_scored": 10,
+    "p5": [
+     0.64,
+     0.62
+    ],
+    "g5": [
+     1.0,
+     0.98
+    ],
+    "top1": [
+     0.6,
+     0.6
+    ],
+    "ndcg": [
+     0.841,
+     0.842
+    ],
+    "any2": [
+     0.7,
+     0.7
+    ]
+   },
+   "rows": [
+    {
+     "id": "q03",
+     "base": "apollo eleven land moon",
+     "both": "\"apollo eleven\" land moon",
+     "base_m": {
+      "p5": 0.6,
+      "g5": 0.6,
+      "top1": 0,
+      "ndcg": 1.0,
+      "any2": 0
+     },
+     "both_m": {
+      "p5": 0.6,
+      "g5": 0.6,
+      "top1": 0,
+      "ndcg": 1.0,
+      "any2": 0
+     }
+    },
+    {
+     "id": "q05",
+     "base": "tall mount everest",
+     "both": "tall \"mount everest\"",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     },
+     "both_m": {
+      "p5": 1.0,
+      "g5": 1.8,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     }
+    },
+    {
+     "id": "q07",
+     "base": "entered berlin wall fall",
+     "both": "entered \"berlin wall\" fall",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 0.9828920819566878,
+      "any2": 1
+     },
+     "both_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 0.9828920819566878,
+      "any2": 1
+     }
+    },
+    {
+     "id": "q33",
+     "base": "first president united states",
+     "both": "first president \"united states\"",
+     "base_m": {
+      "p5": 0.0,
+      "g5": 0.0,
+      "top1": 0,
+      "ndcg": 0.0,
+      "any2": 0
+     },
+     "both_m": {
+      "p5": 0.0,
+      "g5": 0.0,
+      "top1": 0,
+      "ndcg": 0.0,
+      "any2": 0
+     }
+    },
+    {
+     "id": "q34",
+     "base": "weather san francisco November 12 2026 forecast",
+     "both": "weather \"san francisco\" November 12 2026 forecast",
+     "base_m": {
+      "p5": 1.0,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     },
+     "both_m": {
+      "p5": 0.6,
+      "g5": 0.6,
+      "top1": 0,
+      "ndcg": 1.0,
+      "any2": 0
+     }
+    },
+    {
+     "id": "q47",
+     "base": "weather new york November 14 2026 forecast",
+     "both": "weather \"new york\" November 14 2026 forecast",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 0.8,
+      "top1": 0,
+      "ndcg": 0.9828920819566879,
+      "any2": 0
+     },
+     "both_m": {
+      "p5": 0.8,
+      "g5": 1.4,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     }
+    },
+    {
+     "id": "sc02",
+     "base": "kansas city chiefs win game November 8 2026",
+     "both": "\"kansas city chiefs\" win game November 8 2026",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 1.0,
+      "top1": 1,
+      "ndcg": 0.9751957567060058,
+      "any2": 1
+     },
+     "both_m": {
+      "p5": 0.8,
+      "g5": 1.0,
+      "top1": 1,
+      "ndcg": 0.9751957567060058,
+      "any2": 1
+     }
+    },
+    {
+     "id": "sc04",
+     "base": "manchester united playing next match",
+     "both": "\"manchester united\" playing next match",
+     "base_m": {
+      "p5": 0.6,
+      "g5": 0.8,
+      "top1": 0,
+      "ndcg": 0.5610188271306912,
+      "any2": 1
+     },
+     "both_m": {
+      "p5": 0.6,
+      "g5": 0.8,
+      "top1": 0,
+      "ndcg": 0.5610188271306912,
+      "any2": 1
+     }
+    },
+    {
+     "id": "sc18",
+     "base": "apple store fifth avenue new york open twenty four hours",
+     "both": "apple store fifth avenue \"new york\" open twenty four hours",
+     "base_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 0.9047172294870752,
+      "any2": 1
+     },
+     "both_m": {
+      "p5": 0.8,
+      "g5": 1.6,
+      "top1": 1,
+      "ndcg": 0.9047172294870752,
+      "any2": 1
+     }
+    },
+    {
+     "id": "sc21",
+     "base": "long flight new york london",
+     "both": "long flight \"new york\" london",
+     "base_m": {
+      "p5": 0.2,
+      "g5": 0.4,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     },
+     "both_m": {
+      "p5": 0.2,
+      "g5": 0.4,
+      "top1": 1,
+      "ndcg": 1.0,
+      "any2": 1
+     }
+    }
+   ]
+  }
+ }
+}

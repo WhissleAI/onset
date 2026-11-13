@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, confidence, config, embed, lanes, narrow, rerank
+from . import answer, confidence, config, director, embed, lanes, narrow, rerank
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
@@ -309,6 +309,15 @@ class Speculator:
             return None
         return confidence.key_conf(f, list(f.wconf))[0]
 
+    @staticmethod
+    def _director_thr(f: Frame):
+        """(fire, draft) thresholds when the director drives speculation for this frame, else None."""
+        if not (config.DIRECTOR and config.DIRECTOR_SPEC and f.director):
+            return None
+        m = director.model()
+        t = (m.thr if m else {}) or {}
+        return (t.get("director_fire", 0.5), t.get("director_draft", 0.5))
+
     def _conf_ok(self, f: Frame) -> bool:
         kc = self.key_conf(f)
         return kc is None or kc >= config.SPEC_CONF_DRAFT
@@ -326,6 +335,22 @@ class Speculator:
         if f.jailbreak:
             return              # Arc flags a prompt-injection attempt: spend no speculative searches / drafts on it
         need = 1 if f.slots else config.STABLE_UPDATES        # typed spans are confident: fire on first sight
+        dthr = self._director_thr(f)
+        if dthr is not None:
+            # the director's fire head replaces the stability / min-words rules (budget + narrowing gate still apply)
+            if f.director["fire"] >= dthr[0] and f.has_content():
+                q = f.query()
+                if q and f.route in ("web", "both") and ("web", q) not in self.fired_queries \
+                        and self.web_used < config.WEB_BUDGET and narrow.specific(f) and self._web_affordable():
+                    self.web_used += 1
+                    self._fire("web", q, f, *self._web(q, f, final=False))
+                if q and f.route in ("local", "both") and len(lanes.index()) and ("local", q) not in self.fired_queries \
+                        and self.local_used < config.LOCAL_BUDGET:
+                    self.local_used += 1
+                    self._fire("local", q, f, lambda q=q: lanes.local_text(q))
+            if f.director["draft"] >= dthr[1] and not self.draft_busy:
+                self._maybe_draft(f)
+            return
         kc = self.key_conf(f)
         if kc is not None and kc < config.SPEC_CONF_LO:
             need = max(need, 2)                               # shaky decisive word: wait for one more ear update

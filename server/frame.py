@@ -121,6 +121,7 @@ class Frame:
     ent_types: tuple = ()            # entity mention types in spoken order (person, organization, place, team, ...)
     num_types: tuple = ()            # typed number spans (date, money, percent, duration, ...)
     wconf: tuple = ()                # fused per-word confidence (server/confidence.py), when the ear gives word conf
+    director: dict | None = None     # the search director's latest outputs (server/director.py), DIRECTOR=on
 
     @property
     def n(self):

@@ -16,7 +16,7 @@ import time
 import numpy as np
 
 from . import frame as framemod
-from . import config, confidence, lanes
+from . import config, confidence, director, lanes
 from .speculator import Speculator
 from .tagger import Tagger
 
@@ -113,6 +113,8 @@ class Session:
         self._tick_synced = False
         self.last_ws: list[dict] = []
         self.eot_last: float | None = None           # latest fused end-of-turn score (read-out)
+        self.dstream = director.Stream() if config.DIRECTOR else None
+        self.director_out: dict | None = None
         self.words_changed_at = time.perf_counter()
 
     @property
@@ -254,7 +256,7 @@ class Session:
                        "from": k, "ms": self.spec.ms()})
             self.emit({"t": "frame", **f.to_json(), "spans": [
                 {"type": s["type"], "start": s["start"], "end": s["end"], "text": s["text"]} for s in self.spans],
-                "arc": self.arc, "cc_word": self.cc_at, "ms": self.spec.ms()})
+                "arc": self.arc, "cc_word": self.cc_at, "ms": self.spec.ms(), "director": self._director_json()})
         self.frame = f
         self.spec.on_frame(f, now)
         wall = time.perf_counter()
@@ -332,7 +334,7 @@ class Session:
           eager+gate  only if our tagger gate agrees (+140 ms p50, premature / 3)
           off         ignore eager events"""
         mode = config.FLUX_SOFT
-        if self.closed or not self.semantic or mode in ("off", "fused"):
+        if self.closed or not self.semantic or mode in ("off", "fused", "director"):
             return                                     # fused: on_turn_tick already scored this EagerEndOfTurn
         try:
             ws = self._fresh(ws)
@@ -405,7 +407,30 @@ class Session:
                     self.frame = f0
                     self.spec.on_frame(f0)
             self._tick_synced = False
-            if config.FLUX_SOFT != "fused" or not self.semantic or self.busy or not self.last_ws:
+            mode = config.FLUX_SOFT
+            if self.dstream is not None and self.last_ws:
+                f = self.frame or self._build()
+                out = None
+                try:
+                    out = self.dstream.step(director.session_record(self, f, self.last_ws, ev), self.wconf)
+                except Exception as e:                 # the director must never break the session: fall back
+                    self.emit({"t": "error", "where": "director", "error": f"{type(e).__name__}: {e}"[:300]})
+                    self.dstream = None
+                if out is not None:
+                    self.director_out = out
+                    f.director = out
+                    self.emit({"t": "director", **self._director_json(), "ev": ev, "ms": self.spec.ms()})
+                    if config.DIRECTOR_SPEC:
+                        self.spec.on_frame(f)          # its fire / draft heads just changed: let the speculator act
+                    if mode == "director" and self.semantic and not self.busy:
+                        th = (director.model().thr or {}).get("director_eot") or [0.65, 0.9]
+                        thr = th[0] if ev == "EagerEndOfTurn" else th[1]
+                        if out["eot"] >= thr and not self._quiet():
+                            self._soft(self.last_ws, f, by="director")
+                        return
+            if mode == "director":
+                mode = "fused"                         # no director model / it failed: the fused logistic decides
+            if mode != "fused" or not self.semantic or self.busy or not self.last_ws:
                 return
             f = self.frame or self._build()
             p = confidence.eot_score(self.eot_features(f, self.last_ws))
@@ -420,6 +445,12 @@ class Session:
                 self._soft(self.last_ws, f, by="fused")
         except Exception as e:
             self.emit({"t": "error", "where": "on_turn_tick", "error": f"{type(e).__name__}: {e}"[:300]})
+
+    def _director_json(self):
+        o = self.director_out
+        if not o:
+            return None
+        return {"eot": round(o["eot"], 3), "fire": round(o["fire"], 3), "draft": round(o["draft"], 3)}
 
     async def _soft_answer(self, spec: Speculator, soft: dict, f, extended: bool):
         last_end = soft["end"]

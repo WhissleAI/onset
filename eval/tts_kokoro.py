@@ -17,7 +17,7 @@ def main():
     jobs = json.load(sys.stdin)
     pipes = {}
     for j in jobs:
-        lang = j["voice"][0]          # 'a' = American, 'b' = British
+        lang = j.get("lang") or j["voice"][0]   # 'a' = American, 'b' = British; "lang" overrides (accented English)
         if lang not in pipes:
             pipes[lang] = KPipeline(lang_code=lang, repo_id="hexgrad/Kokoro-82M")
         chunks = [np.asarray(a, np.float32) for _, _, a in pipes[lang](j["text"], voice=j["voice"],
