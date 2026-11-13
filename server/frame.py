@@ -25,6 +25,16 @@ CORRECTION = [("i", "mean"), ("sorry",), ("no", "wait"), ("actually",), ("rather
               ("not", "that"), ("make", "that"), ("i", "meant"),
               # how live ASR actually hears them (eval set): "Sari, I mean", "no weight", "I met"
               ("sari",), ("no", "weight"), ("i", "met"), ("i", "mean", "it"), ("no", "way")]
+# A spoken repair that the ear split into its own turn ("what's the weather in Boston, sorry," | "I mean Denver"):
+# session.py merges such a turn into the previous one, then the correction logic below handles it as one utterance.
+# REPAIR_LEAD: a turn that STARTS with one of these (after fillers) is a correction of the turn just before it.
+# REPAIR_TAIL: a turn that ENDS on one of these is cut mid-correction; "rather" / "not that" / "no way" end ordinary
+# questions too ("which would you rather", "is it not that"), so they only count at the start.
+REPAIR_LEAD = [("sorry",), ("i", "mean"), ("i", "meant"), ("actually",), ("no", "wait"), ("make", "that"),
+               ("rather",), ("scratch", "that"), ("sari",), ("no", "weight"), ("i", "met")]
+REPAIR_TAIL = [("sorry",), ("i", "mean"), ("i", "meant"), ("actually",), ("no", "wait"), ("make", "that"),
+               ("scratch", "that"), ("sari",), ("no", "weight"), ("i", "met"), ("or", "rather")]
+_LEAD_FILLERS = {"um", "uh", "oh", "er", "erm", "ah", "hmm", "mm"}
 INTENT_HINT = {
     "discourse.intent.weather_query": "weather forecast",
     "discourse.intent.news_query": "news",
@@ -121,6 +131,7 @@ class Frame:
     ent_types: tuple = ()            # entity mention types in spoken order (person, organization, place, team, ...)
     num_types: tuple = ()            # typed number spans (date, money, percent, duration, ...)
     wconf: tuple = ()                # fused per-word confidence (server/confidence.py), when the ear gives word conf
+    convert: tuple = ()              # (amount as said, from unit, to unit): "a hundred us dollars", "dollars", "euros"
 
     @property
     def n(self):
@@ -226,7 +237,18 @@ class Frame:
         return {"acts": list(self.acts), "directed": None if self.directed is None else round(self.directed, 2),
                 "redacted": list(self.redacted), "jailbreak": self.jailbreak, "when": self.when,
                 "when_text": self.when_text, "fresh": fresh, "ent_types": list(self.ent_types),
-                "num_types": list(self.num_types)}
+                "num_types": list(self.num_types), "convert": list(self.convert)}
+
+    def answer_hint(self) -> str:
+        """Extra instruction for the answer model, from the read-out. Today: an amount to convert ("what's a hundred US
+        dollars in euros"): sources usually list a rate (often the inverse one, 1 EUR = 1.16 USD), and the answer must
+        be the converted AMOUNT, in the direction asked."""
+        if not self.convert:
+            return ""
+        amount, src, dst = self.convert
+        return (f"This asks to convert an amount: {amount} into {dst}. Start with the converted amount in {dst} "
+                f"(from {src} to {dst}, not the reverse), then give the rate used and cite it. If a source only gives the "
+                f"inverse rate ({dst} to {src}), divide by it.")
 
     def has_content(self) -> bool:
         return len(self.content) >= 2 or bool(self.slots)
@@ -248,6 +270,105 @@ class Frame:
         sc = confidence.slot_confs(self, list(self.wconf))
         return {"wconf": [round(c, 3) for c in self.wconf], "key_conf": round(k, 3), "key_word": j,
                 "slot_conf": [[t, x, round(c, 3)] for (t, x), c in sc.items()]}
+
+
+def repair_start(toks: list[str]) -> bool | None:
+    """Does this turn open with a repair marker (after fillers)? None = can't tell yet: the words so far are the start
+    of one ("i" of "i mean", "no" of "no wait"), so the caller waits for the next partial."""
+    t = [x for x in toks if x]
+    while t and t[0] in _LEAD_FILLERS:
+        t = t[1:]
+    if not t:
+        return None
+    undecided = False
+    for pat in REPAIR_LEAD:
+        if tuple(t[:len(pat)]) == pat:
+            return True
+        if len(t) < len(pat) and tuple(t) == pat[:len(t)]:
+            undecided = True
+    return None if undecided else False
+
+
+def repair_end(toks: list[str]) -> bool:
+    """Does this turn end on a repair marker ("what's the weather in Boston, sorry")? The speaker is mid-correction."""
+    t = [x for x in toks if x]
+    return any(len(t) >= len(pat) and tuple(t[-len(pat):]) == pat for pat in REPAIR_TAIL)
+
+
+# --- conversions: "what's a hundred US dollars in euros", "how many kilometers is 26 miles" ----------------------------
+_CURRENCY = set("""dollar dollars usd buck bucks euro euros eur pound pounds sterling gbp quid yen jpy yuan rmb renminbi
+rupee rupees inr peso pesos franc francs chf won ruble rubles rouble roubles rand real reais lira liras dirham dirhams
+riyal riyals krona kronor krone kroner zloty zlotys baht ringgit dong shekel shekels bitcoin bitcoins btc ether eth
+cad aud cent cents pence""".split())
+_MEASURE = set("""mile miles km kms kilometer kilometers kilometre kilometres meter meters metre metres foot feet ft inch
+inches cm centimeter centimeters centimetre centimetres mm millimeter millimeters millimetre millimetres yard yards lb lbs
+kilogram kilograms kilo kilos kg kgs gram grams ounce ounces oz stone stones ton tons tonne tonnes liter liters litre
+litres gallon gallons quart quarts pint pints cup cups ml milliliter milliliters millilitre millilitres tablespoon
+tablespoons teaspoon teaspoons fahrenheit celsius kelvin degree degrees mph kph acre acres hectare hectares""".split())
+UNITS = _CURRENCY | _MEASURE
+_UNIT_MOD = {"us", "u.s", "american", "canadian", "australian", "british", "hong", "kong", "new", "zealand", "swiss",
+             "japanese", "chinese", "indian", "mexican", "south", "african", "of", "square", "cubic", "fluid", "metric",
+             "imperial", "the"}
+_NUMW = set("""one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen
+seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion
+trillion half dozen grand k""".split())
+_BIG = {"hundred", "thousand", "million", "billion", "trillion", "dozen", "grand"}
+
+
+def _numtok(t: str) -> bool:
+    return any(c.isdigit() for c in t) or t in _NUMW
+
+
+def _unit_after(toks: list[str], i: int, span: int = 3) -> int:
+    """Index of the first unit word in toks[i:i+span] (skipping modifiers: "US dollars", "square feet"), or -1."""
+    for k in range(i, min(len(toks), i + span)):
+        if toks[k] in UNITS:
+            return k
+        if toks[k] not in _UNIT_MOD and not _numtok(toks[k]):
+            return -1
+    return -1
+
+
+def conversion(words: list[str], drop: set | frozenset = frozenset()) -> tuple:
+    """(amount as said, from unit, to unit) when the question gives an amount and asks for it in another unit:
+    "a hundred US dollars in euros", "convert 50 euros to dollars", "how many kilometers is 26 miles". () otherwise.
+    Corrected-away words (drop) are skipped: "100 dollars in pounds, sorry, euros" converts to euros."""
+    idx = [i for i, w in enumerate(words) if i not in drop and norm(w)]
+    raw = [words[i] for i in idx]
+    toks = [norm(w).replace("$", "") for w in raw]
+    for a in range(len(toks)):
+        if not _numtok(toks[a]) or toks[a] in ("k", "grand"):
+            continue
+        b = a
+        while b + 1 < len(toks) and (_numtok(toks[b + 1]) or (toks[b + 1] in ("and", "point") and b + 2 < len(toks)
+                                                               and _numtok(toks[b + 2]))):
+            b += 1
+        k = _unit_after(toks, b + 1)
+        if k < 0 and "$" in raw[a]:
+            k, src = b, "dollars"                    # "$100 in euros": the unit is the symbol
+        elif k < 0:
+            continue
+        else:
+            src = toks[k]
+            while k + 2 < len(toks) and _numtok(toks[k + 1]) and toks[k + 2] in UNITS:
+                k += 2                               # "5 feet 10 inches"
+        dst = ""
+        for c in range(k + 1, len(toks) - 1):       # "... in / to / into euros"
+            if toks[c] in ("in", "to", "into", "as"):
+                u = _unit_after(toks, c + 1)
+                if u >= 0 and toks[u] != src:
+                    dst = toks[u]
+                    break
+        if not dst:                                  # "how many kilometers is 26 miles"
+            for c in range(0, a - 1):
+                if toks[c] in ("many", "much") and toks[c + 1] in UNITS and toks[c + 1] != src:
+                    dst = toks[c + 1]
+                    break
+        if not dst:
+            return ()
+        s = a - 1 if a > 0 and toks[a - 1] == "a" and toks[a] in _BIG else a
+        return (" ".join(raw[s:k + 1]).lower(), src, dst)
+    return ()
 
 
 def _correction_at(toks: list[str]) -> int:
@@ -420,6 +541,7 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
             f.when, f.when_text = "week", m.group(0)
             break
     f.phrases = tuple(_phrases(f.words, toks, slot_spans, cut, drop_tok | redact_tok))
+    f.convert = conversion(f.words, drop_tok | redact_tok)
     money_tok = {i for s in slot_spans if s["type"] in ("entity.number.money", "entity.number.percent")
                  for i in range(s["start"], s["end"])}
     seen, content, content_idx = set(), [], []
