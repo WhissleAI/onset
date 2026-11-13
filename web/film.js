@@ -311,7 +311,7 @@
     const html = parts.join("") || '<span class="f-muted">listening…</span>';
     if (box._h === html) return;
     // only chips of a new kind animate in (an intent whose score moved, or a new search query, just updates)
-    const key = (c) => c.className + "|" + (c.querySelector("small") ? c.querySelector("small").textContent : c.textContent);
+    const key = (c) => c.className.replace(/\s*\bnew\b/, "") + "|" + (c.querySelector("small") ? c.querySelector("small").textContent : c.textContent);
     const seen = new Set(Array.from(box.children).map(key));
     box._h = html;
     box.innerHTML = html;
@@ -383,7 +383,8 @@
     if (rq._h !== head) { rq.innerHTML = head; rq._h = head; }
     rq.className = "f-rq k-" + v.kind;
     box.className = "f-res k-" + v.kind;
-    R.flip(box, v.docs, { cls: "ri", px: 17 });
+    const w = (box.clientWidth || 790) - 32;           // item padding + border
+    R.flip(box, v.docs, { cls: "ri", px: 17, snipW: w, titleW: w, titlePx: 23 });
   }
 
   function settle() {

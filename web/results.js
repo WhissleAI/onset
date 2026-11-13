@@ -17,12 +17,12 @@
   const HUES = [158, 210, 32, 265, 340, 190, 12, 120];
   const hue = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return HUES[h % HUES.length]; };
   const ctx2d = document.createElement("canvas").getContext("2d");
-  const textW = (t, px) => { ctx2d.font = `400 ${px}px Inter, sans-serif`; return ctx2d.measureText(t).width; };
+  const textW = (t, px, wt = 400) => { ctx2d.font = `${wt} ${px}px Inter, sans-serif`; return ctx2d.measureText(t).width; };
   // one line of text at `px` that fits `w` pixels, cut at a word with an ellipsis (measured, never CSS-clipped)
-  function oneLine(t, px, w) {
-    if (textW(t, px) * 0.93 <= w) return t;
+  function oneLine(t, px, w, wt = 400) {
+    if (textW(t, px, wt) <= w) return t;
     let lo = 0, hi = t.length;
-    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (textW(t.slice(0, mid) + "…", px) * 0.93 <= w) lo = mid; else hi = mid - 1; }
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (textW(t.slice(0, mid) + "…", px, wt) <= w) lo = mid; else hi = mid - 1; }
     return t.slice(0, lo).replace(/\s+\S*$/, "").replace(/[\s,.;:|–—-]+$/, "") + "…";
   }
   const mmss = (t) => { t = Math.max(0, Math.round(+t)); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
@@ -52,7 +52,8 @@
   function itemHtml(d, i, o) {
     const p = o.cls;
     const h = d.url ? host(d.url) : (d.source || d.lane || "");
-    const title = clip(cleanTitle(d.title) || h || "(untitled)", o.titleMax || 72);
+    const title = o.titleW ? oneLine(cleanTitle(d.title) || h || "(untitled)", o.titlePx || 23, o.titleW, 600)
+      : clip(cleanTitle(d.title) || h || "(untitled)", o.titleMax || 72);
     const raw = d.text ? String(d.text).replace(/^#+\s*/gm, "").replace(/\s+/g, " ") : "";
     const snip = raw ? (o.snipLines > 1 ? clip(raw, o.snipChars || 220) : oneLine(raw, o.px || 17, o.snipW || 760)) : "";
     const num = o.numbered ? `<span class="${p}-n">[${i + 1}]</span>` : "";
