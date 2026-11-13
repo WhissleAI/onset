@@ -171,6 +171,12 @@ SPEC_CONF_DRAFT = float(os.environ.get("SPEC_CONF_DRAFT", "0.0"))
 # a draft the moment a search lands instead of at the next ear update.
 FLUX_TICK = os.environ.get("FLUX_TICK", "1") == "1"
 DRAFT_ON_LAND = os.environ.get("DRAFT_ON_LAND", "1") == "1"
+# Search director (server/director.py: tiny streaming Mamba-3, numpy int8): DIRECTOR=on steps it on every Flux update;
+# FLUX_SOFT=director answers on its end-of-turn head; DIRECTOR_SPEC=1 lets its fire / draft heads gate speculation;
+# DIRECTOR_KEEP=1 builds the final query from its keep head. Any failure falls back to FLUX_SOFT=fused.
+DIRECTOR = os.environ.get("DIRECTOR", "off").strip().lower() in ("1", "on", "true")
+DIRECTOR_SPEC = os.environ.get("DIRECTOR_SPEC", "0") == "1"
+DIRECTOR_KEEP = os.environ.get("DIRECTOR_KEEP", "0") == "1"
 STALE_CANCEL = os.environ.get("STALE_CANCEL", "0") == "1"   # cancel in-flight searches the speaker revised away
 WEB_BREAKER_FAILS = int(os.environ.get("WEB_BREAKER_FAILS", "2"))   # consecutive primary-backend failures before the cache takes over
 MEMORY_TTL_S = float(os.environ.get("MEMORY_TTL_S", "180"))   # push-to-talk follow-ups keep context this long
