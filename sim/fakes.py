@@ -67,7 +67,8 @@ class Profile:
     audio_ms: tuple = (120.0, 300.0)
 
 
-PROFILES = {"wikipedia": Profile("wikipedia", web="wikipedia"), "tavily": Profile("tavily", web="tavily")}
+PROFILES = {"wikipedia": Profile("wikipedia", web="wikipedia"), "tavily": Profile("tavily", web="tavily"),
+            "tavily_fast": Profile("tavily_fast", web="tavily_fast")}
 
 
 class Sampler:
@@ -98,6 +99,10 @@ def web_ms(p: Profile, s: Sampler, query: str) -> float:
         if arr is not None:
             return float(arr[int(u1 * len(arr))]) * (0.92 + 0.16 * u2)
         return 150 + _ln(u1, 75, 0.45) * (2.0 if u3 < 0.03 else 1.0)
+    if p.web == "tavily_fast":
+        # measured on the real key (PROGRESS.md "HEADLINE ON TAVILY", eval/tavily_probe.py): fast depth p50 ~210 ms,
+        # p90 ~510 ms server-side; + our HTTP/2 client overhead
+        return (40 + _ln(u1, 190, 0.6)) * (2.0 + u2 if u3 < 0.03 else 1.0)
     base = 550 + _ln(u1, 350, 0.45)
     return base * (1.6 + 0.8 * u2 if u3 < 0.03 else 1.0)
 

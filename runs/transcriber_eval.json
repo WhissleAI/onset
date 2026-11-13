@@ -1,0 +1,20 @@
+{
+ "mini": {
+  "auc_cc_all_updates": 0.836,
+  "auc_cc_decision_window": 0.793,
+  "n_updates": 581,
+  "n_window": 253,
+  "lag_s_p50": 0.35,
+  "for_me_mean": 0.823,
+  "rtf_p50": 0.266
+ },
+ "transcriber": {
+  "auc_cc_all_updates": 0.679,
+  "auc_cc_decision_window": 0.712,
+  "n_updates": 581,
+  "n_window": 253,
+  "lag_s_p50": 1.32,
+  "for_me_mean": 0.877,
+  "rtf_p50": 0.34
+ }
+}
