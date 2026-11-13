@@ -525,6 +525,7 @@ class Session:
             if p is None:
                 return
             self.eot_last = p
+            self.spec.on_eot(p)                        # search efficiency: a likely-final meaning may search now
             thr = confidence.eot_threshold("eager" if ev == "EagerEndOfTurn" else "update")
             if p >= thr and not self._quiet() and f.n >= 1:
                 if self.soft is None or self.soft["sig"] != meaning(f):

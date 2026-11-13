@@ -99,6 +99,7 @@ SEM_SILENCE_MS = int(os.environ.get("SEM_SILENCE_MS", "200" if _TAVILY else "250
 SEM_STABLE_MS = int(os.environ.get("SEM_STABLE_MS", "550" if _TAVILY else "420"))   # one Arc partial refresh (~0.4 s) must confirm the words
 SEM_COVER_S = float(os.environ.get("SEM_COVER_S", "0.4" if _TAVILY else "0.3"))     # an ASR refresh this long after silence began covers the speech
 PENDING_CAP_S = float(os.environ.get("PENDING_CAP_S", "1.0"))   # max wait at the endpoint for an in-flight speculative search
+PENDING_EMPTY_S = float(os.environ.get("PENDING_EMPTY_S", "3.0"))  # ... when nothing at all has landed (no sources yet)
 HEDGE_MS = int(os.environ.get("HEDGE_MS", "1000" if _TAVILY else "800"))   # duplicate the answer request if no token by then (both modes)
 
 # Ear (ASR words for the sessions): EAR=arc (Arc v1 Mini built-in transcript, local) | flux (Deepgram Flux) | deepgram (Deepgram live websocket;
@@ -187,3 +188,33 @@ MEMORY_TTL_S = float(os.environ.get("MEMORY_TTL_S", "180"))   # push-to-talk fol
 # marker is held up to REPAIR_HOLD_S (wall) for that next turn before it is answered. Both modes alike.
 REPAIR_GAP_S = float(os.environ.get("REPAIR_GAP_S", "1.5"))
 REPAIR_HOLD_S = float(os.environ.get("REPAIR_HOLD_S", "1.2"))
+# Search efficiency (agent S; server/searchcache.py, speculator.py). SPEC_EFF=1: "search the subject, not the sentence":
+# a speculative web search fires only when the query's MEANING changes (canonical key from the frame: topic, subject
+# entities, terms, numbers/dates); a partial that only adds words re-ranks the docs already fetched, and the final
+# question searches again only when the pool doesn't cover it. SPEC_EFF=0 = the old policy (a search per new word).
+SPEC_EFF = os.environ.get("SPEC_EFF", "1") == "1"
+SPEC_PAID_MAX = int(os.environ.get("SPEC_PAID_MAX", "2"))          # paid web calls per question, final included
+SPEC_COVER_SIM = float(os.environ.get("SPEC_COVER_SIM", "0.5"))     # final query vs the pool's best passage (cosine)
+SPEC_COVER_ENT = float(os.environ.get("SPEC_COVER_ENT", "1.0"))     # share of subject tokens named in the top docs
+SPEC_COVER_SIM_ANY = float(os.environ.get("SPEC_COVER_SIM_ANY", "0.8"))  # pool reuse with no related search
+SPEC_COVER_TERMS = float(os.environ.get("SPEC_COVER_TERMS", "0.5"))  # share of content terms found in the top docs
+# A new meaning is searched once its words have held this long (Flux sends an update every ~240 ms: ~two
+# updates later), the budget's last call (and a short no-entity prefix) after SPEC_LAST_SETTLE_MS, or at once when
+# the fused end-of-turn score reaches SPEC_EOT_FIRE. Measured: sim/spec_eff.py (PROGRESS.md "Search efficiency").
+SPEC_SETTLE_MS = float(os.environ.get("SPEC_SETTLE_MS", "350"))
+SPEC_NOSUBJ_MIN = int(os.environ.get("SPEC_NOSUBJ_MIN", "3"))  # fewer words and no entity: wait SPEC_LAST_SETTLE_MS
+SPEC_TAIL_SETTLE_MS = float(os.environ.get("SPEC_TAIL_SETTLE_MS", "0"))  # when the frame ENDS on its entity
+SPEC_EOT_FIRE = float(os.environ.get("SPEC_EOT_FIRE", "0.3"))   # fused end-of-turn score that counts as settled
+SPEC_LAST_SETTLE_MS = float(os.environ.get("SPEC_LAST_SETTLE_MS", "650"))
+SPEC_DRIFT = os.environ.get("SPEC_DRIFT", "0") == "1"       # added words absent from the results = meaning drifted
+SPEC_GROW_CHECK = os.environ.get("SPEC_GROW_CHECK", "1") == "1"   # "eiffel" -> "eiffel tower": skip if the docs name it
+# Cross-question semantic cache of web results (both modes share it, like the recorded web cache). Hits are labelled
+# cached + "as of" in events and the UI. CACHE_SEM=0 disables it (measurement); the A/B clears it per run.
+CACHE_SEM = os.environ.get("CACHE_SEM", "1") == "1"
+CACHE_NN_SIM = float(os.environ.get("CACHE_NN_SIM", "0.92"))       # embedding nearest neighbour (same subject/topic)
+CACHE_TTL_LIVE_S = float(os.environ.get("CACHE_TTL_LIVE_S", "600"))         # news / sports / weather / prices
+CACHE_TTL_GENERAL_S = float(os.environ.get("CACHE_TTL_GENERAL_S", str(6 * 3600)))
+CACHE_TTL_STABLE_S = float(os.environ.get("CACHE_TTL_STABLE_S", str(3 * 86400)))   # definitions, conversions, ...
+CACHE_MAX = int(os.environ.get("CACHE_MAX", "400"))
+CACHE_PERSIST = os.environ.get("CACHE_PERSIST", "0") == "1"       # write runs/search_cache.json (docs only)
+CACHE_PATH = Path(os.environ.get("CACHE_PATH", ROOT / "runs/search_cache.json"))

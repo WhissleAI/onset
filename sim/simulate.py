@@ -131,6 +131,11 @@ class Simulator:
             setattr(config, KNOBS.get(k, k), v)
         w = fakes.World(profile=profile, sampler=fakes.Sampler(seed, trace["id"]), caches=self.caches)
         self.world["w"] = w
+        from server import searchcache
+        shared = cfg.get("CACHE_SHARED") or 0   # 1: one cache per pass (seed); 2: kept across passes (a demo booth
+        if not shared or (shared == 1 and getattr(self, "_cache_seed", None) != seed):   # replaying the same set)
+            searchcache.reset()           # A/B-honest: no search-cache hits carried over from another run
+            self._cache_seed = seed       # CACHE_SHARED: one cache per pass over the set (a seed), not across passes
         try:
             sess, events, errs = vclock.run(self._replay, trace, mode)
         except Exception as e:      # a deadlock / crash in one run must not kill a sweep: record it
@@ -176,7 +181,27 @@ class Simulator:
             "llm_requests": w.counters["llm_requests"], "web_missing": w.counters["web_missing"],
             "src_ids": src_ids, "grounded": grounded, "risky": (not grounded and not exact) if m else True,
             "hedged": bool(m.get("hedged")), "spin_ms": round(vclock.last_spin_s * 1000), "error": "; ".join(errs) or m.get("error") or (None if m else "no answer"),
+            "paid_calls": m.get("paid_calls", m.get("web_calls", 0)), "search_cached": m.get("search_cached", 0),
+            "web_skipped": m.get("web_skipped"), "cover": m.get("cover"),
+            "first_fire_lead_ms": m.get("first_fire_lead_ms"), "used_fire_lead_ms": m.get("used_fire_lead_ms"),
+            "src_ok": self._src_ok(src_ids, trace.get("expect")),
         }
+
+    def _src_ok(self, src_ids, expect):
+        """Accuracy proxy: every expected keyword is in the text of the answer's sources (eval/run_ab.score)."""
+        if not expect:
+            return None
+        if not hasattr(self, "_texts"):
+            self._texts = {}
+        if any(i not in self._texts for i in src_ids):
+            for rows in self.caches.web.values():
+                for r in rows:
+                    self._texts.setdefault(r["id"], f"{r['title']} {r['text']}")
+            from server import lanes
+            for d in lanes.index().docs:
+                self._texts.setdefault(d.id, f"{d.title} {d.text}")
+        from eval.run_ab import score
+        return bool(score(" ".join(self._texts.get(i, "") for i in src_ids), expect))
 
     def run_set(self, traces, cfg: dict, profile: fakes.Profile, seeds=(0,), modes=("headstart",),
                 bl_rows: dict | None = None) -> list[dict]:
@@ -227,6 +252,12 @@ def summarize(rows: list[dict], mode: str = "headstart") -> dict:
         "pool_commit_rate": round(sum(r["path"] == "pool-commit" for r in rs) / n, 3),
         "completion_reuse_rate": round(sum(r["draft_match"] == "completion" and r["draft_reused"] for r in rs) / n, 3),
         "web_calls_per_q": round(sum(r["web_calls"] for r in rs) / n, 2),
+        "paid_calls_per_q": round(sum(r.get("paid_calls", r["web_calls"]) for r in rs) / n, 2),
+        "search_cached_per_q": round(sum(r.get("search_cached") or 0 for r in rs) / n, 2),
+        "src_ok_rate": (round(sum(1 for r in rs if r.get("src_ok")) / max(1, sum(1 for r in rs if r.get("src_ok") is not None)), 3)),
+        "p50_first_fire_lead_ms": pct([r.get("first_fire_lead_ms") for r in rs], 50),
+        "p50_used_fire_lead_ms": pct([r.get("used_fire_lead_ms") for r in rs], 50),
+        "used_fire_rate": round(sum(1 for r in rs if r.get("used_fire_lead_ms") is not None) / n, 3),
         "spec_fires_per_q": round(sum(r.get("spec_fires", 0) for r in rs) / n, 2),
         "wasted_fires_per_q": round(sum(r.get("spec_fires", 0) - r.get("spec_used", 0) for r in rs) / n, 2),
         "premature_per_100q": round(100 * sum(r.get("premature", 0) for r in rs) / n, 1),
