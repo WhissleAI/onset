@@ -283,10 +283,17 @@ def main():
     ap.add_argument("--thr-eager", type=float, default=None)
     ap.add_argument("--thr-update", type=float, default=None)
     ap.add_argument("--drop", default="", help="ablation: comma list of EOT features to leave out")
+    ap.add_argument("--feat", default=str(FEAT), help="comma list of feature files (eval/conf_features.py format)")
+    ap.add_argument("--manifest", default="", help="voiced.jsonl with a split per id: fit on --split only")
+    ap.add_argument("--split", default="train")
+    ap.add_argument("--out", default="", help="write the model here instead of server/conf_model.json")
     a = ap.parse_args()
     global EOT_F
     EOT_F = [f for f in EOT_F if f not in set(a.drop.split(","))]
-    R = [json.loads(x) for x in FEAT.read_text().splitlines() if x.strip()]
+    R = [json.loads(x) for p in a.feat.split(",") for x in Path(p).read_text().splitlines() if x.strip()]
+    if a.manifest:
+        sp = {json.loads(x)["id"]: json.loads(x).get("split") for x in Path(a.manifest).read_text().splitlines() if x.strip()}
+        R = [r for r in R if sp.get(r["id"]) == a.split]
     wspec, wstats = word_model(R)
     Q, X, eot_stats = eot_model(R)
     m, mu, sd = fit_lr(np.stack([X[id(r)] for r in R]), np.array([int(r["complete"]) for r in R]))
@@ -299,8 +306,10 @@ def main():
     if a.write:
         out = {"word": wspec, "eot": espec, "fitted_on": "runs/flux_traces.jsonl (80 real Flux traces)",
                "stats": {"word": wstats, "eot": eot_stats}}
-        confidence.MODEL_PATH.write_text(json.dumps(out, indent=1))
-        print("wrote", confidence.MODEL_PATH)
+        dst = Path(a.out) if a.out else confidence.MODEL_PATH
+        out["fitted_on"] = a.feat + (f" ({a.split} split of {a.manifest})" if a.manifest else "")
+        dst.write_text(json.dumps(out, indent=1))
+        print("wrote", dst)
 
 
 if __name__ == "__main__":

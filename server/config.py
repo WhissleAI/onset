@@ -132,7 +132,7 @@ FLUX_KEYTERMS = [t.strip() for t in os.environ.get("FLUX_KEYTERMS", "").split(",
 # turn model already judged the pause); "eager+gate" = only if our tagger gate (session.gate_open) also agrees;
 # "eager+arc" = now if Arc's command_complete (ARC_META) fired near the last word, else when it does while the words
 # hold; "off" = ignore eager events (the tagger+silence semantic endpoint still runs on Flux's words either way).
-FLUX_SOFT = os.environ.get("FLUX_SOFT", "eager").strip().lower()
+FLUX_SOFT = os.environ.get("FLUX_SOFT", "fused").strip().lower()
 # Arc audio metadata on the cloud ear's words (server/arcmeta.py): mini | transcriber | off. Arc runs its heads in
 # external-transcript mode (no decoder): for-me (device-directed), command_complete, act/intent, speaker role, events.
 ARC_META = os.environ.get("ARC_META", "mini").strip().lower()
