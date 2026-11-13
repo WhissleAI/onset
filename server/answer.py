@@ -21,6 +21,10 @@ means Y is the largest), state it plainly with that citation and no disclaimer. 
 never remark on what the sources don't cover about other parts of it (a corrected-away name, a misheard word). Only
 if no source supports the answer, say in a few words that the sources don't cover it, then give the answer you are
 confident of without a citation; don't pad with unrelated facts from the sources.
+Conversions (currency, units): when the question gives an amount ("a hundred US dollars in euros", "26 miles in km"),
+answer with the converted amount first, converted from the unit the amount is in to the unit asked for, then the rate
+used with its citation: "100 US dollars is about 86 euros, at 1 USD = 0.86 EUR [1]". Do the arithmetic yourself; if
+the source gives the inverse rate (1 EUR = 1.16 USD), divide by it. Never answer with just the rate.
 Some sources are moments of recordings (game broadcasts, hearings, calls, podcasts): they have a timestamp and a noisy
 transcript; the moment itself is in [brackets], with the words just before and after it (also from the recording).
 Answer from every moment that helps. Say when and who, and quote the key words as transcribed, e.g. At 00:26 the
@@ -103,11 +107,75 @@ def _wh_bonus(question: str, sent: str) -> float:
     return 0.0
 
 
+_UNIT_ALIAS = {"dollar": ("usd", "$"), "buck": ("usd", "$"), "euro": ("eur", "€"), "pound": ("gbp", "£", "sterling"),
+               "quid": ("gbp", "£"), "yen": ("jpy", "¥"), "rupee": ("inr", "₹"), "yuan": ("cny", "rmb"),
+               "peso": ("mxn",), "franc": ("chf",), "won": ("krw",), "ruble": ("rub",), "kilometer": ("km",),
+               "kilometre": ("km",), "mile": ("mi",), "kilogram": ("kg",), "kilo": ("kg",), "foot": ("ft", "feet"),
+               "feet": ("ft", "foot"), "inch": ("in",), "fahrenheit": ("°f",), "celsius": ("°c",)}
+_NUMV = {w: i for i, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen "
+                                    "fourteen fifteen sixteen seventeen eighteen nineteen".split())}
+_NUMV.update({w: 20 + 10 * i for i, w in enumerate("twenty thirty forty fifty sixty seventy eighty ninety".split())})
+_MULT = {"hundred": 100, "thousand": 1000, "million": 10 ** 6, "billion": 10 ** 9}
+
+
+def _amount_value(amount: str) -> float | None:
+    """'a hundred us dollars' -> 100, '$1,500' -> 1500, '1.5 million yen' -> 1.5e6 (None if no number)."""
+    total, cur, seen = 0.0, 0.0, False
+    for t in amount.lower().replace(",", "").replace("$", " ").split():
+        if re.fullmatch(r"\d+(\.\d+)?", t):
+            cur, seen = cur + float(t), True
+        elif t in _NUMV:
+            cur, seen = cur + _NUMV[t], True
+        elif t in _MULT:
+            cur, seen = (cur or 1) * _MULT[t], True
+            if _MULT[t] > 100:
+                total, cur = total + cur, 0.0
+        elif t == "a":
+            continue
+        elif seen:
+            break
+    return (total + cur) if seen else None
+
+
+def _unit_pos(sent: str, unit: str) -> int:
+    """First position in the (lowercased) sentence where the unit is named (word, ISO code or symbol), or -1."""
+    stem = unit[:-1] if unit.endswith("s") and unit not in ("celsius",) else unit
+    pos = []
+    for a in (stem,) + _UNIT_ALIAS.get(stem, ()):
+        m = re.search(re.escape(a) if not a.isalpha() else rf"\b{re.escape(a)}", sent)
+        if m:
+            pos.append(m.start())
+    return min(pos) if pos else -1
+
+
+def _conversion_bonus(conv: tuple, sent: str) -> float:
+    """For "a hundred US dollars in euros": a sentence that converts THAT amount, from the unit asked about to the one
+    asked for ("100 USD equals 90.42 EUR"), beats the bare rate or the inverse conversion ("100 EUR equals 110 USD")."""
+    if not conv:
+        return 0.0
+    amount, src, dst = conv
+    s = sent.lower()
+    if not re.search(r"\d", s):
+        return -1.0                               # a conversion answer has a number in it
+    v = _amount_value(amount)
+    b = 0.0
+    if v is not None:
+        num = f"{v:g}" if v < 1e6 else f"{int(v)}"
+        if re.search(rf"(?<![\d.]){re.escape(num)}(?:\.0+)?(?![\d])", s.replace(",", "")):
+            b += 1.5
+    ps, pd = _unit_pos(s, src), _unit_pos(s, dst)
+    if ps >= 0 and pd >= 0:
+        b += 1.0 if ps < pd else -1.5
+    return b
+
+
 def extractive(question: str, docs) -> str | None:
     """The sentence of the top source that best answers the question (shared content words, words of the source's
     own title counting less since every sentence is about it, plus the kind of answer asked for), with its citation;
     a sentence of the second or third source only if it is clearly better. None if there are no sources."""
     q = _words(question)
+    from .frame import conversion
+    conv = conversion(question.split())
     best = None
     for i, d in enumerate(list(docs)[:3]):
         meta = getattr(d, "meta", None) or {}
@@ -118,6 +186,7 @@ def extractive(question: str, docs) -> str | None:
         for j, sent in enumerate(sents):
             shared = q & _words(sent)
             score = (sum(0.3 if w in title else 1.0 for w in shared) + _wh_bonus(question, sent)
+                     + _conversion_bonus(conv, sent)
                      - 0.01 * j - 0.75 * i - (3.0 if sent.rstrip().endswith("?") else 0.0))   # a question isn't an answer
             if best is None or score > best[0]:
                 best = (score, sent, i)
@@ -139,7 +208,7 @@ def model_opts(model: str) -> dict:
     return {"output_config": {"effort": "low"}}
 
 
-def build_prompt(question: str, docs, context: str = "") -> str:
+def build_prompt(question: str, docs, context: str = "", hint: str = "") -> str:
     lines = []
     for i, d in enumerate(docs, 1):
         meta = getattr(d, "meta", None) or {}
@@ -157,7 +226,8 @@ def build_prompt(question: str, docs, context: str = "") -> str:
             lines.append(f"[{i}] {d.title}: {d.text[:1000]}")
     src = "\n".join(lines) if lines else "(no results)"
     prev = f"Previous turn (for resolving 'it', 'he', 'there'):\n{context}\n\n" if context else ""
-    return f"{prev}Sources:\n{src}\n\nSpoken question: {question}"
+    note = f"\nNote: {hint}" if hint else ""
+    return f"{prev}Sources:\n{src}\n\nSpoken question: {question}{note}"
 
 
 async def warm():
@@ -185,8 +255,9 @@ class Stream:
     Ends exactly once: done=True (with error set on failure, "cancelled" on cancel) and every follower wakes, whether
     _run finished, failed, was cancelled mid-flight or was cancelled before it ever started."""
 
-    def __init__(self, question: str, docs, tag: str = "", context: str = ""):
+    def __init__(self, question: str, docs, tag: str = "", context: str = "", hint: str = ""):
         self.question = question
+        self.hint = hint                        # read-out instruction for this question (Frame.answer_hint)
         self.docs = list(docs)
         self.tag = tag
         self.context = context
@@ -234,7 +305,8 @@ class Stream:
         async with client().messages.stream(model=config.ANSWER_MODEL, max_tokens=160, system=SYSTEM,
                                             **model_opts(config.ANSWER_MODEL),
                                             messages=[{"role": "user",
-                                                       "content": build_prompt(self.question, self.docs, self.context)}]) as s:
+                                                       "content": build_prompt(self.question, self.docs, self.context,
+                                                                                   self.hint)}]) as s:
             async for text in s.text_stream:
                 if self.done:
                     return

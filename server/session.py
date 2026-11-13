@@ -77,6 +77,11 @@ class Session:
         self.closed = False
         self._audio_end = 0.0
         self.arc: dict | None = None           # latest Arc audio metadata (ARC_META, cloud ears): for-me, cc, role, ...
+        # spoken repairs split across two ear turns ("... Boston, sorry," | "I mean Denver"): see _join()
+        self.held: dict | None = None          # a final that ended on a repair marker, waiting for its correction
+        self.last_closed: dict | None = None   # the last closed question (a correction right after it reopens it)
+        self.superseded: list[dict] = []       # metrics of answers replaced by a spoken correction (not in history)
+        self.audio_ended = False               # the speaker stopped (push-to-talk release / end of replay): no holds
         self._new_question()
 
     def set_t0(self, t0: float):
@@ -116,6 +121,8 @@ class Session:
         self.dstream = director.Stream() if config.DIRECTOR else None
         self.director_out: dict | None = None
         self.words_changed_at = time.perf_counter()
+        self.prefix_ws: list[dict] = []              # a corrected earlier turn, prepended to this one's words
+        self.repair_checked = False                  # this utterance was already checked for being a correction
 
     @property
     def events(self) -> set:
@@ -160,6 +167,81 @@ class Session:
         if self.last_answered_end < 0:
             return ws
         return [w for w in ws if w.get("start") is None or w["start"] >= self.last_answered_end - 1e-3]
+
+    # ------------------------------------------------------------------ spoken repairs across ear turns
+    def _join(self, ws: list[dict], final: bool = False) -> list[dict] | None:
+        """This turn's own (fresh) words -> the words of the question being heard. The ear can end a turn inside a
+        self-correction (Flux fires EndOfTurn at "what's the weather in Boston, sorry," and hears "I mean Denver" as
+        a new turn). A turn that starts within REPAIR_GAP_S of the previous one and either opens with a repair marker
+        or follows a turn that ended on one (or on a dangling function word: "is it bad to take a" | "ibuprofen on an
+        empty stomach") is the same question: the previous turn's words are prepended, so the
+        frame's correction logic sees "Boston, sorry, I mean Denver" and asks about Denver; any answer already given
+        to the previous turn is superseded. None = the words so far might start a marker ("I" of "I mean"): wait."""
+        if not ws:
+            return ws
+        start = ws[0].get("start") or 0.0
+        h = self.held
+        if h is not None and not h["merged"]:
+            self.held = None
+            if start - (h["ws"][-1].get("end") or 0.0) <= config.REPAIR_GAP_S:
+                # the held turn (still the open question) continues with this one
+                h["merged"] = True
+                self.prefix_ws = list(h["ws"])
+                self.repair_checked = True
+                self.emit({"t": "repair", "ms": self.spec.ms(), "how": "held",
+                           "words": [framemod.norm(w["text"]) for w in h["ws"]]})
+            else:
+                h["job"] = self._close_question(h["ws"])     # too late to be its correction: close it now
+            h["ev"].set()
+        lc = self.last_closed
+        if not self.repair_checked and not self.words and lc is not None:
+            if start - lc["end"] <= config.REPAIR_GAP_S:
+                r = framemod.repair_start([framemod.norm(clean(w["text"])) for w in ws])
+                if r is None and not final:
+                    return None
+                if r or lc["trailing"]:
+                    self._reopen(lc)
+            self.repair_checked = True
+        return self._prefixed(ws)
+
+    def _prefixed(self, ws: list[dict]) -> list[dict]:
+        if not self.prefix_ws or not ws:
+            return ws
+        end = self.prefix_ws[-1].get("end") or 0.0
+        return self.prefix_ws + [w for w in ws if w.get("start") is None or w["start"] >= end - 1e-3]
+
+    def _reopen(self, lc: dict):
+        """A correction of the question closed just before: supersede that question's answer (cancel it if it is still
+        queued or being answered; withdraw it from history and conversation memory if it is done) and hear this turn
+        as its continuation."""
+        job = lc["job"]
+        self.last_closed = None
+        job["superseded"] = True
+        if any(j is job for j in self.pending_finals):
+            self.pending_finals = collections.deque(j for j in self.pending_finals if j is not job)
+        m = job.get("metric")
+        if m is not None:
+            if any(x is m for x in self.history):
+                self.history = [x for x in self.history if x is not m]
+                m["superseded"] = True
+                self.superseded.append(m)
+            mem = job.get("mem_before")
+            if mem is not None:
+                # the replaced answer must not be what "it" / "and when?" refer to next
+                self.carry, self.context, self.carry_pool = mem
+                self.spec.close()
+                self.spec = Speculator(self.emit, self.mode, self.t0, ledger=self.ledger)
+                if self.carry_pool:
+                    self.spec.seed(self.carry_pool)
+                self.spec.context = self.context
+        else:
+            ft = job.get("final_task")
+            if ft is not None and not ft.done():
+                ft.cancel()
+            job["spec"].close()                     # a finalize in flight stops at its next step (superseded)
+        self.prefix_ws = list(lc["ws"])
+        self.emit({"t": "extended", "correction": True, "ms": self.spec.ms(),
+                   "words": [framemod.norm(w["text"]) for w in lc["ws"]]})
 
     def _sync_words(self, ws: list[dict]):
         new = [clean(w["text"]) for w in ws]
@@ -243,7 +325,7 @@ class Session:
     def _on_partial(self, ws: list[dict], now: float | None = None):
         # words of the utterance being answered are done; anything after it is the NEXT question, heard (and
         # speculated on) even while the previous answer is still streaming
-        ws = self._fresh(ws)
+        ws = self._join(self._fresh(ws))
         if not ws:
             return
         self.last_ws = ws
@@ -291,6 +373,8 @@ class Session:
         and keep the speculator warm: the ear's final confirms or extends it. by = what fired it (tagger: our gate +
         silence; eager: the ear's own early end-of-turn, Deepgram Flux EagerEndOfTurn)."""
         sig = meaning(f)
+        if framemod.dangling_end([framemod.norm(w) for w in self.words]):
+            return False                           # "is it bad to take a": mid-phrase, never complete
         if self.busy or not f.has_content() or (self.soft is not None and self.soft["sig"] == sig):
             return False
         if self.final_task is not None and not self.final_task.done():
@@ -337,10 +421,13 @@ class Session:
         if self.closed or not self.semantic or mode in ("off", "fused", "director"):
             return                                     # fused: on_turn_tick already scored this EagerEndOfTurn
         try:
-            ws = self._fresh(ws)
+            own = self._fresh(ws)
+            if not own:
+                return
+            self._on_partial(own, now)                # same words the partial just carried: normally a no-op sync
+            ws = self._join(own)
             if not ws:
                 return
-            self._on_partial(ws, now)                 # same words the partial just carried: normally a no-op sync
             f = self.frame or self._build()
             if self.soft is not None and self.soft["sig"] == meaning(f):
                 return                                 # the tagger gate already answered exactly this
@@ -395,6 +482,7 @@ class Session:
                 # pause since the last word and the last word's confidence (measured: stale values delayed the fused
                 # endpoint by ~80 ms p50 in the Flux-trace replay)
                 ws = self._fresh(ws)
+                ws = self._prefixed(ws)
                 if ws and [clean(w["text"]) for w in ws if clean(w["text"])] == self.words:
                     self.last_ws = ws
                     self.times = [(w.get("start"), w.get("end")) for w in ws if clean(w["text"])]
@@ -455,7 +543,7 @@ class Session:
     async def _soft_answer(self, spec: Speculator, soft: dict, f, extended: bool):
         last_end = soft["end"]
         if extended:
-            self.emit({"t": "extended", "ms": spec.ms(), "words": soft["words"]})
+            self.emit({"t": "extended", "ms": spec.ms(), "words": soft["words"], "correction": f.corrected})
         self.emit({"t": "endpoint", "ms": spec.ms(), "speech_end_ms": round(last_end * 1000),
                    "frame": f.to_json(), "by": "semantic", "trigger": soft.get("by"), "soft": True})
         try:
@@ -494,6 +582,8 @@ class Session:
             job["error"] = e
         self.last_answered_end = max(self.last_answered_end, ws[-1].get("end") or 0.0)
         self.last_answered_words = [framemod.norm(w) for w in self.words]
+        self.last_closed = {"ws": list(ws), "end": ws[-1].get("end") or 0.0, "job": job,
+                            "trailing": framemod.unfinished([framemod.norm(clean(w["text"])) for w in ws])}
         self._new_question()
         return job
 
@@ -502,10 +592,26 @@ class Session:
         another is answering is queued (returns None) and answered right after it by the call already running."""
         if self.closed:
             return None
-        ws = self._fresh(ws or [])
+        ws = self._join(self._fresh(ws or []), final=True)
         if not ws:
             return None
-        job = self._close_question(ws)
+        if config.REPAIR_HOLD_S > 0 and not self.audio_ended and framemod.unfinished([framemod.norm(clean(w["text"])) for w in ws]):
+            # the turn ended mid-correction ("... in Boston, sorry,") or mid-phrase ("is it bad to take a"): give the
+            # rest a moment to arrive as the next turn before answering (it would be answered for Boston / for the
+            # fragment). _join merges or releases it.
+            h = self.held = {"ws": ws, "ev": asyncio.Event(), "merged": False, "job": None}
+            self.emit({"t": "repair_hold", "ms": self.spec.ms(), "words": [framemod.norm(w["text"]) for w in ws]})
+            try:
+                await asyncio.wait_for(h["ev"].wait(), config.REPAIR_HOLD_S)
+            except asyncio.TimeoutError:
+                pass
+            if self.held is h:
+                self.held = None
+            if h["merged"] or self.closed:
+                return None                       # continued by the next turn: its final answers the whole question
+            job = h["job"] or self._close_question(ws)
+        else:
+            job = self._close_question(ws)
         if self.busy:
             self.pending_finals.append(job)
             return None
@@ -527,6 +633,9 @@ class Session:
         last_end = ws[-1].get("end") or 0.0
         m = None
         f = None
+        if job.get("superseded"):                 # corrected before its turn came (_reopen)
+            spec.close()
+            return {"mode": self.mode, "question": " ".join(job.get("words") or []), "superseded": True}
         try:
             if job["error"] is not None:
                 raise job["error"]
@@ -543,7 +652,8 @@ class Session:
                 if soft is not None:
                     # the speaker kept going after the semantic endpoint: answer the longer question from the same,
                     # still-warm speculator (its searches/drafts kept running on the later words)
-                    self.emit({"t": "extended", "ms": spec.ms(), "words": [framemod.norm(w) for w in job["words"]]})
+                    self.emit({"t": "extended", "ms": spec.ms(), "words": [framemod.norm(w) for w in job["words"]],
+                               "correction": f.corrected})
                     if final_task is not None and not final_task.done():
                         final_task.cancel()
                 self.emit({"t": "endpoint", "ms": spec.ms(), "speech_end_ms": round(last_end * 1000),
@@ -563,7 +673,14 @@ class Session:
             if final_task is not None and not final_task.done():
                 final_task.cancel()
             spec.close()
+        if job.get("superseded") or m.get("superseded"):
+            # the speaker corrected this question while it was being answered: the corrected question answers instead
+            m["superseded"] = True
+            self.superseded.append(m)
+            return m
+        job["metric"] = m
         if not m.get("failed") and f is not None:
+            job["mem_before"] = (self.carry, self.context, self.carry_pool)
             self._remember(f, m)
             if job.get("levels"):
                 self.answered_level = float(np.median(job["levels"]))
@@ -617,10 +734,21 @@ class Session:
             self.spec.seed(self.carry_pool)
         self.spec.context = self.context
 
+    def end_of_audio(self):
+        """No more audio is coming (the user released push-to-talk, the replay ended): a held final has no
+        continuation to wait for, answer it now."""
+        self.audio_ended = True
+        if self.held is not None:
+            self.held["ev"].set()
+            self.held = None
+
     def close(self):
         if self.closed:
             return
         self.closed = True
+        if self.held is not None:
+            self.held["ev"].set()                         # (its on_final sees closed and returns)
+            self.held = None
         if (self.soft is not None and self.soft.get("metric") is not None and not self.busy
                 and not self.history):
             # the ear never confirmed (stream ended): keep it only if it's the only answer — an unconfirmed soft

@@ -180,3 +180,10 @@ DIRECTOR_KEEP = os.environ.get("DIRECTOR_KEEP", "0") == "1"
 STALE_CANCEL = os.environ.get("STALE_CANCEL", "0") == "1"   # cancel in-flight searches the speaker revised away
 WEB_BREAKER_FAILS = int(os.environ.get("WEB_BREAKER_FAILS", "2"))   # consecutive primary-backend failures before the cache takes over
 MEMORY_TTL_S = float(os.environ.get("MEMORY_TTL_S", "180"))   # push-to-talk follow-ups keep context this long
+# Spoken repairs the ear split into two turns ("what's the weather in Boston, sorry," | "I mean Denver"): a turn that
+# starts with a repair marker (or follows one that ended on it) within REPAIR_GAP_S of audio after the previous turn
+# is merged into it as a correction (session.py); so is any turn right after one that ended on a dangling function
+# word ("is it bad to take a" | "ibuprofen on an empty stomach", sc15), superseding any answer already given. A final that ENDS on a
+# marker is held up to REPAIR_HOLD_S (wall) for that next turn before it is answered. Both modes alike.
+REPAIR_GAP_S = float(os.environ.get("REPAIR_GAP_S", "1.5"))
+REPAIR_HOLD_S = float(os.environ.get("REPAIR_HOLD_S", "1.2"))

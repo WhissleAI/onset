@@ -297,10 +297,13 @@
         renderAnswer(mode);
         break;
       case "extended": {
-        // the speaker kept going after an early (semantic) endpoint: that answer is superseded, a new one follows
+        // the speaker kept going after an early (semantic) endpoint, or corrected the question ("Boston, sorry, I mean
+        // Denver", even when the ear split it into two turns): that answer is superseded, one new answer follows
         q.old.push({ mode, ep: q.endpointMs[mode], by: q.epBy[mode], t0: q.sourcesMs[mode] ?? q.endpointMs[mode],
           t1: q.metric[mode] && q.se[mode] != null ? q.se[mode] + q.metric[mode].done_ms : e.ms, first: q.firstMs[mode],
-          answer: q.answer[mode] || "", ready: q.metric[mode]?.ready_ms, path: q.metric[mode]?.path });
+          answer: q.answer[mode] || "", ready: q.metric[mode]?.ready_ms, path: q.metric[mode]?.path, correction: !!e.correction });
+        const hq = run.history.find((x) => x.q === q);
+        if (hq) { hq.question = ""; delete hq.answers[mode]; }       // the turn is re-recorded with the corrected question
         q.superseded[mode] = q.old.at(-1);
         for (const k of ["endpointMs", "sourcesMs", "sources", "answer", "firstMs", "metric", "error", "se", "epBy", "epQuery"]) delete q[k][mode];
         deltaSig = null;
@@ -310,7 +313,8 @@
         q.lastAnsMs = null;
         for (const k of ["answer", "stats", "sources", "path", "delta"]) pk(mode, k).innerHTML = "";
         renderAnswer(mode);
-        toast(`${MODE_NAME[mode]}: you kept talking, re-answering the longer question`);
+        toast(e.correction ? `${MODE_NAME[mode]}: you corrected yourself, re-answering the corrected question`
+          : `${MODE_NAME[mode]}: you kept talking, re-answering the longer question`);
         break;
       }
       case "metric":
@@ -614,7 +618,7 @@
     if (!q.metric[mode] && !q.error[mode]) html += txt ? '<span class="caret"></span>' : (q.endpointMs[mode] != null ? '<span class="wait">searching…</span>' : "");
     if (fb) html = `<span class="badge fb" title="the answer model was unreachable: this is the best-matching sentence of the top source">${esc(fb)} · not generated</span> ` + html;
     const old = q.superseded[mode];
-    if (old && old.answer) html = `<div class="old"><span class="badge corr">superseded</span> answered early (${fmtS(old.ready)}), then you kept talking: <s>${esc(old.answer.slice(0, 140))}${old.answer.length > 140 ? "…" : ""}</s></div>` + html;
+    if (old && old.answer) html = `<div class="old"><span class="badge corr">superseded</span> ${old.correction ? "answered" : "answered early"} (${fmtS(old.ready)}), then you ${old.correction ? "corrected yourself" : "kept talking"}: <s>${esc(old.answer.slice(0, 140))}${old.answer.length > 140 ? "…" : ""}</s></div>` + html;
     box.innerHTML = html;
   }
 
@@ -796,7 +800,7 @@
         rows.push({ key, kind: "fire", f, t0: f.t0, t1: f.t1 ?? now ?? f.t0 });
       }
       q.old.forEach((o, i) => {
-        if (o.mode === mode && o.t0 != null) rows.push({ key: `old:${mode}:${i}`, kind: "answer", mode, t0: o.t0, t1: Math.max(o.t1 ?? o.t0, o.t0), first: o.first, superseded: true });
+        if (o.mode === mode && o.t0 != null) rows.push({ key: `old:${mode}:${i}`, kind: "answer", mode, t0: o.t0, t1: Math.max(o.t1 ?? o.t0, o.t0), first: o.first, superseded: true, correction: o.correction });
       });
       if (q.sourcesMs[mode] != null) {
         const m = q.metric[mode];
@@ -998,7 +1002,7 @@
       labelQ = r.waiting ? (base ? "searching…" : "ranking…") : (r.live ? "streaming" : "answer");
       state = r.live ? "live" : "done";
       if (!r.waiting && r.first != null) info = `first token +${Math.round(r.first - r.t0)} ms`;
-      if (r.superseded) { state = "stale"; labelQ = "early answer, superseded"; info = "speaker kept talking"; }
+      if (r.superseded) { state = "stale"; labelQ = "early answer, superseded"; info = r.correction ? "speaker corrected it" : "speaker kept talking"; }
     } else {
       const f = r.f;
       const isFinal = f.lane.startsWith("final-");
