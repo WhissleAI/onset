@@ -40,6 +40,31 @@ def gate_open(f, cc_at: int | None, spans: list[dict]) -> bool:
     return bool(f.act_question and slot_end)
 
 
+# open mic (click the mic, it keeps listening): what the room hears is not always a request. A plain statement ("i like
+# to eat pancakes") is heard, labelled, and not searched / answered. Push-to-talk and replays never use this gate.
+_REQUEST_START = re.compile(r"^(what|whats|what's|who|whos|who's|whom|whose|when|where|wheres|where's|why|which|how|hows|"
+                            r"how's|is|are|was|were|do|does|did|can|could|will|would|should|shall|may|might|has|have|had|"
+                            r"tell|show|find|search|look|give|get|play|open|define|explain|list|compare|check|any|anything)$")
+
+
+def open_mic_skip(f) -> str | None:
+    """Open-mic gate on the frame at the endpoint. Returns why the utterance is not answered ("statement"), or None to
+    answer it. Conservative: anything that looks like a request (a question or command act, a web intent the tagger is
+    confident in, a question / command word up front) is answered; only an utterance the tagger reads as a statement
+    or a report ("i like to eat pancakes", "we went there last week") is held back."""
+    acts = set(f.acts or ())
+    if f.act_question or "question" in acts or "command_request" in acts:
+        return None
+    if f.intent in framemod.WEB_INTENTS and f.intent_p >= 0.5:
+        return None
+    first = framemod.norm(f.words[0]) if f.words else ""
+    if _REQUEST_START.match(first):
+        return None
+    if "statement" in acts or f.intent in ("intent.report_inform", "discourse.intent.report_inform"):
+        return "statement"
+    return None
+
+
 def meaning(f) -> tuple:
     """What an answer depends on: slots + content words (incl. a carried referent). Fillers ("um"), word order and
     intent flicker don't change it."""
@@ -52,9 +77,14 @@ def clean(w: str) -> str:
 
 
 class Session:
-    def __init__(self, emit, mode: str = "headstart", domain: str = "assistant", t0: float | None = None):
-        self.emit = emit
+    def __init__(self, emit, mode: str = "headstart", domain: str = "assistant", t0: float | None = None,
+                 open_mic: bool = False):
+        # every event carries "q": the id of the question (utterance) it belongs to, so a client can tell this turn's
+        # events from a previous turn's late ones (its answer streaming while the next question is heard)
+        self._out = emit
+        self.qid = 0
         self.mode = mode
+        self.open_mic = open_mic                 # open mic: statements are heard, not answered (open_mic_skip)
         self.tagger = Tagger(domain=domain)
         self.t0 = t0 or time.perf_counter()        # wall time of audio sample 0
         self.history: list[dict] = []
@@ -92,6 +122,7 @@ class Session:
     def _new_question(self):
         """Fresh listening state (tagger, words, speculator) for the next utterance. Doesn't touch busy / the queue:
         an earlier question may still be answering while this one is heard."""
+        self.qid += 1
         self.tagger.reset()
         self.words: list[str] = []                   # what the tagger has
         self.times: list[tuple] = []
@@ -103,7 +134,7 @@ class Session:
         self.audio: list[np.ndarray] = []
         self.q_audio_start: float | None = None      # audio time (s) of the first word of this question
         self.q_levels: list[float] = []              # voiced RMS while this question's words were arriving
-        self.spec = Speculator(self.emit, self.mode, self.t0, ledger=self.ledger)
+        self.spec = Speculator(self._q_emit(self.qid), self.mode, self.t0, ledger=self.ledger)
         if self.carry_pool:
             self.spec.seed(self.carry_pool)
         self.spec.context = self.context
@@ -123,6 +154,14 @@ class Session:
         self.words_changed_at = time.perf_counter()
         self.prefix_ws: list[dict] = []              # a corrected earlier turn, prepended to this one's words
         self.repair_checked = False                  # this utterance was already checked for being a correction
+
+    def emit(self, e: dict):
+        """Emit an event of the question being heard now (unless it names its own question)."""
+        self._out({"q": self.qid, **e})
+
+    def _q_emit(self, q: int):
+        """An emitter pinned to question q (its speculator keeps emitting after the next question started)."""
+        return lambda e: self._out({"q": q, **e})
 
     @property
     def events(self) -> set:
@@ -230,7 +269,7 @@ class Session:
                 # the replaced answer must not be what "it" / "and when?" refer to next
                 self.carry, self.context, self.carry_pool = mem
                 self.spec.close()
-                self.spec = Speculator(self.emit, self.mode, self.t0, ledger=self.ledger)
+                self.spec = Speculator(self._q_emit(self.qid), self.mode, self.t0, ledger=self.ledger)
                 if self.carry_pool:
                     self.spec.seed(self.carry_pool)
                 self.spec.context = self.context
@@ -379,11 +418,13 @@ class Session:
             return False                           # "is it bad to take a": mid-phrase, never complete
         if self.busy or not f.has_content() or (self.soft is not None and self.soft["sig"] == sig):
             return False
+        if self.open_mic and open_mic_skip(f):
+            return False                           # open mic, not a request: the ear's final labels it, no answer
         if self.final_task is not None and not self.final_task.done():
             self.final_task.cancel()               # superseded by this longer question: one soft answer at a time
         prev = self.soft
         self.soft = {"words": [framemod.norm(w) for w in self.words], "sig": sig, "metric": None,
-                     "end": ws[-1].get("end") or 0.0, "failed": False, "by": by}
+                     "end": ws[-1].get("end") or 0.0, "failed": False, "by": by, "q": self.qid}
         self.final_task = asyncio.create_task(self._soft_answer(self.spec, self.soft, f, extended=prev is not None))
         return True
 
@@ -545,16 +586,17 @@ class Session:
 
     async def _soft_answer(self, spec: Speculator, soft: dict, f, extended: bool):
         last_end = soft["end"]
+        q = soft.get("q", self.qid)
         if extended:
-            self.emit({"t": "extended", "ms": spec.ms(), "words": soft["words"], "correction": f.corrected})
+            self.emit({"t": "extended", "ms": spec.ms(), "words": soft["words"], "correction": f.corrected, "q": q})
         self.emit({"t": "endpoint", "ms": spec.ms(), "speech_end_ms": round(last_end * 1000),
-                   "frame": f.to_json(), "by": "semantic", "trigger": soft.get("by"), "soft": True})
+                   "frame": f.to_json(), "by": "semantic", "trigger": soft.get("by"), "soft": True, "q": q})
         try:
             m = await spec.finalize(f, self.t0 + last_end, close=False, by="semantic")
         except Exception as e:
             # a failed soft answer is "no soft answer": the ear's final answers the question normally
             soft["failed"] = True
-            self.emit({"t": "answer_error", "error": f"{type(e).__name__}: {e}"[:300], "soft": True})
+            self.emit({"t": "answer_error", "error": f"{type(e).__name__}: {e}"[:300], "soft": True, "q": q})
             return None
         if m.get("superseded"):
             return None
@@ -568,7 +610,7 @@ class Session:
         """The ear closed an utterance: freeze what the answer needs and start listening for the next question at once
         (its partials may arrive while this one is still being answered)."""
         job = {"ws": ws, "spec": self.spec, "soft": self.soft, "final_task": self.final_task, "error": None,
-               "levels": list(self.q_levels)}
+               "levels": list(self.q_levels), "q": self.qid}
         try:
             self._sync_words(ws)
             self.tagger.endpoint()
@@ -634,6 +676,7 @@ class Session:
         soft, final_task = job["soft"], job["final_task"]
         ws = job["ws"]
         last_end = ws[-1].get("end") or 0.0
+        q = job.get("q", self.qid)
         m = None
         f = None
         if job.get("superseded"):                 # corrected before its turn came (_reopen)
@@ -646,6 +689,12 @@ class Session:
             f = framemod.build(job["words"], job["spans"], job["current"], job["events"], job["prev_intent"],
                                local_ok=bool(len(lanes.index())), carry=self.carry)
             spec.context = self.context
+            why = open_mic_skip(f) if (self.open_mic and soft is None) else None
+            if why:
+                # open mic, not a request: heard and labelled, no search and no answer (not part of the conversation)
+                self.emit({"t": "heard", "why": why, "ms": spec.ms(), "speech_end_ms": round(last_end * 1000),
+                           "words": [framemod.norm(w) for w in job["words"]], "frame": f.to_json(), "q": q})
+                return {"mode": self.mode, "question": " ".join(job["words"]), "skipped": why}
             if soft is not None and soft["sig"] == meaning(f):
                 # the ear confirms what we already answered at the semantic endpoint
                 if final_task is not None and not final_task.done():
@@ -656,11 +705,11 @@ class Session:
                     # the speaker kept going after the semantic endpoint: answer the longer question from the same,
                     # still-warm speculator (its searches/drafts kept running on the later words)
                     self.emit({"t": "extended", "ms": spec.ms(), "words": [framemod.norm(w) for w in job["words"]],
-                               "correction": f.corrected})
+                               "correction": f.corrected, "q": q})
                     if final_task is not None and not final_task.done():
                         final_task.cancel()
                 self.emit({"t": "endpoint", "ms": spec.ms(), "speech_end_ms": round(last_end * 1000),
-                           "frame": f.to_json(), "by": "ear"})
+                           "frame": f.to_json(), "by": "ear", "q": q})
                 m = await spec.finalize(f, self.t0 + last_end)
                 m["endpoint_by"] = "ear"
                 m["superseded_soft"] = soft is not None
@@ -668,10 +717,10 @@ class Session:
             raise
         except Exception as e:
             err = f"{type(e).__name__}: {e}"[:300]
-            self.emit({"t": "answer_error", "error": err})
+            self.emit({"t": "answer_error", "error": err, "q": q})
             m = {"mode": self.mode, "question": " ".join(job.get("words") or [w["text"] for w in ws]),
                  "endpoint_by": "ear", "path": "failed", "error": err, "failed": True}
-            self.emit({"t": "metric", **m})
+            self.emit({"t": "metric", **m, "q": q})
         finally:
             if final_task is not None and not final_task.done():
                 final_task.cancel()

@@ -88,6 +88,7 @@
       fires: new Map(), order: [],
       speechEnd: null, se: {}, epBy: {}, epQuery: {}, old: [], superseded: {}, endpointMs: {}, sourcesMs: {}, sources: {}, answer: {}, firstMs: {}, metric: {}, error: {},
       wordsDirty: true, finalWords: 0,
+      qids: {}, heard: {},     // per mode: the server's question id of this turn; open-mic "heard" (not answered)
     };
   }
   function startRun(kind, modes) {
@@ -195,6 +196,14 @@
     // the previous question's answer can still be streaming when the next question starts (conversations, mic):
     // its late events update that turn's history entry, not the new panes
     const pq = run.prevQ;
+    // with question ids (e.q): an event of the previous question is late by definition, whatever its type
+    if (e.q != null && pq && pq.qids[mode] === e.q && q.qids[mode] !== e.q) {
+      if (e.t === "answer") pq.answer[mode] = (pq.answer[mode] || "") + (e.delta || "");
+      else if (e.t === "metric") { pq.metric[mode] = e; recordTurn(pq, mode); }
+      else if (e.t === "endpoint") pq.endpointMs[mode] = e.ms;
+      else if (e.t === "heard") { pq.heard[mode] = e; recordTurn(pq, mode); }
+      return;
+    }
     if (pq && q.endpointMs[mode] == null && pq.endpointMs[mode] != null && !pq.metric[mode] &&
         (["sources", "answer", "answer_error", "metric", "used"].includes(e.t) || (e.t === "spec" && String(e.lane).startsWith("final")))) {
       if (e.t === "answer") pq.answer[mode] = (pq.answer[mode] || "") + (e.delta || "");
@@ -207,18 +216,33 @@
         // a new question in the same run (live mic): start a fresh view once the previous one has answered
         // (words that start after the last answered speech end; not the same utterance continuing)
         const t0w = e.words && e.words.length ? (e.words[0].t0 ?? 0) * 1000 : null;
-        if (q.speechEnd != null && t0w != null && t0w > q.speechEnd + 50 && Object.keys(q.endpointMs).length) {
+        // the server's question id says so directly (also for an open-mic statement that got no endpoint); an older
+        // server: words that start after the answered question's speech end
+        const newQ = e.q != null ? q.qids[mode] != null && e.q > q.qids[mode]
+          : q.speechEnd != null && t0w != null && t0w > q.speechEnd + 50 && Object.keys(q.endpointMs).length;
+        if (newQ) {
           run.prevQ = q;
-          run.q = q = newQuestion(Math.max(0, t0w - 400));
+          run.q = q = newQuestion(Math.max(0, (t0w ?? 0) - 400));
+          q.wordsMode = mode; q.wordsSig = (e.words || []).map((w) => w.w).join(" ");
           resetView(true);
           paintHistory();
         }
+        if (e.q != null) q.qids[mode] = e.q;
         if (e.final) q.finalWords++;
         q.prevWords = q.words;
         q.words = e.words || [];
         pipe("ear", "“" + q.words.slice(-4).map((w) => w.w).join(" ") + "”");
         q.revFrom = e.from;
         renderWords(q);
+        break;
+      }
+      case "heard": {
+        // open mic: a statement, not a request: no search, no answer (labelled in the panes and the history)
+        q.heard[mode] = e;
+        if (e.speech_end_ms != null) q.speechEnd = Math.max(q.speechEnd ?? 0, e.speech_end_ms);
+        renderAnswer(mode);
+        if (mode === primary()) pipe("answer", "heard · not a question (open mic)");
+        recordTurn(q, mode);
         break;
       }
       case "frame":
@@ -441,6 +465,7 @@
     const m = q.metric[mode] || {};
     h.question = h.question || m.question || q.words.map((w) => w.w).join(" ");
     h.answers[mode] = q.answer[mode] || m.answer || "";
+    if (q.heard[mode]) h.heard = true;
     h.carried = h.carried || (q.frame && q.frame.carried) || "";
     paintHistory();
   }
@@ -455,7 +480,7 @@
     box.hidden = !prev.length;
     box.innerHTML = prev.length ? `<span class="hl-lab">Earlier in this conversation</span>` + prev.map((h) => {
       const a = h.answers.headstart || h.answers.baseline || "";
-      return `<span class="turn"><span class="tq">${esc(h.question)}</span><span class="ta">→ ${esc(shortAnswer(a) || "…")}</span></span>`;
+      return `<span class="turn"><span class="tq">${esc(h.question)}</span><span class="ta">→ ${esc(h.heard && !a ? "heard · not a question" : shortAnswer(a) || "…")}</span></span>`;
     }).join("") : "";
   }
 
@@ -615,8 +640,8 @@
     const box = pk(mode, "answer");
     const txt = q.answer[mode] || "";
     if (q.error[mode] && !txt) { box.className = "answer err"; box.textContent = "Answer failed: " + q.error[mode]; return; }
+    if (q.heard[mode] && !txt) { box.className = "answer"; box.innerHTML = `<span class="heard-note">heard · not a question</span>`; return; }
     box.className = "answer";
-    box.title = viewSel === "results" ? txt.replace(/\s*\[\d+(?:\s*[,–-]\s*\d+)*\]/g, "") : "";
     const fb = q.metric[mode] && q.metric[mode].answer_fallback;
     const n = (q.sources[mode] || []).length;
     let html = esc(txt).replace(/\[(\d+(?:\s*[,–-]\s*\d+)*)\]/g, (_, grp) =>
@@ -769,7 +794,9 @@
       const big = pk(m, "big"), sub = pk(m, "sub");
       const v = finalVal(q, m);
       let txt, cls, st;
-      if (v != null) {
+      if (q.heard[m] && v == null) {
+        txt = "heard"; cls = "big heard"; st = "not a question · no search";
+      } else if (v != null) {
         txt = fmtS(v); cls = "big final";
         st = v < 0 ? (res ? "results ready before you finished" : "before you stopped talking") : (res ? "first results after you stopped" : "after you stopped talking");
       } else if (q.se[m] != null && q.speechEnd != null) {
@@ -1286,7 +1313,8 @@
   const mic = { on: false, ctx: null, stream: null, node: null, buf: [], acc: 0, cnt: 0, frac: 0, ratio: 3, level: 0 };
   const WORKLET = `class Cap extends AudioWorkletProcessor{process(i){const c=i[0]&&i[0][0];if(c)this.port.postMessage(c.slice(0));return true}}registerProcessor('hs-cap',Cap);`;
 
-  async function startMic() {
+  // open = clicked the mic (it keeps listening: open mic); push-to-talk (Space) is not open
+  async function startMic(open = false) {
     streamToken++;
     if (!navigator.mediaDevices?.getUserMedia) { toast("Microphone not available here; use Replay", true); return; }
     if (!wsOpen) { toast("Not connected to the server yet", true); return; }
@@ -1302,7 +1330,7 @@
     sink.connect(ctx.destination);
     Object.assign(mic, { on: true, ctx, stream, buf: [], acc: 0, cnt: 0, frac: 0, ratio: ctx.sampleRate / 16000 });
     const modes = modesFor(modeSel);
-    send({ t: "start", modes });
+    send({ t: "start", modes, open: !!open });
     startRun("mic", modes);
     document.querySelectorAll(".qlist button.on").forEach((n) => n.classList.remove("on"));
     try {
@@ -1358,7 +1386,13 @@
     $("#micBtn").classList.toggle("live", mic.on);
     $("#micLabel").textContent = mic.on ? "Stop" : "Ask";
   }
-  $("#micBtn").addEventListener("click", () => (mic.on ? stopMic(true) : startMic()));
+  $("#micBtn").addEventListener("click", () => (mic.on ? stopMic(true) : startMic(true)));
+  // a clamped answer (results view shows one line) opens in place on click (it used to carry the whole answer as a
+  // hover tooltip, which popped up over the strip)
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest(".pane .answer");
+    if (a && !e.target.closest("a")) a.classList.toggle("open");
+  });
 
   // ------------------------------------------------------------------ keyboard
   // Push-to-talk: hold Space to talk, release to send. Key auto-repeat is ignored (holding a key fires keydown
