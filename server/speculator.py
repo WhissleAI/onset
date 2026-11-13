@@ -104,6 +104,7 @@ class Speculator:
         self.skips: Counter = Counter()
         self.skip_why: dict[str, str] = {}
         self.eot_p: float | None = None          # the session's fused end-of-turn score for the current words
+        self.eot_src = "fused"
         self.final_q: set = set()                # meanings an endpoint already answered (or searched) for
         self.uncovered: dict = {}                # meaning_sig -> Coverage of a pool that failed the draft-time check
         self.parent_of: dict[str, Fire] = {}
@@ -506,8 +507,11 @@ class Speculator:
           - at once when the fused end-of-turn score says the turn is probably over (SPEC_EOT_FIRE; Flux ear)."""
         if self.last_sig != f.sig:
             return config.SPEC_SETTLE_MS <= 0
-        if self.eot_p is not None and self.eot_p >= config.SPEC_EOT_FIRE:
-            return True                 # the turn is probably over: these are the final words
+        if self.eot_p is not None and self.eot_p >= config.SPEC_EOT_FIRE and (self.eot_src == "fused" or (
+                k.subject and not any(x.lane in ("web", "final-web") for x in self.fires))):
+            return True                 # the turn is probably over: these are the final words (the tagger's gate,
+            #                             a weaker hint than Flux's fused score, only releases a FIRST search that
+            #                             names its subject)
         need = config.SPEC_SETTLE_MS
         if config.SPEC_TAIL_SETTLE_MS > need and k.subject and f.content and \
                 searchcache.stem(f.content[-1]) in k.subject:
@@ -518,10 +522,11 @@ class Speculator:
             need = max(need, config.SPEC_LAST_SETTLE_MS)
         return ((now or time.perf_counter()) - self.sig_since) * 1000 >= need
 
-    def on_eot(self, p: float):
-        """Session (FLUX_SOFT=fused): the end-of-turn score of the current words, every ear update. A high one lets
-        a meaning that was waiting to settle spend its call now, a tick or two before the soft endpoint."""
-        self.eot_p = p
+    def on_eot(self, p: float, src: str = "fused"):
+        """Session: the end-of-turn score of the current words (Flux ear, FLUX_SOFT=fused: every update; other ears:
+        1.0 when the tagger's semantic-endpoint gate is open, src="gate"). A high one lets a meaning that was waiting
+        to settle spend its call now, a tick or two before the soft endpoint."""
+        self.eot_p, self.eot_src = p, src
         if (config.SPEC_EFF and self.mode == "headstart" and not self.closed and self.last_frame is not None
                 and p >= config.SPEC_EOT_FIRE):
             self._spec_web(self.last_frame)

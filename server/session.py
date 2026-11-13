@@ -341,6 +341,8 @@ class Session:
                 "arc": self.arc, "cc_word": self.cc_at, "ms": self.spec.ms(), "director": self._director_json()})
         self.frame = f
         self.spec.on_frame(f, now)
+        if self.turn_ev is None and gate_open(f, self.cc_at, self.spans):
+            self.spec.on_eot(1.0, "gate")   # no Flux end-of-turn score (Arc / nova-3 ear): the tagger's gate stands in
         wall = time.perf_counter()
         stable_ms = (wall - self.words_changed_at) * 1000
         silence_ms = self.silence_ms
