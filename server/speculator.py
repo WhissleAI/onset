@@ -22,6 +22,23 @@ from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
 
+# --- tiered router (server/router.py, ROUTER=on) runs inside lanes.web; these only pass its meter through ---------
+ROUTER_KEYS = ("route", "route_vertical", "route_conf", "route_why", "route_ms", "route_fallback", "route_error",
+               "tier", "tier_src", "paid", "free_calls")
+
+
+def router_counts(web_fires) -> dict:
+    """Per question: web-lane calls that reached the paid backend (not cached / replayed / answered by the router),
+    free calls the router made (card APIs, Wikidata, ...), and how many fires each tier served."""
+    paid = sum(1 for x in web_fires if x.meter.get("paid", 0 if x.meter.get("cached") or x.meter.get("replayed")
+                                                   or x.meter.get("backend") in ("cache", None) else 1))
+    tiers: dict = {}
+    for x in web_fires:
+        t = x.meter.get("tier")
+        if t:
+            tiers[t] = tiers.get(t, 0) + 1
+    return {"web_paid": paid, "free_calls": sum(x.meter.get("free_calls", 0) for x in web_fires), "tiers": tiers}
+
 
 @dataclass
 class Fire:
@@ -108,6 +125,7 @@ class Speculator:
         self.final_q: set = set()                # meanings an endpoint already answered (or searched) for
         self.uncovered: dict = {}                # meaning_sig -> Coverage of a pool that failed the draft-time check
         self.parent_of: dict[str, Fire] = {}
+        self.cheap_sigs: set = set()             # router plans (vertical + args) already looked up speculatively
 
     # ------------------------------------------------------------------ helpers
     def ms(self, t=None):
@@ -135,14 +153,19 @@ class Speculator:
                 await self._add_docs(docs)                  # vectors first, then "done": drafts rank on vectors
                 fire.docs = docs                            # (a fire cancelled mid-embed keeps none: never revived
                 fire.state = "done" if fire.state == "fired" else fire.state     # with vector-less docs)
+                if lane == "web" and fire.meter.get("paid") == 0 and fire.meter.get("tier"):
+                    self.web_used = max(0, self.web_used - 1)   # ROUTER: a free card / fact / wait fire spends no budget
                 self._ev(id=fire.id, lane=lane, query=query, state=fire.state, ms=self.ms(fire.t_done),
                          took=round((fire.t_done - fire.t_fire) * 1000), n=len(docs),
                          top=[d.title for d in docs[:3]], ids=[d.id for d in docs],
                          docs=[self._brief(d, 160) for d in docs[:5]], **self._meter_ev(fire))
-                if fire.key is not None and docs and not (fire.meter.get("cached") or fire.meter.get("replayed")
-                                                          or fire.meter.get("fallback")):
-                    searchcache.cache().put(fire.key, query, docs, fire.meter.get("backend") or config.WEB_BACKEND,
-                                            vecs={d.id: self.vecs[d.id] for d in docs if d.id in self.vecs})
+                # only paid web results go into the search cache: router cards / facts (meta tier / card / snapshot)
+                # would come back as plain docs (searchcache keeps id/title/text/url/source), losing their labels
+                web_docs = [d for d in docs if not (d.meta.get("tier") or d.meta.get("card") or d.meta.get("snapshot"))]
+                if (fire.key is not None and web_docs and fire.meter.get("tier") in (None, "web")
+                        and not (fire.meter.get("cached") or fire.meter.get("replayed") or fire.meter.get("fallback"))):
+                    searchcache.cache().put(fire.key, query, web_docs, fire.meter.get("backend") or config.WEB_BACKEND,
+                                            vecs={d.id: self.vecs[d.id] for d in web_docs if d.id in self.vecs})
                 if (config.SPEC_EFF and lane == "web" and self.mode == "headstart" and not self.closed
                         and self.last_frame is not None and self.skip_why.get(self.last_frame.query()) == "hold"):
                     self._spec_web(self.last_frame)        # a "hold" waiting for these results can decide now
@@ -156,6 +179,12 @@ class Speculator:
                     fire.state = "cancelled"
                     self._ev(id=fire.id, lane=lane, query=query, state="cancelled", ms=self.ms(fire.t_done))
                 raise
+            except lanes.Skip as e:                         # ROUTER: nothing to search yet (free, not an error)
+                fire.state = "skipped"
+                fire.t_done = time.perf_counter()
+                self.web_used = max(0, self.web_used - 1)
+                self._ev(id=fire.id, lane=lane, query=query, state="skipped", ms=self.ms(fire.t_done),
+                         reason=str(e)[:120], **self._meter_ev(fire))
             except Exception as e:
                 fire.state = "error"
                 fire.t_done = time.perf_counter()
@@ -173,13 +202,14 @@ class Speculator:
             return {}
         return {k: m[k] for k in ("backend", "depth", "topic", "time_range", "credits", "cached", "fallback", "replayed",
                                   "cache_match", "cache_miss", "narrow", "semcache", "as_of", "age_s", "cache_query")
-                if k in m}
+                + ROUTER_KEYS if k in m}
 
     @staticmethod
     def _brief(d: lanes.Doc, n: int = 260) -> dict:
         """Doc.brief plus the "as of" time of a result served from the search cache (the UI labels it)."""
         b = d.brief(n)
-        if d.meta.get("as_of"):
+        if d.meta.get("as_of") and not d.meta.get("card") and not d.meta.get("tier"):
+            # (router cards / facts carry their own "as of" inside meta["card"] / meta["snapshot"]: never "cached")
             b["as_of"] = d.meta["as_of"]
             b["cached"] = True
         return b
@@ -201,7 +231,7 @@ class Speculator:
         key = searchcache.qkey(f)
 
         async def go():
-            if config.CACHE_SEM:
+            if config.CACHE_SEM and self._cache_ok(f, final):
                 c = searchcache.cache()
                 hit = c.get(key, before=self.t_wall0)
                 if hit is None and qvec_task is not None:
@@ -211,8 +241,14 @@ class Speculator:
                 if hit is not None:
                     return self._from_cache(hit, meter)
             return await lanes.web(q, topic=topic, intent=f.intent, text=f.resolved_text, final=final,
-                                   ledger=self.ledger, meter=meter, entity=ent, hints=hints)
+                                   ledger=self.ledger, meter=meter, entity=ent, hints=hints, frame=f)
         return go, meter
+
+    def _cache_ok(self, f: Frame, final: bool) -> bool:
+        """The search cache stands in for the PAID web lane only: with the router on, a frame whose plan goes to a
+        card / local facts first is never answered from cached web docs (the cheap lane is live and free)."""
+        p = self._plan(f, final)
+        return p is None or list(p) == ["web"]
 
     def _from_cache(self, hit: searchcache.Hit, meter: dict) -> list:
         """A search-cache hit as lane docs: labelled cached + "as of" (meter, events, every doc), no credit spent."""
@@ -429,21 +465,24 @@ class Speculator:
 
     # ------------------------------------------------------------------ web fire policy
     @staticmethod
-    def _plan(f: Frame):
-        """Agent R's router (lanes.plan(frame) -> lane names, when it exists): the web policy below applies only when
-        the plan includes "web". None = no router: the frame's own route decides."""
+    def _plan(f: Frame, final: bool = False):
+        """Agent R's router (lanes.plan(frame) -> lane names, when it exists): the paid web policy below applies only
+        when the plan includes "web"; a cheap-only plan (card / facts) fires free lookups instead. None = no router:
+        the frame's own route decides."""
         plan = getattr(lanes, "plan", None)
         if plan is None:
             return None
         try:
-            return list(plan(f))
+            return plan(f, final=final)
         except Exception:
             return None
 
     def _paid(self) -> int:
-        """Paid web calls this question so far (in flight or landed): not cache hits, not failures (not billed)."""
-        return sum(1 for x in self.fires if x.lane in ("web", "final-web") and x.state != "error"
-                   and not x.meter.get("cached") and not x.meter.get("replayed"))
+        """Paid web calls this question so far (in flight or landed): not cache hits, not failures (not billed), not
+        router skips, not calls the router answered for free (meter paid == 0: a card / local fact). A call still in
+        flight counts as paid (its cheap lane may fall back to the web)."""
+        return sum(1 for x in self.fires if x.lane in ("web", "final-web") and x.state not in ("error", "skipped")
+                   and not x.meter.get("cached") and not x.meter.get("replayed") and x.meter.get("paid", 1) != 0)
 
     def _decide(self, f: Frame) -> tuple[str, Fire | None]:
         """SPEC_EFF: does this frame's meaning need a new web search? ("fire", None) or (why not, the search whose
@@ -538,6 +577,8 @@ class Speculator:
             return
         plan = self._plan(f)
         if plan is not None and "web" not in plan:
+            if plan.cheap_only:
+                self._spec_cheap(f, plan)
             return
         if not config.SPEC_EFF:
             if self.web_used < config.WEB_BUDGET and narrow.specific(f) and self._web_affordable():
@@ -555,6 +596,9 @@ class Speculator:
             if self._paid() >= config.SPEC_PAID_MAX or self.web_used >= config.WEB_BUDGET:
                 self._skip(f, "budget", None)
                 return
+            if self._route_hold(f, plan):
+                self._skip(f, "route-hold", None)
+                return
             if not self._web_affordable():
                 return
             self.skip_why.pop(q, None)
@@ -562,6 +606,29 @@ class Speculator:
             self._fire("web", q, f, *self._web(q, f, final=False))
             return
         self._skip(f, why, parent)     # "hold": decided again on the next update, or when the earlier search lands
+
+    def _route_hold(self, f: Frame, plan) -> bool:
+        """Router + efficiency: no PAID speculative call while the router is unsure what kind of question this is
+        (plan conf < ROUTER_SPEC_HOLD_CONF: no card / fact / fresh / open-ended cue yet) and the frame is still
+        growing (no likely end of turn yet): the next words usually decide the lane ("what's the ..." -> weather card).
+        Corrections are never held (q27, sc27: the replacement is the final meaning)."""
+        if plan is None or plan.lane != "web" or plan.conf >= config.ROUTER_SPEC_HOLD_CONF:
+            return False
+        if f.dropped or f.cue:
+            return False
+        return not (self.eot_p is not None and self.eot_p >= config.SPEC_EOT_FIRE)
+
+    def _spec_cheap(self, f: Frame, plan):
+        """A cheap-only plan (live-data card / local facts): look it up now, free, once per distinct plan (vertical +
+        arguments). The call goes through lanes.web -> router.route, so it returns the card / facts (or falls back to
+        the paid web itself when the cheap lane comes back empty: counted then)."""
+        q = f.query()
+        sig = getattr(plan, "sig", None) or (plan.lane, plan.vertical, q)
+        if sig in self.cheap_sigs or len(self.cheap_sigs) >= config.ROUTER_SPEC_CHEAP_MAX:
+            return
+        self.cheap_sigs.add(sig)
+        self.web_used += 1                     # refunded when the router answers for free (see _fire.run)
+        self._fire("web", q, f, *self._web(q, f, final=False))
 
     def on_audio(self, wav: np.ndarray, route: str = "both", n_words: int = 0):
         """Audio lane: embed the spoken question itself (no words needed) and search the local moments index.
@@ -703,6 +770,9 @@ class Speculator:
 
         q = f.query() or " ".join(f.words)
         qtext = f.resolved_text
+        fplan = self._plan(f, final=True)
+        if fplan is not None:
+            m["route"], m["route_conf"], m["route_why"] = fplan.lane, fplan.conf, fplan.why[:80]
         qvec_task = asyncio.create_task(embed.arun(embed.encode_queries, [qtext]))
         reuse_draft = None
         alt = None
@@ -726,6 +796,10 @@ class Speculator:
                 reuse_draft = await self._pick_draft(f, qvec, m)
                 if not live():
                     return superseded()
+                if (reuse_draft is not None and getattr(reuse_draft.stream, "by", None) == "card"
+                        and not self._card_fits(reuse_draft.stream.card, qtext)):
+                    m["draft_rejected_card"] = True     # a card for the partial ("weather in san") isn't the answer
+                    reuse_draft = None
                 if reuse_draft is None:
                     # 2) the final query already fired (in flight or done)? wait for it, don't re-search
                     # (a stale fire cancelled before its results landed doesn't count: it brought nothing)
@@ -740,7 +814,17 @@ class Speculator:
                         if pending:
                             # don't let a slow lane hold the answer hostage: answer with what has landed after the cap
                             await asyncio.wait(pending, timeout=config.PENDING_CAP_S)
-                    elif config.SPEC_EFF and f.route == "web" and (self._plan(f) is None or "web" in self._plan(f)):
+                    elif fplan is not None and fplan.cheap_only and f.route in ("web", "both"):
+                        # router: a live-data card / local fact question. A card already in the pool that fits the
+                        # final words answers it; else one cheap lookup now (the router itself falls back to the paid
+                        # web if the cheap lane comes back empty or weak). No paid budget involved.
+                        if fplan.lane == "card" and self._fitting_card(qtext):
+                            m["path"] = "card-hit"
+                        else:
+                            m["path"] = f"route-{fplan.lane}"
+                            await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True)).task,
+                                                 return_exceptions=True)
+                    elif config.SPEC_EFF and f.route == "web" and (fplan is None or "web" in fplan):
                         alt = await self._final_eff(f, q, qvec, qvec_task, m)
                     elif best >= config.COMMIT_TAU and self._nothing_new(f):
                         m["path"] = "pool-commit"
@@ -749,7 +833,7 @@ class Speculator:
                         alt = self._answer_race(q, f)
                         waits = []
                         if f.route in ("web", "both") and self.web_used < config.WEB_BUDGET + 1 and \
-                                (self._plan(f) is None or "web" in self._plan(f)):
+                                (fplan is None or "web" in fplan):
                             waits.append(self._fire("final-web", q, f, *self._web(q, f, final=True)).task)
                         if f.route in ("local", "both") and len(lanes.index()):
                             waits.append(self._fire("final-local", q, f, lambda: lanes.local_text(q)).task)
@@ -766,7 +850,7 @@ class Speculator:
                         await asyncio.wait(pending, timeout=config.PENDING_EMPTY_S)
                     if (not self.rank(qvec, 1) and live() and f.route in ("web", "both")
                             and not any(x.lane == "final-web" for x in self.fires)
-                            and (self._plan(f) is None or "web" in self._plan(f))):
+                            and (fplan is None or "web" in fplan)):
                         # every search so far came back empty: search the final question (over the budget if it
                         # must be: the calls that were spent bought nothing to answer from)
                         if self._paid() >= config.SPEC_PAID_MAX:
@@ -783,6 +867,8 @@ class Speculator:
             return superseded()
         self.last_qvec = qvec
         ranked = self._rank_for(f, qvec, 5)
+        if fplan is not None and fplan.lane == "card":
+            ranked = self._card_first(ranked, qtext, qvec)
         if config.CACHE_SEM:
             c = searchcache.cache()
             rids = {d.id for d, _ in ranked}
@@ -898,6 +984,34 @@ class Speculator:
                              return_exceptions=True)
         return alt
 
+    @staticmethod
+    def _card_fits(card, question: str) -> bool:
+        from . import router
+        try:
+            return bool(card) and router.card_fits(card, question)
+        except Exception:
+            return False
+
+    def _fitting_card(self, question: str) -> bool:
+        """A live-data card from a speculative lookup (not stale) that answers the final question as asked."""
+        for x in self.fires:
+            if x.lane in ("web", "final-web") and x.state == "done":
+                for d in x.docs:
+                    if d.meta.get("card") and self._card_fits(d.meta["card"], question):
+                        return True
+        return False
+
+    def _card_first(self, ranked, question: str, qvec):
+        """A card question: the fitting card (if any landed) leads the sources, whatever its cosine (the answer's
+        card path and the UI read it from there)."""
+        for x in self.fires:
+            if x.lane in ("web", "final-web") and x.state == "done":
+                for d in x.docs:
+                    if d.meta.get("card") and self._card_fits(d.meta["card"], question) and d.id in self.vecs:
+                        rest = [(y, sc) for y, sc in ranked if y.id != d.id]
+                        return [(d, float(self.vecs[d.id] @ qvec))] + rest[:4]
+        return ranked
+
     def _searched_keys(self) -> list:
         return [x.key for x in self.fires if x.key is not None and x.docs and x.state in ("done", "stale")]
 
@@ -922,7 +1036,8 @@ class Speculator:
                 "web_replayed": sum(1 for x in web if x.meter.get("replayed")),     # served from the recorded cache
                 "web_backend": next((x.meter.get("backend") for x in reversed(web) if x.meter.get("backend")),
                                     config.WEB_BACKEND),
-                "session_credits": self.ledger.spent}
+                "session_credits": self.ledger.spent,
+                **router_counts(web)}
 
     def _nothing_new(self, f: Frame) -> bool:
         """True if every content word of the final question was already covered by some non-stale search."""

@@ -218,3 +218,24 @@ CACHE_TTL_STABLE_S = float(os.environ.get("CACHE_TTL_STABLE_S", str(3 * 86400)))
 CACHE_MAX = int(os.environ.get("CACHE_MAX", "400"))
 CACHE_PERSIST = os.environ.get("CACHE_PERSIST", "0") == "1"       # write runs/search_cache.json (docs only)
 CACHE_PATH = Path(os.environ.get("CACHE_PATH", ROOT / "runs/search_cache.json"))
+
+# ---------------------------------------------------------------------------------------------------- tiered router
+# server/router.py: each question goes to the cheapest source that can answer it. card = live-data verticals
+# (server/verticals/: weather, FX, time, units, sun), facts = local knowledge (server/knowledge.py: Wikidata properties,
+# local Wikipedia lead index, Wiktionary), web = the paid lane (Tavily | Wikipedia). Both race modes route the same way
+# (the router sits inside lanes.web), so the A/B still differs only in WHEN searches start.
+ROUTER = os.environ.get("ROUTER", "on").strip().lower() in ("1", "on", "true")
+ROUTER_SKIP_CONF = float(os.environ.get("ROUTER_SKIP_CONF", "0.75"))   # plan confidence at/above which paid web is skipped
+ROUTER_TIMEOUT_S = float(os.environ.get("ROUTER_TIMEOUT_S", "0.6"))    # one free-API request
+ROUTER_LANE_TIMEOUT_S = float(os.environ.get("ROUTER_LANE_TIMEOUT_S", "2.0"))   # a whole cheap lane (geocode + forecast)
+ROUTER_SLOW_TIMEOUT_S = float(os.environ.get("ROUTER_SLOW_TIMEOUT_S", "1.5"))   # one request to a slower host (SPARQL, met.no)
+ROUTER_CARD_ANSWER = os.environ.get("ROUTER_CARD_ANSWER", "1") == "1"  # a fitting card answers itself (no model call)
+ROUTER_LEADS = os.environ.get("ROUTER_LEADS", "1") == "1"              # local Wikipedia lead index (if built)
+ROUTER_LEADS_STRONG = float(os.environ.get("ROUTER_LEADS_STRONG", "0.76"))   # lead cosine that counts as an answer (calibrated on the eval factoids)
+ROUTER_UA = os.environ.get("ROUTER_UA", "HeadStartDemo/0.1 (https://github.com/; voice search research prototype)")
+# Router x speculation (integration): a PAID speculative web call waits while the router's plan confidence is below
+# ROUTER_SPEC_HOLD_CONF ("unsure" what kind of question it is) and the turn isn't likely over; cheap card / fact
+# lookups fire speculatively, at most ROUTER_SPEC_CHEAP_MAX distinct plans per question.
+ROUTER_SPEC_HOLD_CONF = float(os.environ.get("ROUTER_SPEC_HOLD_CONF", "0.3"))
+ROUTER_SPEC_CHEAP_MAX = int(os.environ.get("ROUTER_SPEC_CHEAP_MAX", "4"))
+KNOWLEDGE_DIR = Path(os.environ.get("KNOWLEDGE_DIR", ROOT / "index/data/knowledge"))

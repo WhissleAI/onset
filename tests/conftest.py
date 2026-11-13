@@ -19,6 +19,9 @@ def _isolate_fallback_state(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "CACHE_SEM", False)
     monkeypatch.setattr(config, "CACHE_PERSIST", False)
     searchcache.reset()
+    # the tiered router (server/router.py) calls free APIs (Wikidata, Open-Meteo, ...): off unless a test opts in
+    # (tests/test_router.py does, with a mock transport)
+    monkeypatch.setattr(config, "ROUTER", False)
     lanes.set_web_cache(None)
     lanes.reset_web_status()
     answer.reset_status()
