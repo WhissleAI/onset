@@ -227,7 +227,7 @@ class Model:
         p = self.p
         e = self.emb(toks)
         m = (toks > 0).astype(np.float32)[:, None]
-        bag = (e * m).sum(0) / max(1.0, float(m.sum()))
+        bag = (e * m).sum(0) / max(1.0, float(m.sum())) * float(p.get("use_tok", np.ones(1))[0])
         x = self.lin("inp", np.concatenate([(feats - p["mu"]) / p["sd"], bag]))
         state = state or [(None, None)] * self.L
         new = []
