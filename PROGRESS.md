@@ -374,3 +374,46 @@ read-out is 1.32 s stale (Mini 0.35 s). Not used.
 
 **Search director** (server/director.py runtime, numpy int8 Mamba-3; trained in PromptingNemo-private
 recipes/headstart_director): see the section below.
+
+## Search director (opt-in: DIRECTOR=on, FLUX_SOFT=director; server/director.py + server/director/; recipe: PromptingNemo-private branch headstart-director, recipes/headstart_director)
+A tiny streaming Mamba-3 (Director v3 family) over the per-update event stream (every Flux TurnInfo + tagger poll +
+Arc audio state; 54 step features defined once in server/director.py and imported by the recipe, + hashed tokens of the
+newest 8 words). Heads: eot (answer now), fire (a search now = the final search), draft (meaning already final), keep
+(word kept in the final query). Runtime: numpy int8, **29 K params, 52 KB, 0.16 ms / update**, numpy-streaming vs
+torch-parallel parity exact; any failure → FLUX_SOFT=fused.
+
+**Data (all real Flux traces at 1×; faster-than-real-time changes Flux's turn events: 2× 11/16 vs 1× 14/16 identical
+to the original traces)**: ~15 K spoken-search texts written by Claude Code agents (runs/director_queries; plain,
+filler, correction, late_flip, pause, long, short, numbers, followup, not_search, multi_part …), voiced with 52 voices
+(28 Kokoro EN, 6 accented Kokoro, 18 macOS say), rate .85–1.2, and a realistic acoustic chain (rooms, phone / laptop /
+AGC / mp3 channels, babble / café / car / TV / keyboard / wind / pink / hum at 5–30 dB, overlapping talkers, hesitations;
+test-only held-out street / music / bluetooth / halls). **13,301 traces streamed (~1,390 Deepgram audio-min ≈ $10.7),
+9,775 featurized** (tagger + Arc Mini replayed as the Session sees them) → train 7,905 / val 491 / test 1,000 (split by
+query root text), + the original 80 as a second test set. Index: runs/director_trace_index.jsonl.
+
+**Offline (thresholds chosen on val only; bootstrap 95 % CIs)**, s model vs the fused logistic (FLUX_SOFT=fused):
+| set | policy | p50 | mean | p90 | premature /100 q | not_search answered |
+|---|---|---|---|---|---|---|
+| test (1,000) | eager | 291 | 318 | 663 | 60.6 | 100 % |
+| | fused logistic | 295 [290–320] | 366 | 771 | 32.3 [28.9–36.3] | 81 % |
+| | **director** | **254 [249–272]** | **310** | **695** | **30.5 [26.7–34.4]** | **44 %** |
+| original 80 | fused logistic | 213 | | | 12.5 | |
+| | **director** | **134–146** | | | 11.8–12.5 | |
+Pareto (both tuned on val for the same premature target): test @20 director 314 ms / 18.4 vs logistic 450 / 16.3;
+original 80 @20 199 / 5.6 vs 410 / 3.8. Per condition (test, director vs logistic vs eager, p50 / premature):
+clean 249/28 · 294/27 · 281/51; noise 306/39 · 374/47 · 284/92; reverb 335/27 · 430/37 · 351/75; held-out
+conditions 296/36 · 331/46 · 310/70. Fire head: wasted fires 3.63 → 1.97 /q at the same 90 % useful coverage; draft
+head: a final-meaning draft for 94 % of questions (hand rule 19 %); keep head AUC .972 vs .965 (content-word rule; off).
+Sizes (val eot loss): s 29 K .263, m 82 K .258, l 306 K overfits → s shipped. Learning curve (s): 1.5 K .288 → 3 K .275
+→ 6 K .266 → 7.9 K .263 (flattening). No-token ablation ≈ equal; text-only simulated streams: no gain.
+
+**Real A/Bs (EAR=flux, Wikipedia lane, 29 showcase q, both modes)** — runs/ab_dir_*.json, runs/ab_dirn_*.json:
+| audio | policy | HS p50 / p90 / mean | paired vs fused | accuracy | web calls /q | BL p50 |
+|---|---|---|---|---|---|---|
+| clean | fused | 1195 / 1775 / 1342 | | 12/15 | 4.97 | 1626 |
+| clean | director | 1247 / 1839 / 1376 | +8 ms, faster 14/29 | 13/15 | 5.00 | 1699 |
+| babble 10 dB + room | fused | 1307 / 2204 / 1439 | | 9/15 | 5.62 | 2337 |
+| babble 10 dB + room | director | 1192 / 1988 / 1368 | −7 ms, faster 15/29 | 9/15 | 5.62 | 2374 |
+The director endpoints ~95 ms earlier (endpoint lag p50 292 vs 387 ms), but ready time follows the in-flight search +
+answer TTFT, so the end-to-end difference is within run noise (baselines alone differ 37–73 ms). **Defaults unchanged:
+FLUX_SOFT=fused; the director ships opt-in** (largest offline gains: noisy / reverberant audio, not_search refusals).
