@@ -189,7 +189,8 @@ def test_filler_does_not_change_signature(tagger):
 
 
 # ----------------------------------------------------------------------------- speculator tests
-def test_headstart_fires_before_endpoint_and_reuses():
+def test_headstart_fires_before_endpoint_and_reuses(monkeypatch):
+    monkeypatch.setattr(config, "SPEC_SETTLE_MS", 0)   # scripted ear, short endpoint: fire on first sight
     m, ev = asyncio.run(speak("who founded the company Nvidia", "headstart"))
     endpoint_ms = next(e["ms"] for e in ev if e["t"] == "endpoint")
     fired = specs(ev, lane="web", state="fired")
@@ -205,13 +206,15 @@ def test_baseline_searches_only_after_endpoint():
     assert m["path"] == "search-after-endpoint" and m["web_calls"] == 1
 
 
-def test_headstart_faster_than_baseline():
+def test_headstart_faster_than_baseline(monkeypatch):
+    monkeypatch.setattr(config, "SPEC_EFF", False)   # old per-word fire mechanics; SPEC_EFF=1: tests/test_spec_eff.py
     hs, _ = asyncio.run(speak("who founded the company Nvidia", "headstart"))
     bl, _ = asyncio.run(speak("who founded the company Nvidia", "baseline"))
     assert hs["ready_ms"] < bl["ready_ms"] - 150, (hs["ready_ms"], bl["ready_ms"])
 
 
-def test_revision_marks_stale_and_answer_uses_final_entity():
+def test_revision_marks_stale_and_answer_uses_final_entity(monkeypatch):
+    monkeypatch.setattr(config, "SPEC_EFF", False)   # old per-word fire mechanics; SPEC_EFF=1: tests/test_spec_eff.py
     # word 4 is misheard as "Acronis" until 2.0 s, then revised to "Nvidia"
     m, ev = asyncio.run(speak("who founded the company Nvidia", "headstart", revisions={4: (1.75, "Acronis")}))
     assert specs(ev, state="stale"), "the misheard query should go stale"
@@ -294,7 +297,8 @@ def test_soft_endpoint_extended_reuses_warm_speculator(monkeypatch):
 
 
 
-def test_late_revision_in_final_marks_stale():
+def test_late_revision_in_final_marks_stale(monkeypatch):
+    monkeypatch.setattr(config, "SPEC_SETTLE_MS", 0)   # scripted ear, short endpoint: fire on first sight
     m, ev = asyncio.run(speak("who founded the company Nvidia", "headstart", revisions={4: (5.0, "Acronis")}))
     assert specs(ev, state="stale") and "nvidia" in m["query"]
     assert m["path"] == "speculative-miss" and all("Acronis" not in s for s in m["sources"][:3])

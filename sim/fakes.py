@@ -352,8 +352,8 @@ def install(monkeypatch_setattr, world_ref: dict):
         await arun(embed.encode_audio, [wav])
         return [], np.zeros(lanes.index().tv.shape[1], np.float32)
 
-    def build_prompt(question, docs, context=""):
-        p = _Prompt(f"{context}|{question}|{len(docs)}")
+    def build_prompt(question, docs, context="", hint=""):
+        p = _Prompt(f"{context}|{question}|{len(docs)}|{hint}")
         p.question, p.docs = question, list(docs)
         return p
 

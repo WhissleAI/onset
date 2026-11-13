@@ -632,11 +632,13 @@
       a.dataset.n = String(i + 1);
       a.title = (d.title || "") + (d.text ? "\n\n" + d.text : "");
       const lane = String(d.lane || "").replace("final-", "");
-      const meta = [d.cached ? `${d.source} · CACHED` : d.source, d.score != null ? `cos ${(+d.score).toFixed(2)}` : null].filter(Boolean).join(" · ");
+      // d.as_of: served from the search cache (server/searchcache.py), fetched live at that time; else the recorded cache
+      const asOf = d.as_of ? String(d.as_of).slice(11, 16) : "";
+      const meta = [d.cached ? `${d.source} · CACHED${asOf ? " as of " + d.as_of.replace("T", " ") : ""}` : d.source, d.score != null ? `cos ${(+d.score).toFixed(2)}` : null].filter(Boolean).join(" · ");
       const ts = d.t != null ? `<span class="ts" title="moment starts at ${Math.round(d.t)} s">▶ ${mmss(d.t)}</span>` : "";
       const title = d.t != null ? String(d.title || "").replace(/\s*·\s*\d+:\d+$/, "") : d.title;
       a.title = (title || "") + (meta ? `\n${lane} · ${meta}` : "") + (d.text ? "\n\n" + d.text : "");
-      a.innerHTML = `<div class="st"><span class="sn">[${i + 1}]</span>${lane ? `<span class="ln ${esc(lane)}">${esc(lane.slice(0, 3))}</span>` : ""}${ts}${d.cached ? '<span class="ln cached" title="replayed from the recorded web cache">cache</span>' : ""}<span class="tt">${esc(title || "(untitled)")}</span></div>`;
+      a.innerHTML = `<div class="st"><span class="sn">[${i + 1}]</span>${lane ? `<span class="ln ${esc(lane)}">${esc(lane.slice(0, 3))}</span>` : ""}${ts}${d.cached ? (asOf ? `<span class="ln cached" title="search result from the cache, fetched ${esc(String(d.as_of).replace("T", " "))} (not live)">cache ${esc(asOf)}</span>` : '<span class="ln cached" title="replayed from the recorded web cache">cache</span>') : ""}<span class="tt">${esc(title || "(untitled)")}</span></div>`;
       box.appendChild(a);
     });
   }
@@ -662,6 +664,8 @@
     }
     st.push(`web <b>${m.web_calls ?? 0}</b>` + (m.credits ? ` · <b>${m.credits}</b> cr` : ""), `sources <b>${fmtS(m.sources_ms)}</b>`);
     if (mode !== "headstart") st.push(`done <b>${fmtS(m.done_ms)}</b>`);
+    if (m.search_cached) st.unshift(`<span class="flag" title="web results served from the search cache, not fetched live">cached search ×${m.search_cached}${m.search_cached_as_of ? " · as of " + esc(String(m.search_cached_as_of).slice(11, 16)) : ""}</span>`);
+    if (mode === "headstart" && m.paid_calls != null) st.push(`paid <b>${m.paid_calls}</b>`);
     if (m.web_replayed) st.unshift(`<span class="flag" title="web results replayed from the recorded cache, not fetched live">cached web ×${m.web_replayed}</span>`);
     if (m.answer_fallback) st.unshift(`<span class="flag" title="${esc(m.answer_fallback_reason || "")}">${esc(m.answer_fallback)} answer · model offline</span>`);
     const box = pk(mode, "stats");

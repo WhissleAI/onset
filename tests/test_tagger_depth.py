@@ -88,6 +88,7 @@ from test_speculation import fakes as _fakes_for_stale_test  # noqa: E402,F401  
 def test_stale_search_finishes_and_reports_docs_by_default(monkeypatch):
     """Default: a search the speaker revised away is NOT cancelled; it lands as 'stale' with its docs (the live
     results list shows them struck through) and ranking ignores them."""
+    monkeypatch.setattr(config, "SPEC_EFF", False)   # old per-word fire mechanics; SPEC_EFF=1: tests/test_spec_eff.py
     import asyncio, time
     import test_speculation as T
     from server import config as C
