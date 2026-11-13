@@ -483,3 +483,98 @@ new HS misses, q05 and q08 had the right sources (answer-model wording; q08 was 
 bugs fixed after the run: (1) the "nothing landed" wait ignored searches that went stale while on the wire,
 (2) a budget spent on ASR-garbled partials whose results were empty left no sources -> now one final search over the
 budget, flagged `budget_override: empty-pool` (and an empty speculative hit retries the final query).
+
+## Integration: tiered router + efficient speculation (branch search/integrate; merges search/spec-efficiency then search/router)
+Both interfaces hold:
+- **R -> S:** speculator `_web` passes `frame=f` to `lanes.web` (the router runs inside it, both modes).
+  `_meter_ev` passes the search-cache keys and `ROUTER_KEYS`. `_credits` adds `router_counts` (web_paid / free_calls / tiers).
+  `_fire.run` handles `lanes.Skip` (state "skipped", `web_used` refunded) and refunds free fires (meter paid == 0).
+- **S -> R:** `lanes.plan(frame, final=False)` returns a `RoutePlan` (lane names, conf, sig). "web" is listed only when the
+  router may need the paid lane: card / facts plans with conf >= `ROUTER_SKIP_CONF` list the cheap lane alone, "wait"
+  is "web" at the endpoint. Paid web speculation, the final web call and the empty-pool retry run only when the plan
+  includes "web".
+- **Cheap-only plans:**
+  - One free speculative lookup per distinct plan (vertical + args; `ROUTER_SPEC_CHEAP_MAX`=4), marked `no_paid`: an
+    empty / weak lookup mid-sentence is a free Skip, never a paid fallback. Later partials of the same plan borrow it
+    for their draft.
+  - At the endpoint: a fitting card in the pool answers (`card-hit`), the same fact lookup is reused (`route-hit`),
+    else one cheap lookup (`route-card` / `route-facts`), which may fall back to the web.
+  - The fitting card leads the sources; partial cards are dropped.
+- **`_paid()`** ignores skipped fires, router-free fires and `no_paid` lookups (also while in flight).
+- **Search cache:**
+  - Consulted only for web-only plans.
+  - Stores paid web docs only: card / facts docs (meta tier / card / snapshot) are never cached, so they can't come
+    back as plain docs.
+  - `_brief` never marks a card / fact "cached"; the UI badge requires `d.cached && !d.card && !d.tier`.
+- **Hold (R's recommendation):**
+  - No paid speculative web fire while the plan conf < `ROUTER_SPEC_HOLD_CONF`=0.3, or while the plan is the generic
+    wh- "leads" plan (`ROUTER_SPEC_HOLD_LEADS`=1; it was the no-signal default: "what's a hundred US dollars" became a
+    currency card two words later).
+  - The hold applies while the turn is still going (end-of-turn score < `SPEC_EOT_FIRE`).
+  - Corrections are never held (q27 / sc27 answer the replacement).
+- **Facts hedge (`ROUTER_FACTS_HEDGE_MS`=350):**
+  - A Wikidata lookup still out after 350 ms races the paid web lane; the first good result wins, and the hedge
+    counts as paid.
+  - At the endpoint, a speculative fact lookup still in flight 350 ms after it was sent triggers one final call that
+    races fact vs web.
+- **UI:**
+  - Lane chip + card under the answer.
+  - "paid N · free M" replaces "web N" when routed. The router's "card answer" flag and paid/free stat were pushed
+    after the stats rendered, so they never showed; fixed.
+  - Timeline rows and the pipeline lane count name card / facts tiers (classes t-card / t-facts; `.card` is the panel
+    class).
+  - Details view: the card shrinks to title + source (it pushed every source out of the fixed-height list).
+  - Screenshots: sc01 / sc08 / q01 / sc17, minimal + details at 1280x720.
+- **Tests:** 238 (main 180 + S + R + tests/test_integrate.py 22 + 1 router).
+
+A/B, Wikipedia lane, EAR=flux, search cache cleared per run, both modes, main = 720f297.
+"paid" = web calls that reach the paid backend (Tavily credits on Tavily). "free" = card API / Wikidata / Wiktionary /
+local-lead calls. "wasted" = speculative fires that fed nothing. "answered twice" = more than one answer for the
+question: sc22 splits into two turns on both branches.
+
+Showcase (29 on Wikipedia), commit a4bab66 (run 1) and 4d18a10 (run 2):
+
+| run | mode | p50 | p90 | accuracy | paid/q | free/q | wasted fires/q | answered twice |
+|---|---|---|---|---|---|---|---|---|
+| main | HS | 1143 | 1749 | 13/15 | 4.97 | 0 | 1.34 | 1 |
+| main | BL | 1731 | 2172 | 13/15 | 1.00 | 0 | - | 1 |
+| integrated (1) | HS | 1033 | 1584 | 14/15 | 0.90 | 0.62 | 0.28 | 1 |
+| integrated (1) | BL | 1578 | 2161 | 13/15 | 0.72 | 0.24 | - | 1 |
+| integrated (2) | HS | 1172 | 1772 | 14/15 | 0.97 | 0.48 | 0.28 | 1 |
+| integrated (2) | BL | 1671 | 2208 | 14/15 | 0.72 | 0.24 | - | 1 |
+
+Per lane (integrated plan at the endpoint; run 2):
+
+| lane | n | HS p50 main -> int | HS paid/q | BL p50 main -> int | BL paid/q |
+|---|---|---|---|---|---|
+| card | 5 | 1199 -> 453 | 5 -> 0.4 | 1641 -> 751 | 1 -> 0 |
+| facts | 4 | 1274 -> 1302 | 4.25 -> 0.25 | 1740 -> 1728 | 1 -> 0.25 |
+| web | 20 | 1136 -> 1197 | 5.1 -> 1.25 | 1754 -> 1705 | 1 -> 1 |
+
+In run 1 every card question cost 0 paid calls. In run 2 two of them paid 1:
+- sc27: a free lookup still in flight was miscounted; fixed in 51c4b33.
+- sc28: a correction partial, exempt from the hold.
+
+58 set (38 web-set + 20 local), commit 4d18a10 (before the facts hedge):
+
+| run | mode | p50 | p90 | accuracy | paid/q | free/q | wasted fires/q | answered twice |
+|---|---|---|---|---|---|---|---|---|
+| main | HS | 1196 | 1970 | 57/58 | 2.09 | 0 | 1.31 | 0 |
+| main | BL | 1826 | 2424 | 55/58 | 0.62 | 0 | - | 0 |
+| integrated | HS | 1364 | 2108 | 58/58 | 0.14 | 2.03 | 0.91 | 0 |
+| integrated | BL | 1955 | 2766 | 58/58 | 0.09 | 0.86 | - | 0 |
+
+Per lane, 58 set:
+
+| lane | n | HS p50 / p90 main -> int | HS paid/q | BL p50 main -> int |
+|---|---|---|---|---|
+| facts | 35 | 1208 / 2282 -> 1423 / 2075 | 3.14 -> 0.14 | 1853 -> 2017 |
+| web | 23 | 1149 / 1628 -> 1137 / 2025 | 0.48 -> 0.13 | 1790 -> 1728 |
+
+Local questions were unchanged (HS 1182 -> 1175).
+
+The 58-set latency regression comes from the facts lane, in both modes. On the 38 web-set questions, sources landed
++126 ms later (median) while answer-model time was flat. Speculative fact lookups took p50 236 / p75 440 / p90 706 ms,
+against 205 / 235 / 263 for main's per-word Wikipedia searches, and the endpoint waited up to PENDING_CAP_S for them.
+51c4b33 adds the facts hedge (above). Its A/B and the single Tavily showcase run (estimated ~1.7 paid calls/q x 30 ≈ 51
+credits; hard cap `TAVILY_PROCESS_CREDITS=60`) are still to run: the demo held runs/.run_ab.lock past this session.
