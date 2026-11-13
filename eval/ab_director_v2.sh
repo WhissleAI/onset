@@ -5,7 +5,7 @@
 #   eval/ab_director_v2.sh <tag> [rep]
 cd "$(dirname "$0")/.."
 TAG=${1:-v2}; REP=${2:-1}
-export TAVILY_API_KEY= WEB_BACKEND=wikipedia EAR=flux DIRECTOR=on DIRECTOR_STREAMS=1 DIRECTOR_ARC_EAR=0 RUN_AB_OWNER=director-v2
+export RUN_AB_LOCK=/Users/karan/Desktop/work/whissle/headstart/runs/.run_ab.lock TAVILY_API_KEY= WEB_BACKEND=wikipedia EAR=flux DIRECTOR=on DIRECTOR_STREAMS=1 DIRECTOR_ARC_EAR=0 RUN_AB_OWNER=director-v2
 run() {   # policy set out
   FLUX_SOFT=$1 .venv/bin/python eval/run_ab.py $2 --no-latest --wait-lock 7200 --owner director-v2 \
     --out runs/ab_${TAG}_$3_$1_r$REP.json > runs/ab_${TAG}_$3_$1_r$REP.log 2>&1

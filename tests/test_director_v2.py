@@ -185,3 +185,40 @@ def test_v2_model_numpy_heads_if_shipped():
     out, st = m.step(st, np.zeros(F, np.float32), np.zeros(director.K, np.int64), np.zeros(director.W, np.int64),
                      np.zeros((director.W, 4), np.float32), np.zeros((director.W, director.WF2), np.float32))
     assert 0 <= out["addr"] <= 1 and abs(float(out["route"].sum()) - 1) < 1e-5 and out["pii"].shape == (director.W,)
+
+
+def test_director_mode_still_feeds_the_speculator_the_fused_eot(monkeypatch):
+    """FLUX_SOFT=director only changes who owns the soft endpoint: the speculator's search-efficiency release keeps
+    getting the fused end-of-turn score (it never did before, and the director A/B lost ~240 ms to later searches)."""
+    import asyncio
+
+    class FakeModel:
+        thr = {"director_eot": [0.99, 0.99]}                       # never endpoints here: only the speculator matters
+
+    class FakeStream:
+        def step(self, r, fc, f=None, plan=None):
+            return {"eot": 0.2, "fire": 0.1, "draft": 0.1, "keep": np.zeros(director.W), "n": len(r["words"]),
+                    "words": list(r["words"])}
+
+    monkeypatch.setattr(director, "_model", FakeModel())
+    monkeypatch.setattr(config, "DIRECTOR", True)
+    monkeypatch.setattr(config, "FLUX_SOFT", "director")
+    monkeypatch.setattr(config, "SEMANTIC_ENDPOINT", True)
+    from test_confidence import _ws
+    got = []
+
+    async def run():
+        s = Session(lambda e: None, mode="headstart")
+        s.dstream = FakeStream()
+        orig = s.spec.on_eot
+        s.spec.on_eot = lambda p, src="fused": (got.append((p, src)), orig(p, src))
+        try:
+            ws = _ws(["who", "founded", "the", "company", "nvidia"])
+            s._audio_end = ws[-1]["end"] + 0.6
+            s.on_turn_info("EagerEndOfTurn", 0.6)
+            s.on_partial(ws)
+            s.on_turn_tick("EagerEndOfTurn", ws)
+        finally:
+            s.close()
+    asyncio.run(run())
+    assert got and got[-1][1] == "fused" and 0.0 <= got[-1][0] <= 1.0

@@ -559,6 +559,14 @@ class Session:
                     if config.DIRECTOR_SPEC:
                         self.spec.on_frame(f)          # its fire / draft heads just changed: let the speculator act
                     if mode == "director" and self.semantic and not self.busy:
+                        # the speculator's search-efficiency release (SPEC_EOT_FIRE, tuned on the fused score) gets the
+                        # same fused end-of-turn score as under FLUX_SOFT=fused: only the soft endpoint changes owner.
+                        # (Without this, director mode never fed the speculator: fewer early searches, later
+                        # sources, +240 ms ready on the showcase A/B, runs/ab_v2_showcase_*_r1.json.)
+                        p = confidence.eot_score(self.eot_features(f, self.last_ws))
+                        if p is not None:
+                            self.eot_last = p
+                            self.spec.on_eot(p)
                         th = (director.model().thr or {}).get("director_eot") or [0.65, 0.9]
                         thr = th[0] if ev == "EagerEndOfTurn" else th[1]
                         if out["eot"] >= thr and not self._quiet():
