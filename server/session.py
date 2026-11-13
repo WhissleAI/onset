@@ -350,6 +350,8 @@ class Session:
                            local_ok=bool(len(lanes.index())), carry=self.carry if carry is None else carry)
         if self.wconf and len(self.wconf) == f.n and any(c is not None for c in getattr(self, "confs", []) or []):
             f.wconf = tuple(self.wconf)                # only when the ear gives word confidences (Flux / nova)
+        if config.DIRECTOR_PII:
+            director.apply_pii(f, self.director_out)
         return f
 
     def on_partial(self, ws: list[dict], now: float | None = None):
@@ -418,7 +420,7 @@ class Session:
             return False                           # "is it bad to take a": mid-phrase, never complete
         if self.busy or not f.has_content() or (self.soft is not None and self.soft["sig"] == sig):
             return False
-        if self.open_mic and open_mic_skip(f):
+        if self.open_mic and self._not_request(f):
             return False                           # open mic, not a request: the ear's final labels it, no answer
         if self.final_task is not None and not self.final_task.done():
             self.final_task.cancel()               # superseded by this longer question: one soft answer at a time
@@ -432,6 +434,9 @@ class Session:
         """Arc audio metadata from the ear (server/arcmeta.py). Shown in the read-out; never raises. With
         FLUX_SOFT=eager+arc it can also release an eager end-of-turn that was waiting for Arc's command_complete."""
         if self.closed:
+            return
+        if m.get("x2_only"):                      # director v2 streams (every 100 ms chunk): kept, not shown
+            self.arc_x2, self.arc_aw, self.arc_af = m.get("x2"), m.get("aw"), m.get("af")
             return
         self.arc = m
         self.emit({"t": "arc", **m, "ms": self.spec.ms()})
@@ -578,11 +583,26 @@ class Session:
         except Exception as e:
             self.emit({"t": "error", "where": "on_turn_tick", "error": f"{type(e).__name__}: {e}"[:300]})
 
+    def _not_request(self, f, out: dict | None = None) -> str | None:
+        """Open-mic gate: why this utterance is heard but not answered, or None to answer it. The rule
+        (open_mic_skip) unless DIRECTOR_ADDRESSED=1 and the director has read these words (its addressed head)."""
+        if config.DIRECTOR_ADDRESSED:
+            o = out if out is not None else self.director_out
+            if o and "addr" in o and [framemod.norm(w) for w in o.get("words") or []] == \
+                    [framemod.norm(w) for w in f.words][-len(o.get("words") or []):]:
+                thr = config.DIRECTOR_ADDR_THR or float((director.model().thr or {}).get("director_addr", 0.5))
+                return "not_addressed" if o["addr"] < thr else None
+        return open_mic_skip(f)
+
     def _director_json(self):
         o = self.director_out
         if not o:
             return None
-        return {"eot": round(o["eot"], 3), "fire": round(o["fire"], 3), "draft": round(o["draft"], 3)}
+        j = {"eot": round(o["eot"], 3), "fire": round(o["fire"], 3), "draft": round(o["draft"], 3)}
+        if "addr" in o:
+            r = director.ROUTES[int(np.argmax(o["route"]))]
+            j.update(addr=round(o["addr"], 3), route=r, route_p=round(float(np.max(o["route"])), 3))
+        return j
 
     async def _soft_answer(self, spec: Speculator, soft: dict, f, extended: bool):
         last_end = soft["end"]
@@ -610,6 +630,7 @@ class Session:
         """The ear closed an utterance: freeze what the answer needs and start listening for the next question at once
         (its partials may arrive while this one is still being answered)."""
         job = {"ws": ws, "spec": self.spec, "soft": self.soft, "final_task": self.final_task, "error": None,
+               "director": self.director_out,
                "levels": list(self.q_levels), "q": self.qid}
         try:
             self._sync_words(ws)
@@ -688,8 +709,10 @@ class Session:
             # build at answer time: an earlier question that finished meanwhile may have updated the carried entity
             f = framemod.build(job["words"], job["spans"], job["current"], job["events"], job["prev_intent"],
                                local_ok=bool(len(lanes.index())), carry=self.carry)
+            if config.DIRECTOR_PII:
+                director.apply_pii(f, job.get("director"))
             spec.context = self.context
-            why = open_mic_skip(f) if (self.open_mic and soft is None) else None
+            why = self._not_request(f, job.get("director")) if (self.open_mic and soft is None) else None
             if why:
                 # open mic, not a request: heard and labelled, no search and no answer (not part of the conversation)
                 self.emit({"t": "heard", "why": why, "ms": spec.ms(), "speech_end_ms": round(last_end * 1000),

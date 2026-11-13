@@ -112,6 +112,13 @@ class ArcMeta:
         self.audio_s = 0.0
         self.pending = 0
         self.lag_drops = 0
+        # director v2 streams (config.DIRECTOR_STREAMS / DIRECTOR_ARC_EAR; off by default)
+        self.extra = ArcExtra() if (config.DIRECTOR_STREAMS or config.DIRECTOR_ARC_EAR) else None
+        self.ear_stream = None
+        if config.DIRECTOR_ARC_EAR and self.v != "transcriber":
+            self.ear_stream = a.stream(domain=domain, transcript="builtin", partials=True)
+        self.aw: list = []
+        self.af: list = []
 
     # ------------------------------------------------------------------ in (from the ear, on the event loop)
     def feed(self, pcm: np.ndarray):
@@ -158,10 +165,33 @@ class ArcMeta:
     def _feed(self, pcm):
         t = time.perf_counter()
         out = self.stream.feed(pcm)
+        if self.extra is not None:
+            self._feed_extra(pcm)
         self.compute_s += time.perf_counter() - t
         self.audio_s += len(pcm) / 16000
         self.pending = max(0, self.pending - 1)
         self._summarize(out)
+
+    def _feed_extra(self, pcm):
+        """Director v2: Arc's unshipped heads + level (and the Arc ear's own words) -> on_meta({"x2_only": ...})."""
+        o = self.offset
+        if config.DIRECTOR_STREAMS:
+            self.extra.step(self.stream, pcm)
+        if self.ear_stream is not None:
+            ob = self.ear_stream.feed(pcm)
+            for fu in ob.get("transcript") or []:
+                self.af.append([fu.get("text", ""), None if fu.get("start") is None else fu["start"] + o,
+                                None if fu.get("end") is None else fu["end"] + o])
+                self.af = self.af[-3:]
+                self.aw = []
+            p = ob.get("transcript_partial")
+            if p is not None:
+                self.aw = [] if p.get("final") else [
+                    (w["text"], None if w.get("start") is None else w["start"] + o,
+                     None if w.get("end") is None else w["end"] + o) for w in (p.get("words") or [])]
+        self._emit({"x2_only": True, "x2": self.extra.state() if config.DIRECTOR_STREAMS else None,
+                    "aw": [list(w) for w in self.aw] if self.ear_stream is not None else None,
+                    "af": list(self.af) if self.ear_stream is not None else None})
 
     def _flush(self):
         out = self.stream.flush()

@@ -178,6 +178,21 @@ DRAFT_ON_LAND = os.environ.get("DRAFT_ON_LAND", "0") == "1"
 DIRECTOR = os.environ.get("DIRECTOR", "off").strip().lower() in ("1", "on", "true")
 DIRECTOR_SPEC = os.environ.get("DIRECTOR_SPEC", "0") == "1"
 DIRECTOR_KEEP = os.environ.get("DIRECTOR_KEEP", "0") == "1"
+# Director v2 (a v2 model in server/director/; PROGRESS "Director v2"). Every hook defaults OFF.
+#   DIRECTOR_STREAMS=1   ArcMeta also pushes the Arc heads the assistant domain doesn't ship + the audio level
+#                        (arcmeta.ArcExtra) to the director on every 100 ms chunk (without it those inputs read "missing")
+#   DIRECTOR_ARC_EAR=1   ArcMeta also runs Arc's own decoder on the same audio: the Arc ear's words next to Flux's (CPU)
+#   DIRECTOR_ADDRESSED=1 open mic: the addressed head decides "heard, not a request" (session.open_mic_skip's rule
+#                        is the fallback when there is no reading); DIRECTOR_ADDR_THR overrides the shipped threshold
+#   DIRECTOR_ROUTE=1     the route head releases / holds paid speculation before the router's rules can tell the lane
+#   DIRECTOR_PII=1       the pii head picks the words kept out of the search (instead of frame._pii_hide)
+DIRECTOR_STREAMS = os.environ.get("DIRECTOR_STREAMS", "0") == "1"
+DIRECTOR_ARC_EAR = os.environ.get("DIRECTOR_ARC_EAR", "0") == "1"
+DIRECTOR_ADDRESSED = os.environ.get("DIRECTOR_ADDRESSED", "0") == "1"
+DIRECTOR_ADDR_THR = float(os.environ.get("DIRECTOR_ADDR_THR", "0") or 0)       # 0 = the model's own (director.json)
+DIRECTOR_ROUTE = os.environ.get("DIRECTOR_ROUTE", "0") == "1"
+DIRECTOR_ROUTE_THR = float(os.environ.get("DIRECTOR_ROUTE_THR", "0.8"))
+DIRECTOR_PII = os.environ.get("DIRECTOR_PII", "0") == "1"
 STALE_CANCEL = os.environ.get("STALE_CANCEL", "0") == "1"   # cancel in-flight searches the speaker revised away
 WEB_BREAKER_FAILS = int(os.environ.get("WEB_BREAKER_FAILS", "2"))   # consecutive primary-backend failures before the cache takes over
 MEMORY_TTL_S = float(os.environ.get("MEMORY_TTL_S", "180"))   # push-to-talk follow-ups keep context this long

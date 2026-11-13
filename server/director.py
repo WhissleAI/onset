@@ -137,7 +137,11 @@ def session_record(sess, f, ws: list[dict], ev: str) -> dict:
             "act_question": f.act_question, "has_content": f.has_content(), "content_idx": list(f.content_idx),
             "slots": [list(s) for s in f.slots], "query": f.query(), "event": ev, "eot": float(sess.eot_p or 0.0),
             "pause": max(0.0, sess._audio_end - (ends[-1] if ends else 0.0)), "turn": 0,
-            "arc_cc_p": a.get("cc_p"), "arc_cc_t": cc_t, "arc_for_me": a.get("for_me")}
+            "arc_cc_p": a.get("cc_p"), "arc_cc_t": cc_t, "arc_for_me": a.get("for_me"),
+            # v2 streams (None = not running: the model reads them as missing)
+            "starts": [(t[0] or 0.0) for t in (getattr(sess, "times", None) or [])], "t": sess._audio_end,
+            "x2": getattr(sess, "arc_x2", None), "aw": getattr(sess, "arc_aw", None),
+            "af": getattr(sess, "arc_af", None)}
 
 
 # ---------------------------------------------------------------------------------------------- v2 input streams
@@ -327,6 +331,8 @@ class Model:
         self.buckets = c["buckets"]
         self.thr = meta.get("thr", {})
         self.eps = float(np.finfo(np.float32).eps)
+        self.v2 = bool(meta.get("v2"))
+        self.groups = list(meta.get("groups") or [])          # v2 input streams this model reads (GROUP_ORDER order)
 
     def lin(self, name, x):
         y = x @ self.p[name + ".weight"].T
@@ -373,7 +379,7 @@ class Model:
         out = self.lin(pre + "out_proj", y * _silu(self.lin(pre + "in_proj", nu)))
         return out, h, bxn
 
-    def step(self, state, feats, toks, wtok, wfeat):
+    def step(self, state, feats, toks, wtok, wfeat, wfeat2=None):
         p = self.p
         e = self.emb(toks)
         m = (toks > 0).astype(np.float32)[:, None]
@@ -393,8 +399,17 @@ class Model:
         we = self.emb(wtok)
         keep = (we @ self.lin("wq", hN)) + self.lin("wf", wfeat)[:, 0] + self.lin("wb", hN)[0]
         keep = np.where(wtok > 0, keep, -1e4)
-        return {"eot": float(_sigmoid(o[0])), "fire": float(_sigmoid(o[1])), "draft": float(_sigmoid(o[2])),
-                "keep": _sigmoid(keep)}, new
+        r = {"eot": float(_sigmoid(o[0])), "fire": float(_sigmoid(o[1])), "draft": float(_sigmoid(o[2])),
+             "keep": _sigmoid(keep)}
+        if self.v2:
+            r["addr"] = float(_sigmoid(o[3]))
+            z = o[4:9] - o[4:9].max()
+            e = np.exp(z)
+            r["route"] = e / e.sum()                        # card, facts, web, local, none
+            wf = np.concatenate([wfeat, wfeat2 if wfeat2 is not None else np.zeros((len(wfeat), WF2), np.float32)], 1)
+            pii = (we @ self.lin("wq2", hN)) + self.lin("wf2", wf)[:, 0] + self.lin("wb2", hN)[0]
+            r["pii"] = _sigmoid(np.where(wtok > 0, pii, -1e4))
+        return r, new
 
 
 _model = None
@@ -411,6 +426,30 @@ def model() -> Model | None:
     return _model
 
 
+ROUTES = ["card", "facts", "web", "local", "none"]
+
+
+def _same_tail(out: dict, words: list) -> bool:
+    ow = [norm(w) for w in out.get("words") or []]
+    return bool(ow) and out.get("n") == len(words) and ow == [norm(w) for w in words][-len(ow):]
+
+
+def apply_pii(f, out: dict | None, thr: float | None = None) -> bool:
+    """DIRECTOR_PII=1: the pii head's hidden words replace frame._pii_hide's (profanity stays hidden). Only when the
+    director has read exactly these words; else the rule stands. Slots were already built from the rule's spans."""
+    if not out or "pii" not in out or not _same_tail(out, f.words):
+        return False
+    m = model()
+    thr = thr if thr is not None else float(((m.thr if m else {}) or {}).get("director_pii", 0.5))
+    n = out["n"]
+    k = min(n, W)
+    hide = {n - k + j for j in range(k) if out["pii"][j] >= thr}
+    from .frame import PROFANITY
+    hide |= {i for i, w in enumerate(f.words) if norm(w) in PROFANITY}
+    f.redact_tok = frozenset(hide)
+    return True
+
+
 class Stream:
     """One utterance's director state (Session keeps one per question)."""
 
@@ -420,13 +459,44 @@ class Stream:
         self.out: dict | None = None
         self.turn_words = None
 
-    def step(self, r: dict, fc: list[float]) -> dict | None:
+    def step(self, r: dict, fc: list[float], f=None, plan=None) -> dict | None:
+        """r: session_record (+ for v2: "starts", and "x2" / "aw" / "af" when those streams run); f / plan: the live
+        frame and router plan (v2 tag stream; rebuilt from r when not given)."""
         m = model()
         if m is None or not r["words"]:
             return None
         x = step_feats(r, self.prev, fc)
+        wfeat2 = None
+        if m.v2:
+            if f is None:
+                f = frame_of(r)
+            if m.groups:
+                x = np.concatenate([x, step_feats2(r, self.prev, f, plan, groups=m.groups)])
+            wfeat2 = word_feats2(r, f)
         toks, wtok, wfeat = step_tokens(r, fc)
-        self.out, self.state = m.step(self.state, x, toks, wtok, wfeat)
+        self.out, self.state = m.step(self.state, x, toks, wtok, wfeat, wfeat2)
         self.out["n"] = len(r["words"])
+        self.out["words"] = list(r["words"][-W:])
         self.prev = r
         return self.out
+
+    # ---------------------------------------------------------------- v2 read-outs (every hook defaults OFF)
+    def addressed(self) -> float | None:
+        """p(the utterance is a request to the assistant) at the newest update (open mic gate), None without v2."""
+        return None if not self.out or "addr" not in self.out else self.out["addr"]
+
+    def route(self) -> tuple[str, float] | None:
+        """(lane, p) the router will take for this question's final words, called from the partial words."""
+        if not self.out or "route" not in self.out:
+            return None
+        k = int(np.argmax(self.out["route"]))
+        return ROUTES[k], float(self.out["route"][k])
+
+    def pii_hide(self, thr: float) -> set:
+        """Indices (into the current words) the pii head keeps out of the search."""
+        if not self.out or "pii" not in self.out:
+            return set()
+        n = self.out["n"]
+        p = self.out["pii"]
+        off = n - min(n, W)
+        return {off + j for j in range(min(n, W)) if p[j] >= thr}
