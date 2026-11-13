@@ -1,0 +1,179 @@
+{
+ "source": "runs/ab_showcase.json",
+ "run_created": "2026-11-13T01:54:50-0800",
+ "criteria": [
+  "both answers read by hand and judged correct/useful for the question as asked",
+  "Head Start actually faster on this run (numbers copied from the run, never edited)",
+  "variety: 10 different kinds, 5 of the 6 voices, 3.1-4.4 s of speech",
+  ">=2 with fillers (sc13 'uh', sc25 'so, um'); no self-correction qualified (see excluded)",
+  ">=3 current/sports/weather (sc05 news, sc30 sports, sc01 weather)"
+ ],
+ "selected": [
+  {
+   "id": "sc13",
+   "text": "uh, my iPhone won't charge anymore, what should I try first",
+   "kind": "tech",
+   "voice": "kokoro:am_fenrir",
+   "dur_s": 3.64,
+   "baseline_ready_ms": 3374,
+   "headstart_ready_ms": 856,
+   "saved_ms": 2518,
+   "headstart_path": "speculative-hit",
+   "why": "tech help with a filler lead-in ('uh'); both give the same correct checklist (cable/port/lint, then force restart); largest saving in the set"
+  },
+  {
+   "id": "sc19",
+   "text": "do I need a visa to visit Japan from the US",
+   "kind": "travel",
+   "voice": "kokoro:am_fenrir",
+   "dur_s": 3.24,
+   "baseline_ready_ms": 2855,
+   "headstart_ready_ms": 866,
+   "saved_ms": 1989,
+   "headstart_path": "draft-reuse",
+   "why": "travel rule; both correct (no visa, up to 90 days); Head Start reused its draft written while the user spoke"
+  },
+  {
+   "id": "sc15",
+   "text": "is it bad to take ibuprofen on an empty stomach",
+   "kind": "health",
+   "voice": "kokoro:af_nova",
+   "dur_s": 3.5,
+   "baseline_ready_ms": 3067,
+   "headstart_ready_ms": 1200,
+   "saved_ms": 1867,
+   "headstart_path": "speculative-hit",
+   "why": "health yes/no; both correct and appropriately cautious, citing the same source"
+  },
+  {
+   "id": "sc17",
+   "text": "what are some really good ramen places in Seattle",
+   "kind": "local",
+   "voice": "kokoro:af_heart",
+   "dur_s": 3.14,
+   "baseline_ready_ms": 2860,
+   "headstart_ready_ms": 1106,
+   "saved_ms": 1754,
+   "headstart_path": "speculative-hit",
+   "why": "local recommendation with a named city (Seattle); both list the same four real ramen spots"
+  },
+  {
+   "id": "sc11",
+   "text": "how long should I boil an egg if I want the yolk soft",
+   "kind": "recipe",
+   "voice": "kokoro:am_michael",
+   "dur_s": 3.53,
+   "baseline_ready_ms": 2644,
+   "headstart_ready_ms": 1083,
+   "saved_ms": 1561,
+   "headstart_path": "speculative-hit",
+   "why": "cooking how-to; both give consistent timings (about 6-8 min for a soft yolk)"
+  },
+  {
+   "id": "sc05",
+   "text": "hey, what's the latest news about OpenAI this week",
+   "kind": "news",
+   "voice": "kokoro:af_bella",
+   "dur_s": 3.48,
+   "baseline_ready_ms": 2146,
+   "headstart_ready_ms": 1115,
+   "saved_ms": 1031,
+   "headstart_path": "speculative-hit",
+   "why": "current company news this week; both report the same Q3 revenue (+50% to $10B) and the ChatGPT Businesses beta"
+  },
+  {
+   "id": "sc23",
+   "text": "what's the best robot vacuum for a house with a lot of pet hair",
+   "kind": "product",
+   "voice": "kokoro:af_heart",
+   "dur_s": 4.06,
+   "baseline_ready_ms": 2223,
+   "headstart_ready_ms": 1008,
+   "saved_ms": 1215,
+   "headstart_path": "speculative-miss",
+   "why": "product recommendation; both pick the Dreame L40 Ultra and Ecovacs X8 Pro Omni from the same review"
+  },
+  {
+   "id": "sc25",
+   "text": "so, um, what exactly is a Roth IRA and how does it work",
+   "kind": "definition",
+   "voice": "kokoro:af_bella",
+   "dur_s": 4.41,
+   "baseline_ready_ms": 2164,
+   "headstart_ready_ms": 1777,
+   "saved_ms": 387,
+   "headstart_path": "speculative-hit",
+   "why": "definition with fillers ('so, um'); both correct (after-tax contributions, tax-free qualified withdrawals)"
+  },
+  {
+   "id": "sc01",
+   "text": "what's the weather gonna be like in Chicago tomorrow",
+   "kind": "weather",
+   "voice": "kokoro:af_heart",
+   "dur_s": 3.21,
+   "baseline_ready_ms": 2228,
+   "headstart_ready_ms": 1704,
+   "saved_ms": 524,
+   "headstart_path": "speculative-hit",
+   "why": "weather with a named city; both give the same forecast (mostly sunny, high 12 C, low 6 C). Caveat: the baseline says sources were dated; the forecast day is not verified"
+  },
+  {
+   "id": "sc30",
+   "text": "who won the Formula One Grand Prix this past weekend",
+   "kind": "sports",
+   "voice": "kokoro:am_fenrir",
+   "dur_s": 3.56,
+   "baseline_ready_ms": 3121,
+   "headstart_ready_ms": 2926,
+   "saved_ms": 195,
+   "headstart_path": "speculative-miss",
+   "why": "sports result this past weekend; both say Norris won the Sao Paulo GP on Nov 8 from pole. Small saving (195 ms) - shown as an honest close race"
+  }
+ ],
+ "selected_note": "The 10 are hand-picked wins; use full_set for any aggregate claim.",
+ "full_set": {
+  "n": 30,
+  "headstart_faster": "19/30",
+  "paired_median_saved_ms": 352,
+  "paired_mean_saved_ms": 523,
+  "p50_ready_ms": {
+   "baseline": 2226,
+   "headstart": 1813
+  },
+  "p90_ready_ms": {
+   "baseline": 3124,
+   "headstart": 2282
+  },
+  "accuracy_scored": {
+   "n_scored": 15,
+   "baseline": 1.0,
+   "headstart": 1.0,
+   "note": "keyword match only, 15 timeless questions; the other 15 are time-varying and were judged by hand"
+  },
+  "tavily_credits_per_question": {
+   "baseline": 1.0,
+   "headstart": 4.7
+  },
+  "headstart_slower_on": [
+   "sc02",
+   "sc06",
+   "sc07",
+   "sc08",
+   "sc12",
+   "sc14",
+   "sc16",
+   "sc20",
+   "sc22",
+   "sc26",
+   "sc28"
+  ]
+ },
+ "excluded_notable": {
+  "sc27": "self-correction 'Boston, sorry, I mean Denver': BOTH sides answered Boston (Arc split the turn at 'sorry'); a real failure",
+  "sc28": "self-correction handled correctly by both, but Head Start was 535 ms slower",
+  "sc08": "Head Start answer wrong (quoted 1 EUR = 1.1 USD instead of converting $100)",
+  "sc07,sc09": "answers are pasted page text rather than a spoken answer on one or both sides",
+  "sc29": "both cite a May 19 launch date that is stale in November",
+  "sc03,sc04,sc22": "one or both sides lack current data (stale game / no fixtures / no comparison)"
+ }
+}
