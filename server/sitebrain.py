@@ -21,6 +21,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 
 import numpy as np
 
@@ -29,7 +30,8 @@ from . import config
 SITE_BRAIN = os.environ.get("SITE_BRAIN", "1") == "1"
 SITE_MIN_SIM = float(os.environ.get("SITE_MIN_SIM", "0.5"))
 SITE_K = int(os.environ.get("SITE_K", "4"))
-SITE_TIMEOUT_MS = float(os.environ.get("SITE_TIMEOUT_MS", "250"))
+SITE_TIMEOUT_MS = float(os.environ.get("SITE_TIMEOUT_MS", "800"))   # query embedding (only for scoped questions)
+SITE_TERM_SIM = float(os.environ.get("SITE_TERM_SIM", "0.66"))
 SITE_DIR = None          # tests: override the sites directory
 
 
@@ -42,8 +44,16 @@ class Site:
     vecs: np.ndarray | None = None
 
     def scoped(self, text: str) -> bool:
-        low = " " + " ".join(re.findall(r"[a-z0-9]+", (text or "").lower())) + " "
-        return any(f" {t} " in low for t in self.terms)
+        """The question names the site: a term, or a near-miss of one as the ear wrote it ("tavali" for "tavily":
+        same first 3 letters, string similarity >= SITE_TERM_SIM, words of 5+ letters)."""
+        words = re.findall(r"[a-z0-9]+", (text or "").lower())
+        for t in self.terms:
+            if t in words:
+                return True
+            if len(t) >= 5 and any(len(w) >= 5 and w[:3] == t[:3] and SequenceMatcher(None, w, t).ratio() >= SITE_TERM_SIM
+                                   for w in words):
+                return True
+        return False
 
 
 _sites: list[Site] | None = None

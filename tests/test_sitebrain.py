@@ -92,3 +92,17 @@ def test_chunk_splits_at_boundaries():
     text = "# Title\n\n" + "A sentence about credits. " * 60 + "\n\nShort tail paragraph that is long enough."
     cs = sitebrain.chunk(text, 300)
     assert all(len(c) <= 300 for c in cs) and len(cs) >= 5
+
+
+def test_scope_takes_the_ears_near_misses_only():
+    s = _site([[1, 0], [0, 1]])
+    assert s.scoped("how much does tavali charge to extract")          # Flux heard "tavali"
+    assert not s.scoped("travel to italy") and not s.scoped("tally the votes") and not s.scoped("tavern hours")
+    import json as _j
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    for f in ("eval/questions.jsonl", "eval/showcase/questions.jsonl", "eval/current/questions.jsonl",
+              "index/questions_local.jsonl"):
+        for ln in (root / f).read_text().splitlines():
+            if ln.strip():
+                assert not s.scoped(_j.loads(ln)["text"]), ln       # no other eval question reaches the site tier

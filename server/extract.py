@@ -112,7 +112,8 @@ async def recheck_page(claim: dict, answer: str, docs: list) -> dict:
         out["why"] = "no web source"
         return out
     try:
-        r = await extract([u], query=claim_sentence(answer, claim.get("text", "")))
+        from . import pagefetch          # VERIFY_FETCH=tavily (this module's /extract, default) | telem
+        r = await pagefetch.fetch([u], query=claim_sentence(answer, claim.get("text", "")))
     except ExtractError as e:
         out.update(status="unconfirmed", error=str(e))
         return out

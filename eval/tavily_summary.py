@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+from collections import Counter
 from pathlib import Path
 
 
@@ -35,7 +36,9 @@ def arm(rs: list[dict]) -> dict:
             "ready_p50_ms": pct(ready, .5), "ready_p90_ms": pct(ready, .9),
             "answered": sum(1 for x in ready if x is not None),
             "errors": sum(1 for r in rs if r.get("error")),
-            "web_fallback_rows": sum(1 for r in rs if (r.get("web_backend") or "tavily") not in ("tavily", None))}
+            # where the answer's sources came from: tavily (paid) / card / facts / index (free tiers);
+            # wikipedia / cache would mean the paid lane failed over (none expected)
+            "answer_source": dict(sorted(Counter(r.get("web_backend") or "none" for r in rs).items()))}
 
 
 def summarize(rows: list[dict]) -> dict:

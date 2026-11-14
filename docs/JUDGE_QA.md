@@ -9,6 +9,7 @@
 - **[IDX]** `index/README.md`.
 - **[PROG]** `PROGRESS.md`.
 - **[DEMO]** `DEMO_CHECKLIST.md`.
+- **[TAV]** `docs/RETRIEVAL.md` section 10, `eval/results/tavily_ab_2026-11-14.json`: real-Tavily A/B, today's stack.
 
 Code references point into `server/`.
 
@@ -43,16 +44,21 @@ The levers:
   real calls [PROG].
 
 ### 3. How much more does speculation cost per query?
-Head Start makes 2.38 web calls per question against 0.66 for the baseline [AB]. The baseline is lower because local
+**On real Tavily, today: less than plain search.** 0.46 vs 0.63 credits per question over 100 spoken questions
+(showcase 0.70 vs 0.73, 58 set 0.22 vs 0.52, current events 1.00 vs 0.92), 486 ms sooner at the paired median,
+accuracy 80/82 vs 79/82 [TAV]. Mid-sentence only free lanes run (cards, Wikidata, the local index); the one paid
+search goes out when the meaning is final, and a second only on a meaning change (`COST_MODE=parity`). The rest of
+this answer describes the earlier speed budget, which is still available as `COST_MODE=speed`.
+
+In the earlier build, Head Start made 2.38 web calls per question against 0.66 for the baseline [AB]. The baseline is lower because local
 questions never touch the web. Both are capped:
 - **Web calls:** at most 6 speculative calls plus 1 final per question (`WEB_BUDGET`). The most any question used
   in the final run was 6 [AB].
 - **Drafts:** about 2 per question (1.98). Each is capped at 160 output tokens and cancelled as soon as the meaning
   moves on.
 
-On Tavily, each call is a `fast` search at 1 credit [PROG]. That puts Head Start at **about 2.4 credits per
-question**. This is an estimate from the measured call count; the fake-Tavily simulation measured 2.8 credits against
-1 [PROG]. The credit limits:
+On Tavily, each call is a `fast` search at 1 credit [PROG], so that build was at about 2.4 credits per question. The
+credit limits (unchanged):
 - A session budget of 120 credits, and speculation stops 2 credits early, so the final query always has credit [PROG].
 - A process cap of 800 credits, below the free plan's 1000 per month [PROG].
 - A cache that prevents paying twice for the same query [PROG].
@@ -124,8 +130,10 @@ answers for utterances 12 dB quieter than the last question. Neither has been re
 demo, a close mic keeps us at 20 dB or better.
 
 ### 9. Where is Tavily? The hackathon is co-hosted by them.
-The Tavily lane is built and merged, but we don't have a key yet, so every number here uses the keyless Wikipedia
-fallback (`web_backend: wikipedia` in [AB]).
+Tavily is the web lane, and the headline was re-run on it on 2026-11-14 with today's stack [TAV]: 100 spoken questions
+(showcase 30, the 58 set, 12 current-events questions asked that day), Onset vs plain search after the end of turn.
+Onset: 0.46 credits per question vs 0.63, paired median 486 ms sooner (faster on 76 of 100), accuracy 80/82 vs 79/82.
+Most other numbers in this document (the [AB] tables) are from the keyless Wikipedia lane.
 
 What the lane does (all from [PROG]):
 - `fast` depth (1 credit) for both speculative and final searches. `auto_parameters` is off so the depth is never
@@ -134,13 +142,9 @@ What the lane does (all from [PROG]):
 - Credits metered per fire and reconciled against `usage.credits`.
 - A TTL cache, and a circuit breaker that falls back to Wikipedia.
 
-It is tested only against a local fake built from the API docs. In a simulation of a slow lane (fake Tavily at
-600–1500 ms), Head Start was still faster on 18 of 18 runs, saving about 300–340 ms. A slow lane can't be hidden
-completely because the final query needs the last word.
-
-A 12-question current-events set (scores, markets, weather, headlines) is ready to run the moment the key exists
-[ROB]. The simulator has already chosen a Tavily-specific setting ("T2"): −20 ms at p50 and 17 % fewer answer-model
-calls in simulation [PROG].
+The test suite also runs it against a local fake built from the API docs (`tests/fake_tavily.py`). Current events on
+real Tavily [TAV]: both arms named the right winner on 6 of 9 gold questions; the misses are stale pages (the 2024
+marathon winner), mid-series reports (World Series) and one ASR miss ("Ballon d'Or" heard as "ball").
 
 ### 10. How do you know the answers are correct, not just fast?
 Answers are keyword-scored, with stems and number words allowed (`eval/run_ab.py`). In the final run [AB]:
@@ -176,7 +180,6 @@ On the local moments lane, a second-stage ranker raised recall@1 from 0.80 to 0.
   serves 57 recorded Wikipedia responses and answers are extracted from the top source. Both are labelled in the
   UI (a one-line notice and per-source badges), and the race stays fair because both modes share the same fallbacks [DEMO].
 - **"What's next?"**
-  - Get the Tavily key, then re-run the A/B and the current-events set.
   - Re-measure 10 dB with the VAD fix.
   - Have a human test the browser mic.
   - Run the eval with real voices, not only TTS.

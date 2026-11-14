@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from server import extract, recheck  # noqa: E402
+from server import extract, lanes, recheck, verify  # noqa: E402
 
 
 def rows(paths):
@@ -32,11 +32,18 @@ def rows(paths):
 
 
 def eligible(r) -> dict | None:
+    """Rows whose live verify badge left claims unconfirmed. The row keeps only the badge, so the claims are rebuilt
+    by re-running verify on the stored snippets (260 chars each, shorter than what the live check saw: a claim the
+    full snippet supported can be picked here; the page then usually confirms it, so this leans optimistic)."""
     v = r.get("verify") or {}
     if not r.get("source_docs") or v.get("status") not in ("disagree", "unverified", "partial"):
         return None
     if (r.get("recheck") or {}).get("status") in ("rechecked", "corrected"):
         return None
+    if not v.get("claims"):
+        docs = [lanes.Doc(id=d.get("url") or d.get("title") or str(i), title=d.get("title") or "", text=d.get("text") or "",
+                          url=d.get("url") or "", source=d.get("source") or "") for i, d in enumerate(r["source_docs"])]
+        v = verify.check(r.get("answer") or "", docs, r.get("question_heard") or r["text"])
     c = recheck.key_claim(v, loose=True)
     if not c or not extract.cited_url(r.get("answer") or "", r["source_docs"], c.get("text", "")):
         return None

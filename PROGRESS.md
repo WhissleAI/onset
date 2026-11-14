@@ -1757,3 +1757,32 @@ OFF by default. Nothing is measured live yet: the key in `.env` answers 401 "Inv
 **UI shots** (Chromium with a fake mic, hold-Space push-to-talk, 1280x720, light + dark, no console errors, no horizontal scroll): scratchpad `feature_shots/arcstate/`. They show the memory panel's "voice you · learned from N questions" line and the "reset voice" button, which clears the line.
 
 **Tests.** `tests/test_arcstate.py` (13): relative pace / hesitation, A/B dedup, enrollment + other-voice flag, resets (all / topic / idle), keyterm selection, flux_url keyterms, opt-in persistence in the data dir with no words on disk, the tap, pitch, persona / director getters, the make_ear handoff, and the ws `arc_reset` / `forget`. Also `tests/test_datadir.py` (2). `tests/test_mic_runs.py`: its fake `make_ear` now accepts the new keyword arguments. Full suite: 569 passed before that one-line fix (2 failures, both in test_mic_runs, from the fake's signature); those 2 now pass.
+## Real Tavily: headline A/B, /extract verify escalation, a site read once (branch feat/tavily; docs/RETRIEVAL.md section 10)
+Audit items 1, 4 and 5 (docs/AUDIT.md). Credits spent on the key: ~158 metered from Tavily's own `usage.credits`
+(plus est. ≤ 12 for the harness's warm-up replays), budget 300. The account `/usage` endpoint lagged (it stayed at
+the same value for over an hour), so the per-call numbers are the ledger.
+
+- **Headline on real Tavily, today's stack** (Flux ear, director, router, Keystone, Parity, the Tavily endpoint
+  timings): 100 spoken questions, Onset vs plain search: **0.46 vs 0.63 credits/q**, paired median **486 ms** sooner
+  (76/100 faster), accuracy 80/82 vs 79/82. Per set: showcase 0.70 vs 0.73 credits/q, 656 ms; 58 set 0.22 vs 0.52,
+  410 ms (the baseline's facts hedge pays while the free Wikidata answer is coming: 17 of 17 extra credits);
+  current events (new set, `eval/current/`, asked 2026-11-14, 9 with hand-checked gold) 1.00 vs 0.92, 424 ms.
+  Load average 31-41 during the runs: quote paired gains, not absolute ms. Numbers:
+  `eval/results/tavily_ab_2026-11-14.json` (`eval/tavily_summary.py`). Supersedes the pre-router 2.43 vs 0.69 run.
+- **/extract** (`server/extract.py`, VERIFY_EXTRACT=0 default): probe 8/10 urls read, p50 244 / p90 571 ms; offline on
+  the A/B rows 3 of 4 unconfirmed claims confirmed by the page; live 1 of 2 escalations confirmed, 196-320 ms after the
+  answer. Stays off: a badge, not an answer; it confirmed a stale (2024) answer because the page says it.
+- **Site brain** (`server/sitebrain.py`, SITE_BRAIN=1; `index/build_site.py`): docs.tavily.com via /map (5 credits)
+  + /extract of 28 pages (5 credits) -> 1,989 passages in the local tier, labelled "Onset index · docs.tavily.com ·
+  as of 2026-11-14". 10 spoken Tavily-API questions: 9/10 answered from the site in both arms, 8/10 right; plain
+  search 0.1 credits/q, Onset 0.4 (3 mid-sentence prefix searches before "Tavily" was said). The ear writes
+  "tavely" / "tavali": the scope check takes near-misses (same first 3 letters, similarity >= 0.66); no other eval
+  question is in scope (test). The first build ran the multimodal model on MPS and reached 11 GB RSS (killed by the
+  lead); the rebuild uses the CPU text model in batches of 8 (~0.7 GB RSS, 10 min under load).
+- **Docs:** RETRIEVAL.md section 10 (+ the Wikipedia limitation), PITCH.md / JUDGE_QA.md cost and "where is Tavily"
+  answers, scorecard "sooner answers" card = 486 ms on real Tavily (quote test green).
+- Harness: run_ab rows carry `source_docs` (urls + 260-char snippets) for offline verify / extract replays.
+- Open: the crawl endpoint page was missed (map limit 50; raise to ~80 or add select_paths for `/endpoint/`);
+  install the site into the Mac app with `HEADSTART_DATA_DIR=<app data dir> .venv/bin/python index/build_site.py
+  --rebuild` (or copy `runs/sites/docs.tavily.com`), not done while the user was testing; scoped questions add one
+  query embedding (~40 ms idle, up to the 800 ms cap under load) to their paid-lane fallback.
