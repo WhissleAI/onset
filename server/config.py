@@ -21,15 +21,22 @@ def _load_dotenv():
 
 _load_dotenv()
 
-ARC_DIR = Path(os.environ.get("ARC_DIR", "/Users/karan/Desktop/work/whissle/models/arc-v1"))
+# Model + data locations (server/modelpaths.py; models/manifest.json; scripts/fetch_models.py fills MODELS_DIR)
+from . import modelpaths as _mp  # noqa: E402
+
+APP_NAME = _mp.app_name()
+MODELS_DIR = _mp.models_dir()
+DATA_DIR = _mp.data_dir()
+ARC_DIR = _mp.resolve("arc-v1", "ARC_DIR")
 ARC_THREADS = int(os.environ.get("ARC_THREADS", "6"))
-EMBED_MODEL = os.environ.get("EMBED_MODEL", "google/embeddinggemma-2")
+EMBED_MODEL = _mp.embed_model()
 EMBED_DEVICE = os.environ.get("EMBED_DEVICE", "mps")
 EMBED_DIM = int(os.environ.get("EMBED_DIM", "768"))
 ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "claude-haiku-5-5")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 WEB_BACKEND = os.environ.get("WEB_BACKEND", "tavily" if TAVILY_API_KEY else "wikipedia")
-INDEX_DIR = Path(os.environ.get("INDEX_DIR", ROOT / "index/data"))
+INDEX_DIR = _mp.resolve("index-data", "INDEX_DIR", legacy=ROOT / "index/data")
+AUDIO_DIR = _mp.resolve("demo-audio", "AUDIO_DIR", legacy=ROOT / "eval/audio")   # replay questions (eval/audio/*.wav)
 
 # Tavily web lane (docs.tavily.com/documentation/api-reference/endpoint/search). Credits: ultra-fast/fast/basic = 1,
 # advanced = 2. Speculative fires are hidden behind speech, so they take a fast depth; the final (post-endpoint) query
@@ -139,9 +146,9 @@ FLUX_SOFT = os.environ.get("FLUX_SOFT", "fused").strip().lower()
 ARC_META = os.environ.get("ARC_META", "mini").strip().lower()
 ARC_CC_WINDOW_S = float(os.environ.get("ARC_CC_WINDOW_S", "0.6"))   # Arc cc event this close to the last word counts
 ARC_META_MAX_PENDING = int(os.environ.get("ARC_META_MAX_PENDING", "20"))    # chunks queued before audio is dropped
-ARC_T_CODE = Path(os.environ.get("ARC_T_CODE", "/Users/karan/dv3work/arc/arc_transcriber"))   # arc_transcriber 1.2.x
-ARC_T_WEIGHTS = Path(os.environ.get("ARC_T_WEIGHTS", str(Path.home() / ".cache/huggingface/hub/models--WhissleAI--arc-v1.1/"
-                                                          "snapshots/6f637153ea4953d81811e68168cd29572316d32b")))
+# ARC_META=transcriber only (opt-in, not bundled): the arc_transcriber 1.2.x code + WhissleAI/arc-v1.1 weights
+ARC_T_CODE = _mp.resolve("arc-transcriber", "ARC_T_CODE")
+ARC_T_WEIGHTS = _mp.resolve("arc-v1.1", "ARC_T_WEIGHTS")
 ARC_T_DEVICE = os.environ.get("ARC_T_DEVICE", "mps")
 ARC_T_CHUNK_S = float(os.environ.get("ARC_T_CHUNK_S", "0.5"))   # Parakeet backbone stream chunk (model default 10 s)
 ARC_T_CTX_S = float(os.environ.get("ARC_T_CTX_S", "1.0"))       # context each side (model default 2 s)
@@ -232,7 +239,7 @@ CACHE_TTL_GENERAL_S = float(os.environ.get("CACHE_TTL_GENERAL_S", str(6 * 3600))
 CACHE_TTL_STABLE_S = float(os.environ.get("CACHE_TTL_STABLE_S", str(3 * 86400)))   # definitions, conversions, ...
 CACHE_MAX = int(os.environ.get("CACHE_MAX", "400"))
 CACHE_PERSIST = os.environ.get("CACHE_PERSIST", "0") == "1"       # write runs/search_cache.json (docs only)
-CACHE_PATH = Path(os.environ.get("CACHE_PATH", ROOT / "runs/search_cache.json"))
+CACHE_PATH = Path(os.environ.get("CACHE_PATH", DATA_DIR / "search_cache.json"))
 
 # ---------------------------------------------------------------------------------------------------- tiered router
 # server/router.py: each question goes to the cheapest source that can answer it. card = live-data verticals
@@ -288,7 +295,7 @@ MEM_EOT_THR = [float(x) for x in os.environ.get("MEM_EOT_THR", "0.4,0.7").split(
 MEM_MAX_TURNS = int(os.environ.get("MEM_MAX_TURNS", "24"))
 MEM_LOOKBACK = int(os.environ.get("MEM_LOOKBACK", "8"))            # turns a reference may reach back
 MEM_PERSIST = os.environ.get("MEM_PERSIST", "1") == "1"            # runs/memory/<client hash>.json (git-ignored)
-MEM_DIR = Path(os.environ.get("MEM_DIR", ROOT / "runs/memory"))
+MEM_DIR = Path(os.environ.get("MEM_DIR", DATA_DIR / "memory"))
 MEM_CONV_TTL_S = float(os.environ.get("MEM_CONV_TTL_S", "1800"))    # conversation entities survive a reconnect this long
 MEM_USER_TTL_S = float(os.environ.get("MEM_USER_TTL_S", str(30 * 86400)))   # user facts ("I live in Denver")
 MEM_USER_FACTS = os.environ.get("MEM_USER_FACTS", "1") == "1"      # learn + use simple facts the user says

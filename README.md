@@ -42,6 +42,8 @@ mic ─▶ Arc (streaming ASR + events) ─▶ Arc Tagger (10M, 0.7 ms/word) ─
 .venv/bin/python -m uvicorn server.app:app --port 8770     # warm-up ~30-60 s; open http://localhost:8770
 .venv/bin/python -m pytest -q tests                         # deterministic tests (fake lanes, LLM, Deepgram, Tavily)
 .venv/bin/python eval/run_ab.py                             # real-audio A/B → runs/ab_latest.{json,png}
+python3 scripts/fetch_models.py status                      # models (models/manifest.json) in ~/Library/Application Support/<APP_NAME>/models
+scripts/build_macapp.sh                                     # native macOS app → dist/<APP_NAME>.app (MACAPP.md)
 ```
 Keys in `.env` (git-ignored): `ANTHROPIC_API_KEY`; `TAVILY_API_KEY` switches the web lane from Wikipedia to Tavily.
 Ear: `EAR=deepgram` + `DEEPGRAM_API_KEY` streams the same audio to Deepgram nova-3 (interim results, 300 ms endpointing)

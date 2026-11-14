@@ -22,8 +22,11 @@ Server -> client: JSON events, each with "mode" ("headstart" | "baseline" | "ear
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
+import os
 import time
+import traceback
 from pathlib import Path
 
 import numpy as np
@@ -38,7 +41,35 @@ from .session import Session
 
 ROOT = config.ROOT
 WEB = ROOT / "web"
-AUDIO = ROOT / "eval" / "audio"
+REQUEST_LOG = os.environ.get("REQUEST_LOG", "1") == "1"   # one line per connection / run / question on stdout
+
+
+def rlog(msg: str):
+    """Request log (server.log in the macOS app): connections, runs, each question's start / end / error. Never keys;
+    question words are cut to 80 characters."""
+    if REQUEST_LOG:
+        print(f"[req {time.strftime('%H:%M:%S')}.{int(time.time() * 1000) % 1000:03d}] {msg}", flush=True)
+
+
+def log_event(e: dict, mode: str, run_id: int):
+    t = e.get("t")
+    q = e.get("q")
+    if t == "endpoint":
+        rlog(f"run {run_id} {mode} q{q} endpoint by={e.get('by')} speech_end={e.get('speech_end_ms')}ms")
+    elif t == "metric":
+        words = str(e.get("question") or "")[:80]
+        rlog(f"run {run_id} {mode} q{q} done ready={e.get('ready_ms')}ms path={e.get('path')} "
+             f"lane={e.get('lane') or e.get('route') or '-'}" + (f" fallback={e['answer_fallback']}" if e.get("answer_fallback") else "")
+             + (f" ERROR={e.get('error')}" if e.get("failed") else "") + f" | {words!r}")
+    elif t == "heard":
+        rlog(f"run {run_id} {mode} q{q} heard (not a request: {e.get('why')})")
+    elif t in ("answer_error", "error"):
+        rlog(f"run {run_id} {mode} q{q} {t}: {str(e.get('error'))[:200]}")
+    elif t == "ear" and e.get("kind") in ("fallback", "error", "warning", "connected"):
+        rlog(f"run {run_id} ear {e.get('kind')} {e.get('ear', '')} {str(e.get('error') or e.get('text') or e.get('reason') or e.get('message') or '')[:160]}")
+    elif t == "run_done":
+        rlog(f"run {run_id} done")
+AUDIO = config.AUDIO_DIR
 app = FastAPI(title="Head Start")
 STATE = {"warm": False}
 
@@ -118,6 +149,23 @@ async def meter_prices():
     return JSONResponse(meter.prices())
 
 
+@app.post("/api/cache/clear")
+async def cache_clear():
+    """Forget cached searches (the persisted search cache file too) and the router's card / fact lookups.
+    The macOS app's "Clear Search Cache" menu item calls it."""
+    from . import router, searchcache
+    c = searchcache.cache()
+    n = len(c)
+    c.clear()
+    try:
+        config.CACHE_PATH.unlink(missing_ok=True)
+    except OSError:
+        pass
+    router.reset_caches()
+    rlog(f"cache cleared ({n} search entries)")
+    return {"ok": True, "cleared": n}
+
+
 @app.get("/audio/{name}")
 async def audio(name: str):
     p = (AUDIO / name).resolve()
@@ -126,10 +174,14 @@ async def audio(name: str):
     return FileResponse(p)
 
 
+_run_ids = itertools.count(1)
+
+
 class Run:
     """One run: an ear feeding one Session per mode, and a sender task draining their events to the socket."""
 
     def __init__(self, ws: WebSocket, modes, domain):
+        self.id = next(_run_ids)
         self.ws = ws
         self.q: asyncio.Queue = asyncio.Queue()
         t0 = time.perf_counter()
@@ -139,10 +191,16 @@ class Run:
         self.clock_set = False           # mic runs: the clock starts at the first audio frame, not at "start"
         self._stop: asyncio.Task | None = None
         self.closed = False
+        self.samples = 0
 
     def _emitter(self, mode):
         def emit(e):
             self.q.put_nowait({**e, "mode": mode})
+            if REQUEST_LOG:
+                try:
+                    log_event(e, mode, self.id)
+                except Exception:          # logging must never break a run
+                    pass
         return emit
 
     def set_clock(self, t0: float):
@@ -154,6 +212,7 @@ class Run:
     async def feed(self, pcm: np.ndarray):
         if self.closed:
             return
+        self.samples += len(pcm)
         if not self.clock_set:
             # the first frame arrives once its samples were captured: sample 0 was len/16000 s ago (the AudioWorklet's
             # setup after "start" must not count as latency)
@@ -179,6 +238,7 @@ class Run:
         await asyncio.shield(self._stop)
 
     async def _do_stop(self):
+        rlog(f"run {self.id} stopping: {self.samples / 16000:.1f}s of audio")
         for s in self.sessions:
             s.end_of_audio()                     # a final held for its continuation is answered now
         try:
@@ -239,6 +299,8 @@ async def _cancel(task: asyncio.Task | None):
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     await ws.accept()
+    conn_t0, conn_runs = time.perf_counter(), 0
+    rlog(f"ws open from {getattr(getattr(ws, 'client', None), 'host', '?')}")
     run: Run | None = None
     task: asyncio.Task | None = None       # a replay streaming into `run`
 
@@ -325,6 +387,7 @@ async def ws_endpoint(ws: WebSocket):
                 await send({"t": "memory", "mode": "sys", "forgot": True, "graph": memmod.Memory().graph()})
                 continue
             if t in ("start", "replay"):
+                conn_runs += 1
                 await end_run()
                 if t == "replay":
                     p = AUDIO / Path(str(data.get("file", ""))).name
@@ -334,6 +397,8 @@ async def ws_endpoint(ws: WebSocket):
                 modes = data.get("modes") or ["headstart", "baseline"]
                 run = Run(ws, modes, data.get("domain", "assistant"))
                 run.kind = "mic" if t == "start" else "replay"
+                rlog(f"run {run.id} start {run.kind}" + (f" {p.name}" if t == "replay" else
+                     (" open-mic" if data.get("open") else " push-to-talk")) + f" modes={','.join(modes)} ear={ear.describe().get('ear')}")
                 if t == "start":
                     fresh = bool(data.get("fresh"))
                     if fresh:
@@ -354,10 +419,16 @@ async def ws_endpoint(ws: WebSocket):
                         await r.stop()
                     task = asyncio.create_task(go())
             elif t == "stop":
+                rlog(f"run {run.id if run else '-'} stop (client)")
                 await end_run()
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        rlog(f"ws handler crashed: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        raise
     finally:
+        rlog(f"ws close after {time.perf_counter() - conn_t0:.0f}s, {conn_runs} run(s)"
+             + (f", run {run.id} still open" if run is not None else ""))
         if task is not None and not task.done():
             task.cancel()
         if run is not None:

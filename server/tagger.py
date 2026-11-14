@@ -10,9 +10,11 @@ import os
 import threading
 from pathlib import Path
 
+from . import modelpaths
+
 ROOT = Path(__file__).resolve().parent.parent
-LIB_PATH = Path(os.environ.get("ARCTAG_LIB", ROOT / "vendor/arctag/libarctag.dylib"))
-MODEL_DIR = Path(os.environ.get("ARCTAG_MODEL_DIR", ROOT / "models/arctag"))
+LIB_PATH = modelpaths.tagger_lib()
+MODEL_DIR = modelpaths.resolve("arctag", "ARCTAG_MODEL_DIR", legacy=ROOT / "models/arctag")
 
 
 class _Opts(ctypes.Structure):

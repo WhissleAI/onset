@@ -120,11 +120,11 @@
     ws = new WebSocket(`${proto}://${location.host}/ws`);
     ws.binaryType = "arraybuffer";
     ws.onopen = () => {
-      wsOpen = true; paintStatus();
+      wsOpen = true; paintStatus(); reconnectBanner(false);
       if (window.HSGraph) { try { window.HSGraph.connected(send); } catch (err) { console.error("graph", err); } }
     };
     ws.onclose = () => {
-      wsOpen = false; paintStatus();
+      wsOpen = false; paintStatus(); reconnectBanner(true);
       if (mic.on) stopMic(false);
       if (run) { run.running = false; }
       setTimeout(connect, 1500);
@@ -135,6 +135,35 @@
       try { e = JSON.parse(m.data); } catch { return; }
       try { onEvent(e); } catch (err) { console.error("event handler failed", e, err); }
     };
+  }
+  // "as of" of a cached search result: HH:MM today, else "Nov 12 14:05" (the cache persists across app launches)
+  function cacheStamp(asOf) {
+    const s = String(asOf || ""), day = s.slice(0, 10), hm = s.slice(11, 16);
+    const today = new Date(), pad = (n) => String(n).padStart(2, "0");
+    if (day === `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`) return hm;
+    const d = new Date(day + "T00:00:00");
+    return isNaN(d) ? s.replace("T", " ").slice(0, 16) : `${d.toLocaleString("en", { month: "short" })} ${d.getDate()} ${hm}`;
+  }
+
+  // a dropped connection is visible (the status dot alone is easy to miss): banner until the socket is back
+  let rcTimer = null;
+  function reconnectBanner(on) {
+    let b = document.getElementById("reconnect");
+    if (on) {
+      if (rcTimer) return;
+      rcTimer = setTimeout(() => {          // brief blips (< 0.6 s) don't flash a banner
+        if (!b) {
+          b = document.createElement("div");
+          b.id = "reconnect"; b.className = "reconnect"; b.setAttribute("role", "status");
+          b.textContent = "Reconnecting to the local server…";
+          document.body.appendChild(b);
+        }
+        b.hidden = false;
+      }, 600);
+    } else {
+      clearTimeout(rcTimer); rcTimer = null;
+      if (b) b.hidden = true;
+    }
   }
   function send(obj) {
     if (!ws || ws.readyState !== 1) { toast("Not connected to the server yet", true); return false; }
@@ -727,7 +756,7 @@
       // d.as_of: served from the search cache (server/searchcache.py), fetched live at that time; else the recorded cache
       // router cards / facts carry their own "as of" (d.card.as_of, d.snapshot): never a "cached" badge on them
       const cachedDoc = d.cached && !d.card && !d.tier;
-      const asOf = cachedDoc && d.as_of ? String(d.as_of).slice(11, 16) : "";
+      const asOf = cachedDoc && d.as_of ? cacheStamp(d.as_of) : "";
       const meta = [cachedDoc ? `${d.source} · CACHED${asOf ? " as of " + d.as_of.replace("T", " ") : ""}` : d.source, d.score != null ? `cos ${(+d.score).toFixed(2)}` : null].filter(Boolean).join(" · ");
       const ts = d.t != null ? `<span class="ts" title="moment starts at ${Math.round(d.t)} s">▶ ${mmss(d.t)}</span>` : "";
       const title = d.t != null ? String(d.title || "").replace(/\s*·\s*\d+:\d+$/, "") : d.title;
@@ -761,7 +790,7 @@
     const calls = m.web_paid != null ? `paid <b>${paid ?? 0}</b> · free <b>${m.free_calls ?? 0}</b>` : `web <b>${m.web_calls ?? 0}</b>`;
     st.push(calls + (m.credits ? ` · <b>${m.credits}</b> cr` : ""), `sources <b>${fmtS(m.sources_ms)}</b>`);
     if (mode !== "headstart") st.push(`done <b>${fmtS(m.done_ms)}</b>`);
-    if (m.search_cached) st.unshift(`<span class="flag" title="web results served from the search cache, not fetched live">cached search ×${m.search_cached}${m.search_cached_as_of ? " · as of " + esc(String(m.search_cached_as_of).slice(11, 16)) : ""}</span>`);
+    if (m.search_cached) st.unshift(`<span class="flag" title="web results served from the search cache, not fetched live">cached search ×${m.search_cached}${m.search_cached_as_of ? " · as of " + esc(cacheStamp(m.search_cached_as_of)) : ""}</span>`);
     if (m.web_paid == null && mode === "headstart" && m.paid_calls != null) st.push(`paid <b>${m.paid_calls}</b>`);
     if (m.answer_by === "card") st.unshift(`<span class="flag ok" title="the live-data card answered: no model call">card answer</span>`);
     if (m.web_replayed) st.unshift(`<span class="flag" title="web results replayed from the recorded cache, not fetched live">cached web ×${m.web_replayed}</span>`);
