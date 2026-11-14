@@ -24,7 +24,8 @@ _ids = itertools.count(1)
 
 # --- tiered router (server/router.py, ROUTER=on) runs inside lanes.web; these only pass its meter through ---------
 ROUTER_KEYS = ("route", "route_vertical", "route_conf", "route_why", "route_ms", "route_fallback", "route_error",
-               "tier", "tier_src", "paid", "free_calls")
+               "tier", "tier_src", "paid", "free_calls", "index_path", "index_p", "index_as_of", "index_ms",
+               "index_shadow", "index_error")
 
 
 def router_counts(web_fires) -> dict:
@@ -180,6 +181,9 @@ class Speculator:
                     fire.landed.set()                       # PLAN: the endpoint / a bridge part needn't wait for vectors
                     self._part_raw(fire)
                 await self._add_docs(docs)                  # vectors first, then "done": drafts rank on vectors
+                if config.INDEX and f is not None:
+                    from .keystone import hook as _ks       # Keystone ingest (server/keystone/): passages, typed
+                    _ks.ingest(f, query, docs, self.vecs, fire.meter)   # edges, value cell; no network, no embedding
                 fire.docs = docs                            # (a fire cancelled mid-embed keeps none: never revived
                 fire.state = "done" if fire.state == "fired" else fire.state     # with vector-less docs)
                 if lane == "web" and fire.meter.get("paid") == 0 and fire.meter.get("tier"):
@@ -1239,6 +1243,9 @@ class Speculator:
         ranked = self._rank_for(f, qvec, 5) if plan_ranked is None else [(d, sc) for d, sc, _ in plan_ranked]
         if fplan is not None and fplan.lane == "card" and plan_ranked is None:
             ranked = self._card_first(ranked, qtext, qvec)
+        if config.INDEX and qvec is not None:
+            from .keystone import hook as _ks
+            _ks.note_qvec(f, q, qvec)                    # Keystone: this question's vector on the value cell it wrote
         if config.CACHE_SEM and qvec is not None:
             c = searchcache.cache()
             rids = {d.id for d, _ in ranked}

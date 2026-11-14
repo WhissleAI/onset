@@ -309,6 +309,11 @@ async def route(query: str, f: Frame, *, final: bool, meter: dict, web_fn):
     lanes.WebResult; meter gets route / tier / paid / free_calls for the metric and the UI chip."""
     from .lanes import WebResult
     t = time.perf_counter()
+    if config.INDEX:
+        # Keystone (server/keystone/): the local tier in front of the paid web lane (typed key / answer-equivalent
+        # question / passages, behind the value-of-information gate). Free; labelled "from your Onset index".
+        from .keystone import hook
+        web_fn = hook.wrap_web(web_fn, f, query, meter)
     p = plan(f) if f.route != "local" else Plan("web", "", 0.0, {}, "local corpus question")
     meter.update(route=p.lane, route_vertical=p.vertical, route_conf=round(p.conf, 2), route_why=p.why[:80])
     if p.lane == "wait":
@@ -355,8 +360,8 @@ async def route(query: str, f: Frame, *, final: bool, meter: dict, web_fn):
             raise Skip(f"{p.lane} lookup {meter['route_fallback']}: no paid fallback while speculating")
     web = await web_fn()
     backend = getattr(web, "backend", "") or meter.get("backend", "")
-    paid = 0 if (getattr(web, "cached", False) or backend in ("cache", "router")) else 1
-    meter.update(tier="web" if len(web) or not cheap else p.lane, paid=paid)
+    paid = 0 if (getattr(web, "cached", False) or backend in ("cache", "router", "index")) else 1
+    meter.update(tier=("index" if backend == "index" else "web") if len(web) or not cheap else p.lane, paid=paid)
     if web and len(web):
         meter["tier_src"] = web[0].source or backend
     elif cheap:
@@ -420,9 +425,9 @@ async def _hedged_facts(p: Plan, f: Frame, meter: dict, web_fn, hedge_s: float, 
                 if web and len(web):
                     cheap_t.cancel()
                     backend = getattr(web, "backend", "") or meter.get("backend", "")
-                    paid = 0 if (getattr(web, "cached", False) or backend in ("cache", "router")) else 1
-                    meter.update(tier="web", tier_src=web[0].source or backend, paid=paid, hedge_won="web",
-                                 route_fallback="slow")
+                    paid = 0 if (getattr(web, "cached", False) or backend in ("cache", "router", "index")) else 1
+                    meter.update(tier="index" if backend == "index" else "web", tier_src=web[0].source or backend,
+                                 paid=paid, hedge_won="web", route_fallback="slow")
                     return web
         # neither gave a good result: whatever the fact lookup had, plus the (empty) web
         meter.update(tier=p.lane if cheap else "web", paid=1, route_fallback="empty" if not cheap else "weak")
@@ -488,6 +493,10 @@ async def warm():
 
 def health() -> dict:
     from . import verticals
-    return {"on": config.ROUTER, "skip_conf": config.ROUTER_SKIP_CONF, **knowledge.stats(),
+    ks = {}
+    if config.INDEX:
+        from .keystone import hook
+        ks = {"keystone": hook.health()}
+    return {"on": config.ROUTER, "skip_conf": config.ROUTER_SKIP_CONF, **knowledge.stats(), **ks,
             "apis": {h: dict(s) for h, s in verticals.STATS.items()},
             "down": [h for h in verticals.STATS if verticals.host_down(h)]}

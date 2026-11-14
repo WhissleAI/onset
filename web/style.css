@@ -599,6 +599,7 @@ pre.raw { font: 11px/1.4 var(--mono); max-height: 240px; overflow: auto; backgro
   border: 1px solid var(--line, rgba(127,127,127,.35)); color: var(--muted, #888); }
 .lane-chip.lc-card { color: #0a7d4f; border-color: rgba(10,125,79,.45); background: rgba(10,125,79,.08); }
 .lane-chip.lc-facts { color: #3b5bdb; border-color: rgba(59,91,219,.45); background: rgba(59,91,219,.08); }
+.lane-chip.lc-index { color: #7048e8; border-color: rgba(112,72,232,.45); background: rgba(112,72,232,.08); }
 .lane-chip.lc-web { color: #9a6700; border-color: rgba(154,103,0,.4); background: rgba(154,103,0,.07); }
 .lane-card { margin-top: 6px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line, rgba(127,127,127,.3));
   background: var(--card2, rgba(127,127,127,.06)); font-size: 13px; }
@@ -614,12 +615,12 @@ pre.raw { font: 11px/1.4 var(--mono); max-height: 240px; overflow: auto; backgro
 .flag.ok { color: #0a7d4f; }
 /* timeline rows served by the router's free tiers; in the details view the card shrinks to its chip + one line
    (the sources list below needs the room) */
-.lane.t-card { background: #0a7d4f; } .lane.t-facts { background: #3b5bdb; }
-.bar.t-card { --c: #0a7d4f; } .bar.t-facts { --c: #3b5bdb; }
+.lane.t-card { background: #0a7d4f; } .lane.t-facts { background: #3b5bdb; } .lane.t-index { background: #7048e8; }
+.bar.t-card { --c: #0a7d4f; } .bar.t-facts { --c: #3b5bdb; } .bar.t-index { --c: #7048e8; }
 body:not(.minimal) .lane-card .lc-days, body:not(.minimal) .lane-card .lc-sub { display: none; }
 body:not(.minimal) .lane-card { padding: 4px 8px; margin-top: 4px; font-size: 12px; }
 body:not(.minimal) .lane-card .lc-h { margin-bottom: 0; }
-.lg.t-card { background: #0a7d4f; } .lg.t-facts { background: #3b5bdb; }
+.lg.t-card { background: #0a7d4f; } .lg.t-facts { background: #3b5bdb; } .lg.t-index { background: #7048e8; }
 
 /* websocket dropped: shown until it reconnects (app.js reconnectBanner) */
 .reconnect { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; padding: 8px 16px;

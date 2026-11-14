@@ -204,6 +204,9 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         _sc.reset()            # A/B-honest: no search-cache hits carried over from another question or mode
     from server import router as _router
     _router.reset_caches()       # ROUTER: cold card / fact lookups per run (A/B-honest: no mode reads the other's)
+    if _cfg.INDEX and os.environ.get("INDEX_RESET", "per-run") == "per-run":
+        from server.keystone import hook as _ks
+        _ks.reset()              # Keystone cold per run (fresh sessions); INDEX_RESET=never keeps a warm store
     sess = Session(emit, mode=mode)
     ear = ArcEar([sess], on_event=on_ear) if _cfg.EAR in ("arc", "") else _ear.make_ear([sess], on_event=on_ear)
     t0 = time.perf_counter()
@@ -425,7 +428,8 @@ def run_config(local_docs: int) -> dict:
             "spec_eff": {"on": config.SPEC_EFF, "paid_max": config.SPEC_PAID_MAX, "settle_ms": config.SPEC_SETTLE_MS,
                          "last_settle_ms": config.SPEC_LAST_SETTLE_MS, "eot_fire": config.SPEC_EOT_FIRE,
                          "drift": config.SPEC_DRIFT, "cover_sim": config.SPEC_COVER_SIM,
-                         "cache": config.CACHE_SEM, "cache_scope": SEARCH_CACHE},
+                         "cache": config.CACHE_SEM, "cache_scope": SEARCH_CACHE,
+                         "index": config.INDEX, "index_reset": os.environ.get("INDEX_RESET", "per-run")},
             "local_docs": local_docs, "spec": {"min_words": config.MIN_WORDS, "stable_updates": config.STABLE_UPDATES,
                                                "web_budget": config.WEB_BUDGET, "draft_budget": config.DRAFT_BUDGET,
                                                "draft_stable_ms": config.DRAFT_STABLE_MS,

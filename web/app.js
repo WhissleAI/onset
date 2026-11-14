@@ -480,7 +480,7 @@
     }
     const cnt = {};
     for (const f of fires) if (f.lane !== "draft") {
-      const t = f.tier === "card" || f.tier === "facts" ? f.tier : "";         // router: free tiers named as such
+      const t = f.tier === "card" || f.tier === "facts" || f.tier === "index" ? f.tier : "";   // router: free tiers named as such
       const l = t || f.lane.replace("final-", ""); cnt[l] = (cnt[l] || 0) + 1;
     }
     pipe("lanes", Object.entries(cnt).map(([l, n]) => `${l} ${n}`).join(" · "));
@@ -703,7 +703,7 @@
   // Tiers (server/router.py): card = live data from a free API (or computed locally), facts = local knowledge
   // (Wikidata / local Wikipedia leads / Wiktionary), web = the paid search. Honesty: every card names its source and
   // the time its data is "as of"; nothing computed or cached is presented as a live search.
-  const LANE_NAME = { card: "live data", facts: "local facts", web: "web" };
+  const LANE_NAME = { card: "live data", facts: "local facts", web: "web", index: "local index hit · 0 paid" };
   function laneOf(mode) {
     const q = run.q, docs = q.sources[mode] || [], m = q.metric[mode];
     if (!docs.length) return null;
@@ -727,7 +727,7 @@
     if (!box) return;
     const L = laneOf(mode);
     if (!L || L.tier === "local") { box.innerHTML = ""; return; }
-    const src = L.card ? L.card.source : (L.d.source || "");
+    const src = L.card ? L.card.source : (L.tier === "index" ? (L.d.snapshot || "").replace(/^from your /, "") : (L.d.source || ""));
     const chip = `<span class="lane-chip lc-${esc(L.tier)}" title="${esc(L.byCard ? "answered by the card itself: no model call" : "the answer's first cited source came from this lane" + (L.d.snapshot ? ` (${L.d.snapshot})` : ""))}">${esc(LANE_NAME[L.tier] || L.tier)} · ${esc(src.replace(/ \(local.*\)$/, ""))}</span>`;
     if (!L.card) { box.innerHTML = chip; return; }
     const c = L.card, asof = fmtAsOf(c.as_of);
@@ -1141,7 +1141,7 @@
       const f = r.f;
       const isFinal = f.lane.startsWith("final-");
       // router tiers: a web-lane call served by a live-data card / local facts is labelled as such (free), not "web"
-      const tier = (f.tier === "card" || f.tier === "facts") ? f.tier : "";
+      const tier = (f.tier === "card" || f.tier === "facts" || f.tier === "index") ? f.tier : "";
       laneCls = (tier ? "t-" + tier : f.lane.replace("final-", "")) + (isFinal ? " final" : "");
       labelLane = tier || f.lane.replace("final-", "");
       labelQ = f.query;
