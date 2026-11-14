@@ -47,6 +47,35 @@ def test_every_number_is_quoted_from_its_source(item):
         assert n.rstrip("%") in text, f"{n} ({item.get('vs') or item.get('detail')}) not found in {src['doc']}"
 
 
+def test_headline_is_real_tavily_with_sets():
+    d = scorecard.load()
+    assert d["headline_label"] == "real Tavily, 100 spoken questions, 2026-11-14"
+    assert [h["id"] for h in d["headline"]] == ["speed", "paid", "correct"]
+    assert all(h["source"]["section"] == "10. On real Tavily" for h in d["headline"])
+    text = (ROOT / "docs" / "RETRIEVAL.md").read_text()
+    for x in d["headline_sets"]:
+        q = _norm(x["source"]["quote"])
+        assert x["source"]["quote"] in text
+        for v in (x["gain"].split()[0], x["paid"], x["paid_vs"], str(x["n"])):
+            assert v in q, (v, q)
+    f = next(h for h in d["headline"] if h["id"] == "paid")["fewer"]
+    assert f"Total: {f['onset_credits']} credits for Onset" in text and f"{f['plain_credits']} for plain search" in text
+    assert round((1 - f["onset_credits"] / f["plain_credits"]) * 100) == f["pct"] and f"{f['pct']}% fewer" in d["headline"][1]["detail"]
+
+
+def test_no_number_twice_and_every_card_says_where():
+    d = scorecard.load()
+    heads = {h["big"] for h in d["headline"]}
+    assert not heads & {p["big"] for p in d["problems"]}          # e.g. 0.369 was on both
+    assert all(p.get("lane") for p in d["problems"])
+    p4 = d["problems"][3]
+    assert p4["lane"] == "PERSONA flag, small set" and p4["source"]["doc"] == "docs/PERSONALIZATION.md"
+    assert "8/9" in p4["big"] and "6/9" in p4["vs"] and "11/12" in p4["vs"] and "7/12" in p4["vs"]
+    css = (ROOT / "web" / "scorecard.css").read_text()
+    vs = css[css.index(".sc-vs {"):].split("}")[0]
+    assert "var(--hs)" not in vs                                    # the comparison number is muted, not the accent
+
+
 def test_scorecard_json_has_no_paths_or_keys():
     raw = (ROOT / "server" / "scorecard.json").read_text()
     assert "/Users/" not in raw and "sk-" not in raw and "tvly-" not in raw
