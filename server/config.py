@@ -201,6 +201,9 @@ OPENMIC_GATE = int(os.environ.get("OPENMIC_GATE", "2"))
 OPENMIC_FOLLOWUP_S = float(os.environ.get("OPENMIC_FOLLOWUP_S", "30"))   # "and chips" this soon after an answer = a request
 OPENMIC_DD_MIN = float(os.environ.get("OPENMIC_DD_MIN", "0.45"))   # tagger device_directed below this: held
 OPENMIC_DD_ACT = float(os.environ.get("OPENMIC_DD_ACT", "0.95"))   # a question / command act counts as a request at/above this
+# search-style requests (openmic.search_like): "Osprey or Gregory backpack for a week long trek" (feat/polish)
+OPENMIC_SEARCH = os.environ.get("OPENMIC_SEARCH", "1") == "1"
+OPENMIC_DD_SEARCH = float(os.environ.get("OPENMIC_DD_SEARCH", "0.75"))     # device_directed needed for it
 DIRECTOR_ADDR_THR = float(os.environ.get("DIRECTOR_ADDR_THR", "0") or 0)       # 0 = the model's own (director.json)
 DIRECTOR_ROUTE = os.environ.get("DIRECTOR_ROUTE", "0") == "1"
 DIRECTOR_ROUTE_THR = float(os.environ.get("DIRECTOR_ROUTE_THR", "0.8"))
@@ -363,6 +366,11 @@ COST_PARITY_EOT = float(os.environ.get("COST_PARITY_EOT", "0.3"))             # 
 # hedged with an immediate paid web call (ROUTER_FACTS_HEDGE_MS): on the 58 set that hedge was 11 of the 12 paid
 # calls parity made beyond the baseline's. <0 = no hedge.
 COST_PARITY_FACTS_HEDGE_MS = float(os.environ.get("COST_PARITY_FACTS_HEDGE_MS", "-1"))
+# parity, multi-part: a plan part's search still on the wire at the endpoint (parity fires the parts when the meaning
+# is final, so at the endpoint they usually are) is waited for up to this long before a final search races it
+# (PLAN_PART_CAP_S, 0.5 s, in speed mode). That race re-sent the same query: 14 duplicate calls on 26 multi-part
+# questions (feat/polish, PROGRESS "Polish"). The part's own call is already the paid one. <0 = PLAN_PART_CAP_S.
+COST_PARITY_PART_WAIT_MS = float(os.environ.get("COST_PARITY_PART_WAIT_MS", "1100"))
 COST_PARITY_DRAFTS = int(os.environ.get("COST_PARITY_DRAFTS", "1"))
 COST_PARITY_DRAFT_EOT = float(os.environ.get("COST_PARITY_DRAFT_EOT", "0.6"))
 COST_TRACE_EOT = os.environ.get("COST_TRACE_EOT", "0") == "1"   # eval: emit every end-of-turn score (spec_eot events)
@@ -408,3 +416,6 @@ LOOP_LEADS_PENALTY = float(os.environ.get("LOOP_LEADS_PENALTY", "0.05"))  # the 
 VERIFY_RESEARCH = os.environ.get("VERIFY_RESEARCH", "1") == "1"         # ON: after the answer, free lanes only
 VERIFY_RESEARCH_PAID = os.environ.get("VERIFY_RESEARCH_PAID", "0") == "1"
 VERIFY_RESEARCH_TIMEOUT_S = float(os.environ.get("VERIFY_RESEARCH_TIMEOUT_S", "3.0"))
+# server/knowledge.py SINGLE_HOLDER: a CEO / head of state / spouse statement that started fewer days ago than this is
+# "not settled" (unsure: the router falls through to the next lane). 0 = off.
+WD_RECENT_DAYS = float(os.environ.get("WD_RECENT_DAYS", "30"))

@@ -54,6 +54,13 @@ PROPS = {
 }
 # properties whose value changes over time: medium confidence (web fallback when the lookup is weak)
 CHANGING = {"ceo", "population", "head_state", "spouse"}
+# one holder at a time (a CEO, a head of state, a spouse): the current statement must be unambiguous and settled.
+# Two current values with no preferred one, or a current value that started less than config.WD_RECENT_DAYS ago (a change
+# Wikidata editors haven't settled: on 2026-11-12 an edit made Nvidia's CFO its preferred-rank CEO and gave Jensen
+# Huang an end date, two days before "who is the CEO of Nvidia" answered "Colette Kress") -> unsure, the router falls
+# through to the next lane (the web, which carries the news either way).
+SINGLE_HOLDER = {"ceo", "head_state", "spouse"}
+
 
 _S = r"(?P<s>[a-z0-9][a-z0-9 .'&-]*?)"
 _SC = r"(?P<s>[a-z0-9][a-z0-9 .,'&-]*?)"          # a subject said first ("Python, the programming language, who...")
@@ -228,7 +235,7 @@ def _sparql(ids: list[str], pids: list[str]) -> str:
     props = " ".join(f"(p:{p} ps:{p} psv:{p} \"{p}\")" for p in pids)
     # the UNION's first branch gives each candidate's sitelink count (how many Wikipedias have an article on it): the
     # popularity check in wikidata() ("Hamlet" the play: 143, the 1948 film: 45). Read back as (item, "_sl").
-    return f"""SELECT ?item ?sl ?pid ?rank ?v ?vLabel ?vd ?amt ?unitLabel ?t ?prec WHERE {{
+    return f"""SELECT ?item ?sl ?pid ?rank ?v ?vLabel ?vd ?amt ?unitLabel ?t ?prec ?start WHERE {{
  VALUES ?item {{{vals}}}
  {{ ?item wikibase:sitelinks ?sl . }} UNION {{
  VALUES (?p ?ps ?psv ?pid) {{{props}}}
@@ -237,6 +244,7 @@ def _sparql(ids: list[str], pids: list[str]) -> str:
  OPTIONAL {{ ?st ?psv ?vn . OPTIONAL {{ ?vn wikibase:quantityAmount ?amt ; wikibase:quantityUnit ?unit . }}
             OPTIONAL {{ ?vn wikibase:timeValue ?t ; wikibase:timePrecision ?prec . }} }}
  FILTER NOT EXISTS {{ ?st pq:P582 ?end . }}
+ OPTIONAL {{ ?st pq:P580 ?start . }}
  OPTIONAL {{ ?v schema:description ?vd . FILTER(lang(?vd) = "en") }}
  }}
  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en,mul". }}
@@ -294,7 +302,8 @@ async def _wd_values(ids: list[str], pids: list[str]) -> dict[tuple, list[tuple]
 
 
 def _rows(data: dict) -> dict[tuple, list[tuple]]:
-    """SPARQL bindings -> {(item, pid): [(rank, value), ...]}, plus {(item, "_sl"): [("", sitelinks)]}."""
+    """SPARQL bindings -> {(item, pid): [(rank, value), ...]}, plus {(item, "_sl"): [("", sitelinks)]} and the
+    statements' start times (P580, ISO date) as {(item, pid, "_start"): {value: start}}."""
     out: dict[tuple, list[tuple]] = {}
     for b in data["results"]["bindings"]:
         item = b["item"]["value"].rsplit("/", 1)[-1]
@@ -315,7 +324,30 @@ def _rows(data: dict) -> dict[tuple, list[tuple]]:
             if vd and pid in _DESCRIBE:
                 val = f"{val} ({vd})"                     # "Toyota (city in Aichi Prefecture, Japan)"
         out.setdefault((item, pid), []).append((rank, val))
+        if "start" in b:
+            out.setdefault((item, pid, "_start"), {})[val] = b["start"]["value"][:10].lstrip("+")
     return out
+
+
+def _days_since(iso: str, today: dt.date | None = None) -> float | None:
+    try:
+        d = dt.date.fromisoformat(iso[:10])
+    except ValueError:
+        return None
+    return float(((today or dt.datetime.now(dt.timezone.utc).date()) - d).days)
+
+
+def _holder_unsure(prop: str, vals: list, starts: dict, today: dt.date | None = None) -> str:
+    """SINGLE_HOLDER properties: why the current value isn't safe to say, or "" (see SINGLE_HOLDER)."""
+    if prop not in SINGLE_HOLDER:
+        return ""
+    if len(vals) > 1 and prop != "head_state":       # (head_state: P35 / P6 are tried one property at a time)
+        return f"{len(vals)} current {prop} values, none preferred"
+    for v in vals:
+        age = _days_since(starts.get(v, ""), today)
+        if age is not None and age < config.WD_RECENT_DAYS:
+            return f"{prop} changed {int(age)} days ago (not settled)"
+    return ""
 
 
 # Sanity checks on the item a fact comes from (mp18: "who wrote Hamlet" answered "William Walton", the 1948 film's
@@ -377,12 +409,13 @@ async def wikidata(q: FactQ) -> list:
                 continue
             vals = res[(c["id"], pid)]
             pref = [v for r, v in vals if r == "PreferredRank"]
-            vals = pref or [v for _, v in vals]
+            vals = list(dict.fromkeys(pref or [v for _, v in vals]))
             # a value naming the item itself ("Netflix" founded by "Netflix, Inc.") is the wrong item: try the next one
             vals = [v for v in dict.fromkeys(vals)
                     if q.prop not in _AGENT or sub not in v.lower().split(" (")[0]][:6]
             if vals:
-                answers.append((c, pid, vals))
+                why = _holder_unsure(q.prop, vals, res.get((c["id"], pid, "_start")) or {})
+                answers.append((c, pid, vals, why) if why else (c, pid, vals))
                 break
     if not answers:
         return []
@@ -410,11 +443,13 @@ async def wikidata(q: FactQ) -> list:
                 unsure = f"'{q.subject}' answered from a loose match ({pick[0]['label']})"
             elif max((pop.get(x["id"], 0) for x in rivals), default=0) > WD_POP_RATIO * top + 5:
                 unsure = f"'{q.subject}' names something else with no {q.prop}"
+    if len(pick) == 4 and not unsure:
+        unsure = f"'{q.subject}': {pick[3]}"           # SINGLE_HOLDER: ambiguous or not settled
     if unsure:
         _UNSURE.append({"subject": q.subject, "prop": q.prop, "why": unsure})
         del _UNSURE[:-20]
         return []
-    c, pid, vals = pick
+    c, pid, vals = pick[:3]
     desc = f" ({c['desc']})" if c["desc"] else ""
     text = f"{c['label']}{desc}: {phrase}: {', '.join(vals)}."
     return [Doc(id=f"wikidata:{c['id']}:{pid}", title=f"{c['label']} · Wikidata", text=text,

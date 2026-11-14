@@ -578,6 +578,13 @@ class Speculator:
             return None
         return part.resolve(self.bridge[hop.text])
 
+    def _part_cap_s(self) -> float:
+        """Endpoint: how long a plan part's speculative search still on the wire is waited for before a final search
+        races it. Parity waits longer (COST_PARITY_PART_WAIT_MS) instead of re-sending the same query."""
+        if self.prof.name == "parity" and config.COST_PARITY_PART_WAIT_MS >= 0:
+            return max(config.PLAN_PART_CAP_S, config.COST_PARITY_PART_WAIT_MS / 1000)
+        return config.PLAN_PART_CAP_S
+
     def _plan_cap(self) -> int:
         n = len(self.mplan.parts) if self.mplan is not None else 1
         return self.prof.paid_max + config.PLAN_EXTRA_PAID * max(0, n - 1)
@@ -729,9 +736,12 @@ class Speculator:
             text = self._part_text(part) or part.fallback
             fire = ensure(part, text)
             if fire is not None and fire.lane == "web" and not self._is_landed(fire):
-                # a speculative lookup still out at the endpoint (a slow Wikidata query): give it PLAN_PART_CAP_S,
-                # then race one final search (router hedge: fact vs web) against it; the first with docs wins
-                await self._landed(fire, min(deadline, time.perf_counter() + config.PLAN_PART_CAP_S))
+                # a speculative lookup still out at the endpoint (a slow Wikidata query): give it PLAN_PART_CAP_S
+                # (parity: COST_PARITY_PART_WAIT_MS, it is already the question's paid call), then race one final
+                # search (router hedge: fact vs web) against it; the first with docs wins
+                t_w = time.perf_counter()
+                await self._landed(fire, min(deadline, t_w + self._part_cap_s()))
+                m["plan_part_wait_ms"] = max(m.get("plan_part_wait_ms", 0), round((time.perf_counter() - t_w) * 1000))
                 if not self._is_landed(fire):
                     m["plan_hedged"] = m.get("plan_hedged", 0) + 1
                     spec_fire = fire
@@ -782,6 +792,7 @@ class Speculator:
                 n += 1
             info.append({"id": part.id, "text": text, "kind": part.kind, "fire": fire.id if fire else None,
                          "state": fire.state if fire else None, "tier": fire.meter.get("tier") if fire else None,
+                         "landed": self._is_landed(fire) if fire else None,   # "fired" + landed: vectors pending
                          "paid": (fire.meter.get("paid", 1) if fire and fire.state == "done" else 0), "n": n})
         m["plan"] = {"kind": mp.kind, "why": mp.why, "parts": info}
         self._plan_emit(final=True)
