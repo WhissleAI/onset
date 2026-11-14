@@ -23,7 +23,7 @@ args = ap.parse_args()
 from server import ear, embed, lanes, answer, searchcache, config, router   # noqa
 from server.session import Session            # noqa
 
-KEEP_EV = {"spec", "spec_skip", "endpoint", "sources", "metric", "memory", "spec_hold", "prewarm", "frame", "extended", "director", "eot_score", "words"}
+KEEP_EV = {"heard_fix", "recheck", "verify", "spec", "spec_skip", "endpoint", "sources", "metric", "memory", "spec_hold", "prewarm", "frame", "extended", "director", "eot_score", "words"}
 
 
 def ok(ans, keys):
@@ -67,6 +67,8 @@ async def run(conv, mode):
     t_end = time.perf_counter() + 8
     while (s.busy or s.pending_finals) and time.perf_counter() < t_end:
         await asyncio.sleep(0.05)
+    if getattr(s, "bg_tasks", None):                  # VERIFY_RESEARCH re-checks run after the answer
+        await asyncio.wait(list(s.bg_tasks), timeout=8)
     s.close()
     return s.history, ev
 
@@ -105,7 +107,9 @@ async def main():
                         "i": i + 1, "q": m.get("question"), "query": m.get("query"), "ready_ms": m.get("ready_ms"),
                         "path": m.get("path"), "paid": m.get("paid_calls"), "web_calls": m.get("web_calls"),
                         "memory": m.get("memory"), "correct": ok(m.get("answer"), keys) if keys else None,
-                        "answer": (m.get("answer") or "")[:160]})
+                        "answer": (m.get("answer") or "")[:160], "heard": m.get("heard"),
+                        "verify": m.get("verify"), "recheck": m.get("recheck"),
+                        "correct_patched": ok(m["answer_patched"], keys) if keys and m.get("answer_patched") else None})
                 res.append(row)
                 if args.events:
                     events[f'{c["id"]}/{mode}/{rep}'] = ev

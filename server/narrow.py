@@ -101,14 +101,15 @@ def family(f) -> str:
     t = _toks(f)
     intent = f.intent
     h = f.web_hints()
+    news_range = bool(h.get("time_range")) and h.get("topic") == "news"   # a typed time alone keeps topic general
     if t & WEATHER_W:
         return "weather"
     if h.get("topic") == "finance" or intent in ("discourse.intent.qa_stock", "discourse.intent.qa_currency") and \
             t & FINANCE_W:
         return "finance"
-    if (t & RESULT_W) and (t & SPORT_NAMES or "team" in f.ent_types or h.get("time_range")):
+    if (t & RESULT_W) and (t & SPORT_NAMES or "team" in f.ent_types or news_range):
         return "sports"
-    if (intent == "discourse.intent.news_query" and (f.intent_p >= 0.5 or f.when)) or h.get("time_range") \
+    if (intent == "discourse.intent.news_query" and (f.intent_p >= 0.5 or f.when)) or news_range \
             or t & NEWS_W:
         return "news"
     if t & HEALTH_W:
@@ -127,7 +128,7 @@ def family(f) -> str:
         return "definition"
     if t & TRAVEL_W:
         return "travel"
-    if t & REVIEW_W and (t & PRODUCT_W or "product" in f.ent_types):
+    if t & REVIEW_W and (t & PRODUCT_W or {"product", "work_product"} & set(f.ent_types)):
         return "reviews"
     if t & LOCAL_W and not t & HOURS_W:
         return "local"

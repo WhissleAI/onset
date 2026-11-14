@@ -298,7 +298,8 @@
         }
         renderSpans(q);
         renderFrame(e, !!e.final);
-        if (e.carried) pipe("tagger", `memory: ${pronounIn(q.words) || "it"} → ${titleCase(e.carried)}`);
+        if (e.heard && e.heard.length) pipe("tagger", `heard “${e.heard[0].said}” → ${e.heard[0].as}`);
+        else if (e.carried) pipe("tagger", `memory: ${pronounIn(q.words) || "it"} → ${titleCase(e.carried)}`);
         else pipe("tagger", (e.intent ? stripIntent(e.intent) : "frame") + (e.slots && e.slots.length ? ` · ${e.slots.map((x) => x[1]).join(", ")}` : e.query ? ` · ${e.query}` : ""));
         break;
       case "endpoint":
@@ -656,6 +657,13 @@
       badges.appendChild(m);
     }
     if (f.corrected) badges.appendChild(el("span", "badge corr", "corrected"));
+    // retrieval in the loop (server/heard.py): a misheard name re-resolved against what the session already found
+    for (const h of f.heard || []) {
+      const b = el("span", "badge heardfix", "");
+      b.innerHTML = `<i>heard</i> “${esc(h.said)}” → ${esc(h.as)}`;
+      b.title = `Re-resolved from ${({ leads: "the local Wikipedia index", spec: "this question's search results", memory: "conversation memory", answer: "the answer", facts: "Wikidata labels" })[h.src] || h.src} · match ${h.score}`;
+      badges.appendChild(b);
+    }
     if (f.command_complete && !f.carried) badges.appendChild(el("span", "badge cc", "complete"));
     if (final) badges.appendChild(el("span", "badge cc", "final"));
     renderReadout(f);

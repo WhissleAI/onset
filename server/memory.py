@@ -224,7 +224,10 @@ class Memory:
         """One answered turn. f = its frame; ans_spans = Arc Tagger entity spans of the answer [(type, text)]; docs =
         the sources the answer used (Wikidata facts carry QIDs + property values). Returns the turn number."""
         turn = (self.turns[-1]["t"] + 1) if self.turns else 1
-        toks = [norm(w) for w in f.words]
+        # the words that still mean something: a corrected-away entity ("Microsoft, sorry, Amazon") or a redacted
+        # span must not become the fallback subject / asked kind (getattr: tests pass bare frames)
+        gone = set(getattr(f, "dropped", ()) or ()) | set(getattr(f, "redact_tok", ()) or ())
+        toks = [norm(w) for i, w in enumerate(f.words) if i not in gone and w]
         asked = asked_kind(toks)
         q_ents = []
         for t, txt in f.slots:
@@ -288,7 +291,7 @@ class Memory:
             v = next((k for k in vals if self._kind(k) == asked), None)
             if v:
                 a_new = [v]
-        self.turns.append({"t": turn, "q": f.text, "inline": getattr(f, "inline", "") or "", "content": list(f.content),
+        self.turns.append({"t": turn, "q": getattr(f, "kept_text", None) or f.text, "inline": getattr(f, "inline", "") or "", "content": list(f.content),
                            "intent": f.intent, "q_ents": q_ents, "a_new": a_new, "asked": asked, "subject": subject,
                            "names": names_thing(toks),
                            "answer": re.sub(r"\[\d+\]", "", answer or "")[:300], "at": time.time()})

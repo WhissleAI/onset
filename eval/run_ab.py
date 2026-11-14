@@ -236,6 +236,8 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         while getattr(sess, "final_task", None) is not None and id(sess.final_task) not in seen:
             seen.add(id(sess.final_task))
             await asyncio.gather(sess.final_task, return_exceptions=True)
+        if getattr(sess, "bg_tasks", None):       # VERIFY_RESEARCH re-checks run after the answer: collect them
+            await asyncio.wait(list(sess.bg_tasks), timeout=8)
     finally:
         ear.close()
         sess.close()
@@ -297,6 +299,9 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         "draft_match": m.get("draft_match"), "query": m.get("query"), "intent": m.get("intent"),
         "spec_queries": spec_q, "sources": m.get("sources"),
         "plan": m.get("plan"), "verify": m.get("verify"),          # PLAN / VERIFY (server/planner.py, verify.py)
+        "recheck": m.get("recheck"), "answer_patched": m.get("answer_patched"),   # VERIFY_RESEARCH (recheck.py)
+        "correct_patched": score(m["answer_patched"], q.get("expect") or []) if m.get("answer_patched") else None,
+        "heard_fix": m.get("heard"),                                              # LOOP_ASR_FIX (heard.py)
         "web_paid": m.get("web_paid"), "free_calls": m.get("free_calls"), "tiers": m.get("tiers"),
         # cost meter (server/meter.py): answer-model tokens (used answer + thrown-away drafts / hedges) and est. $
         **{k: m.get(k) for k in ("ans_in", "ans_out", "waste_in", "waste_out", "llm_requests", "tokens_est",

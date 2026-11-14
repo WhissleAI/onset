@@ -254,6 +254,8 @@ def web_plan(intent: str = "", text: str = "", final: bool = False, answer: str 
             p.pop("max_age_hours", None)
             if hints.get("time_range"):
                 p["time_range"] = hints["time_range"]
+        elif not topic and hints.get("time_range") and p["topic"] == "general" and "time_range" not in p:
+            p["time_range"] = hints["time_range"]       # a typed relative time on a general question
     if p["topic"] == "finance" and p["search_depth"] in ("fast", "ultra-fast"):
         # Tavily answers 400 "Finance topic is not supported for fast or ultra-fast search_depth": every qa_stock /
         # qa_currency question used to fail over to Wikipedia. basic costs the same 1 credit (runs/replay_finance.json:

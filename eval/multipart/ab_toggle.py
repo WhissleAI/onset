@@ -103,12 +103,12 @@ async def main_async(a) -> int:
            "questions": a.questions or "eval/questions.jsonl (+ local)", "summary": {}, "rows": []}
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    print(f"{len(qs)} questions x {modes} x plan on/off", flush=True)
+    print(f"{len(qs)} questions x {modes} x {a.flag} on/off", flush=True)
     for qi, q in enumerate(qs):
         for mi, mode in enumerate(modes):
             arms = [True, False] if (qi + mi) % 2 == 0 else [False, True]
             for on in arms:
-                config.PLAN = on
+                setattr(config, a.flag, on)
                 try:
                     r = await run_ab.run_one(q, mode)
                 except Exception as e:
@@ -121,7 +121,8 @@ async def main_async(a) -> int:
                 await asyncio.sleep(run_ab.PAUSE_BETWEEN_S)
         res["summary"] = summary(res["rows"])
         out.write_text(json.dumps(res, indent=1, default=float))
-    config.PLAN = True
+    if a.flag == "PLAN":
+        config.PLAN = True
     res["summary"] = summary(res["rows"])
     out.write_text(json.dumps(res, indent=1, default=float))
     print(json.dumps(res["summary"], indent=1))
@@ -135,6 +136,7 @@ def main():
     ap.add_argument("--modes", default="headstart,baseline")
     ap.add_argument("--ids", default="")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--flag", default="PLAN", help="config flag toggled per arm (PLAN, LOOP_ASR_FIX, VERIFY_RESEARCH)")
     ap.add_argument("--wait-lock", type=float, default=3600)
     a = ap.parse_args()
     if a.audio_dir:

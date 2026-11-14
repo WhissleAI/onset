@@ -73,6 +73,21 @@
     b.innerHTML = `<span class="vb ${cls}" title="${esc("Checked after the answer, against its sources (numbers, years, names; string matching, " + e.ms + " ms). It checks that the sources say it, not that it is true.\n" + claims)}">${esc(e.label)}</span>`;
   }
 
+  // VERIFY_RESEARCH (server/recheck.py): one targeted lookup on the key claim after the answer
+  function onRecheck(e) {
+    const b = badgeBox(e.mode);
+    if (!b || !e.label || e.status === "skip") return;
+    const cls = { rechecked: "ok", corrected: "warn", unconfirmed: "none" }[e.status] || "none";
+    const why = `Re-checked "${e.claim}" after the answer: ${(e.lanes || []).join(" → ") || "no lane"}` +
+      (e.paid ? " (1 paid call)" : " (free)") + (e.ms != null ? `, ${e.ms} ms` : "");
+    b.insertAdjacentHTML("beforeend", ` <span class="vb ${cls} recheck" title="${esc(why)}">${esc(e.label)}</span>`);
+    if (e.status === "corrected" && e.patched) {
+      const pane = document.getElementById("pane-" + e.mode);
+      const a = pane && pane.querySelector('[data-k="answer"]');
+      if (a) a.insertAdjacentHTML("beforeend", `<div class="corrected-note">${esc(e.patched)}</div>`);
+    }
+  }
+
   function clear(mode) {
     const modes = mode ? [mode] : ["headstart", "baseline"];
     for (const m of modes) {
@@ -90,6 +105,7 @@
       if (e.mode === "sys" || e.mode === "ear") return;
       if (e.t === "plan") onPlan(e);
       else if (e.t === "verify") onVerify(e);
+      else if (e.t === "recheck") onRecheck(e);
       else if (e.t === "extended") { const b = badgeBox(e.mode); if (b) b.innerHTML = ""; }
     },
     reset() { clear(); },
