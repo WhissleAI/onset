@@ -1134,3 +1134,28 @@ absolute times are inflated): HS p50 2841 / BL 3392 (paired gain 551 ms), accura
 $ 0.0065 vs 0.0068/q, answer-model $ 0.89x, waste 468 tok/q, one answer with 2 paid calls (sc26). Keystone's facts
 tier answered sc24 / sc25 free in parity where the baseline paid. Full suite 375: 374 + test_integrate's
 unsure_plan_holds_paid_speculation (timing; passes alone and in test_integrate.py x2 at load 46).
+## What Arc adds beyond speed: Arc-off arm (branch eval/arcvalue; docs/ARC_VALUE.md)
+- New third arm `mode="plain"` (`ARC_OFF=1` = every session). The raw final transcript is the web query. There is no
+  tagger read-out: no correction or repair merging, carry or memory, router or cards, redaction, freshness, open-mic
+  gate, planner or local routing. Ear, web lane, reranker, answer model and prompt are the same; the frame hints are
+  dropped. `PLAIN_CONTEXT=1` gives the plain arm the previous turn (a sensitivity check). Tests:
+  tests/test_arc_off.py (12). Full suite 349.
+- Results: Wikipedia lane, EAR=flux, `--modes baseline,headstart,plain`, runs/arcvalue/. Onset / Baseline / Arc-off:
+
+  | category | Onset | Baseline | Arc-off |
+  |---|---|---|---|
+  | follow-ups (21 conversations) | 32/34 | 32/34 | 2/34 (24/34 with chat history, mostly ungrounded) |
+  | multi-part, per part | 47/54 | 46/54 | 37/54 |
+  | live data vs ground truth | 13/16 | 13/16 | 5/16 |
+  | 58 set | 116/116 | 116/116 | 85/116 (the 38 web questions are a tie, 76/76; all of the gap is local routing) |
+  | corrections and restarts (33 × 2) | 64/66 | 62/66 | 59/66 (mentions the corrected-away answer 24 vs 12) |
+  | showcase, noisy 20 / 10 dB | ties | | |
+
+  Text level:
+  - open mic: 67.6% vs 49.1% of turns handled right
+  - PII in search strings: 65.7% vs 98.8% of PII turns leak
+  - freshness: 21% recall on time-sensitive questions, and nothing is sent on Wikipedia
+- Fix: `speculator._part_fire` gives a whole-sentence fire that is adopted as a plan part a `landed` event. Before, its
+  in-flight run raised on landing and its docs were lost.
+- Chart: docs/img/arc_value.png. Scripts: eval/arcvalue/ (`run_all.sh` takes the shared lock per replay and leaves a
+  200 s gap after each).

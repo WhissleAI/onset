@@ -54,12 +54,13 @@ def stats(rows, wrong: dict | None = None) -> dict:
             continue
         sc = [r for r in g if r.get("correct") is not None]
         ok = sum(1 for r in sc if r["correct"])
-        harm = 0
+        harm = mention = 0
         for r in sc:
             a = r.get("answer") or ""
             if wrong is not None:
                 w = wrong.get(r["id"]) or []
                 harm += bool(w) and bool(score(a, w)) and not r["correct"]
+                mention += bool(w) and bool(score(a, w))
             else:
                 harm += (not r["correct"]) and bool(a) and not _HEDGE.search(a)
         ready = [r["ready_ms"] for r in g if r.get("ready_ms") is not None]
@@ -71,6 +72,8 @@ def stats(rows, wrong: dict | None = None) -> dict:
             "paid_q": round(statistics.mean([(r["web_paid"] if r.get("web_paid") is not None else r.get("paid_calls") or 0)
                                              for r in g]), 2),
             "usd_q": round(statistics.mean([r.get("usd") or 0 for r in g]), 5),
+            "mentions_wrong": mention if wrong is not None else None,
+            "web_backend": dict(__import__("collections").Counter(str(r.get("web_backend")) for r in g)),
             "errors": sum(1 for r in g if r.get("error") or r.get("ready_ms") is None),
         }
     return out

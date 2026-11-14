@@ -600,6 +600,12 @@ class Speculator:
                 same.state = "done" if same.task is None or same.task.done() else "fired"
                 self._ev(id=same.id, lane=same.lane, query=same.query, state=same.state, ms=self.ms(), revived=True)
             same.part = text
+            if same.landed is None:
+                # a whole-sentence fire adopted as a part has no landed event: its run() (still in flight) would raise
+                # on landed.set() and never add its docs (seen in the arcvalue conversation run)
+                same.landed = asyncio.Event()
+                if same.task is None or same.task.done():
+                    same.landed.set()
             self.part_fire[text] = same
             return same
         plan = self._plan(pf, final)
