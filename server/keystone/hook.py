@@ -339,3 +339,41 @@ def absorb_memory(mem):
             ks.g.user_fact(SCOPE["user"], u["key"], u["v"], now)
     except Exception:  # noqa: BLE001
         STATS["errors"] += 1
+
+
+def absorb_wikidata(subject: str, ks: Keystone | None = None) -> int:
+    """A subject's cached Wikidata 1-hop neighbourhood (knowledge.prefetch / the facts lane filled knowledge._cache:
+    entity search + one SPARQL query for every property the facts lane knows) -> typed edges on its QID node, with
+    value nodes for entity-valued properties: a later relation or two-hop question about it is a graph lookup.
+    Returns the number of edges written. No network; never raises."""
+    try:
+        from .. import knowledge
+        from .relkey import FROM_PROP, RELATIONS, TTL_S
+        ks = ks or store()
+        cands = knowledge._cache.get(("s", subject))
+        if not cands:
+            return 0
+        top = cands[0]
+        ids = tuple(c["id"] for c in cands[:5])
+        node = ks.g.node(top["label"], qid=top["id"])
+        ks.g.alias.setdefault(knowledge.norm(subject), node)
+        n, now = 0, time.time()
+        for prop, (pids, _kind, _ph) in knowledge.PROPS.items():
+            rel = FROM_PROP.get(prop)
+            rows = knowledge._cache.get(("q", ids, tuple(pids)))
+            if not rel or not rows:
+                continue
+            for pid in pids:
+                vals = rows.get((top["id"], pid)) or []
+                pref = [v for r, v in vals if r == "PreferredRank"] or [v for _, v in vals]
+                for v in list(dict.fromkeys(pref))[:3]:
+                    name = v.split(" (")[0]
+                    vn = ks.g.node(name) if RELATIONS[rel][0] in ("person", "place", "org", "thing") else None
+                    ks.g.add_edge(node, rel, v, t=now, ttl=TTL_S[RELATIONS[rel][1]], prov="Wikidata", value_node=vn)
+                    n += 1
+                if pref:
+                    break
+        return n
+    except Exception:  # noqa: BLE001
+        STATS["errors"] += 1
+        return 0

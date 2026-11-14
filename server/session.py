@@ -962,6 +962,10 @@ class Session:
     async def _prewarm(self):
         t = time.perf_counter()
         subs = await memmod.prewarm(self.mem)
+        if subs and config.INDEX:                # Keystone: the warmed 1-hop Wikidata neighbourhoods -> typed edges
+            from .keystone import hook as _ks
+            for x in subs:
+                _ks.absorb_wikidata(x)
         if subs and not self.closed:
             self.emit({"t": "prewarm", "subjects": subs, "took": round((time.perf_counter() - t) * 1000),
                        "ms": self.spec.ms()})

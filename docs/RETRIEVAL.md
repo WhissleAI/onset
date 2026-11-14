@@ -109,6 +109,24 @@ by the relation's volatility:
 Wikidata facts from the facts lane are written directly as typed triples on QID nodes. Lookup is O(1) on
 (subject, relation), and a hop is two lookups.
 
+**1-hop neighbourhoods are cached on use.** After memory's free pre-warm (`knowledge.prefetch`: entity search plus
+one SPARQL query for every property the facts lane knows), `absorb_wikidata` writes the subject's whole neighbourhood
+as typed edges with value nodes.
+
+**Multi-hop by graph path** (`eval/keystone/hop_eval.py`, the planner's 6 two-hop questions):
+
+- 3 of 6 are answered correctly by graph lookups alone:
+  - "where was the author of Pride and Prejudice born": Steventon
+  - "when was the director of Jaws born": 1946
+  - "population of the capital of Japan": 14.3 M
+- Cost: 0.9-1.4 s cold (two free Wikidata fetches) and **3-11 µs warm**.
+- The 3 misses:
+  - "how old was the founder of X when it was founded" (two cases) needs an age computation, not a relation, and is
+    wrongly keyed.
+  - Wikidata's CEO statement for Nvidia returns the wrong person.
+
+No paid search is involved in any of them.
+
 ### C. Streaming key completion (`replay.key_completion`, `eval/keystone/anytime_eval.py`)
 
 While words arrive, the key forms before the question ends. Measured on the workload's keyed questions (378, test

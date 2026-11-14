@@ -7,12 +7,13 @@ PY=.venv/bin/python
 export WEB_BACKEND=wikipedia RUN_AB_LOCK=${RUN_AB_LOCK:-../headstart/runs/.run_ab.lock}
 COMMON="--modes headstart --no-latest --wait-lock 14400 --owner index"
 WARM=$(mktemp -d "${TMPDIR:-/tmp}/ks_warm.XXXX")
+w() { while [ -f "$RUN_AB_LOCK" ]; do sleep 1; done; }       # poll the shared lock every second (run_ab polls 30 s)
 for set in q58 showcase; do
   Q=""; [ "$set" = showcase ] && Q="--questions eval/showcase/questions.jsonl"
-  INDEX=0 $PY eval/run_ab.py $Q $COMMON --out runs/index/ab_${set}_off.json > runs/index/ab_${set}_off.log 2>&1
-  INDEX=1 INDEX_PERSIST=0 $PY eval/run_ab.py $Q $COMMON --out runs/index/ab_${set}_cold.json > runs/index/ab_${set}_cold.log 2>&1
+  w; INDEX=0 $PY eval/run_ab.py $Q $COMMON --out runs/index/ab_${set}_off.json > runs/index/ab_${set}_off.log 2>&1
+  w; INDEX=1 INDEX_PERSIST=0 $PY eval/run_ab.py $Q $COMMON --out runs/index/ab_${set}_cold.json > runs/index/ab_${set}_cold.log 2>&1
   rm -rf "$WARM"; cp -R runs/index/warm_store "$WARM"
-  INDEX=1 INDEX_PERSIST=1 INDEX_RESET=never KEYSTONE_DIR="$WARM" $PY eval/run_ab.py $Q $COMMON \
+  w; INDEX=1 INDEX_PERSIST=1 INDEX_RESET=never KEYSTONE_DIR="$WARM" $PY eval/run_ab.py $Q $COMMON \
     --out runs/index/ab_${set}_warm.json > runs/index/ab_${set}_warm.log 2>&1
 done
 echo done

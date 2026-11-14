@@ -281,3 +281,18 @@ def test_memory_and_answers_fold_into_the_graph(index_on):
     hook.note_answer(f, "who founded nvidia", "Jensen Huang co-founded Nvidia in 1993.")
     vals = g.lookup("nvidia", "founded_by")[1]
     assert any("1993" in v["value"] for v in vals)
+
+
+def test_cached_wikidata_neighbourhoods_answer_two_hop_questions(index_on):
+    from server import knowledge
+    knowledge._cache.put(("s", "pride and prejudice"), [{"id": "Q170583", "label": "Pride and Prejudice", "desc": ""}])
+    knowledge._cache.put(("q", ("Q170583",), tuple(knowledge.PROPS["author"][0])),
+                         {("Q170583", "P50"): [("NormalRank", "Jane Austen")]})
+    knowledge._cache.put(("s", "Jane Austen"), [{"id": "Q36322", "label": "Jane Austen", "desc": ""}])
+    knowledge._cache.put(("q", ("Q36322",), tuple(knowledge.PROPS["born_place"][0])),
+                         {("Q36322", "P19"): [("NormalRank", "Steventon (village in Hampshire, England)")]})
+    assert hook.absorb_wikidata("pride and prejudice") >= 1 and hook.absorb_wikidata("Jane Austen") >= 1
+    k = key_of("where was the author of pride and prejudice born".split())
+    _, vals = hook.store().g.lookup(k.subject, k.relation)
+    assert vals and vals[0]["value"].startswith("Steventon")
+    knowledge._cache.clear()
