@@ -816,3 +816,42 @@ before and 0.08 ms after the answer (1,000-call microbenchmark). A paired replay
 paired median, which that cost cannot explain: the on arm ran first, on a machine shared with three other agents'
 replays; the second pair was stopped when the user started live-testing (load, memory). **Defaults: CALIB=1,
 CALIB_BADGE=1** (compute + badge; the answer path is unchanged), CALIB_ROUTE=0, CALIB_FUSE=0, CALIB_PUBDATE=0.
+
+## 9. Telem: a second paid web backend, failover, page reads, monitors (`server/telem.py`, branch feat/telem)
+
+Telem (telem.ai) is one API in front of many search engines (brave, exa, tavily, perplexity, you, tinyfish, ...) and
+page readers. Onset uses it in four places, every one behind a flag and OFF by default:
+
+| Flag | What it does |
+|---|---|
+| `WEB_BACKEND=telem` | The paid web lane searches through Telem instead of Tavily (`lanes._live`). |
+| `TELEM_MODE=family\|auto\|fixed` | Which engines: Onset's router family picks them (`family`, `FAMILY_PROVIDERS`), Telem's auto-routing picks them (`auto`), or `TELEM_PROVIDERS` always (`fixed`). |
+| `WEB_FAILOVER=telem` (or `tavily`) | A final question whose primary paid backend fails (or whose breaker is open) tries the other one, then Wikipedia, then the recorded cache. Speculative searches never pay a second backend. |
+| `VERIFY_FETCH=telem` | The verify escalation reads the cited page with Telem `/v1/fetch` instead of Tavily `/extract` (`server/pagefetch.py`, one contract for both). |
+| `TELEM_MONITORS=1` | "Keep me posted" on a live question asked again and again, backed by a Telem monitor (`server/telem_monitor.py`). |
+
+Family to engines (a hypothesis until `eval/telem_ab.py` measures it): live families (news, sports, finance, weather)
+go to brave (dated results and a news vertical); reference, definition, health and how-to go to exa (search by
+meaning); places and travel go to brave (locations vertical). tinyfish, which costs nothing, runs with each of them, so
+a URL two engines return is marked as agreeing.
+
+What each source carries: Telem returns one result list per engine. Onset merges them by URL. Each Doc keeps the engine
+that ranked it best, its rank there, that engine's latency, and how many engines found it (`meta.agree`).
+`Doc.score` is reciprocal rank summed over engines and divided by the number of engines that answered. It is a
+cross-engine signal, not Tavily's relevance score, so the calibrator does not read it as `src_score`; that feature
+falls back to its training mean, as it does on Wikipedia.
+
+Cost works the same way for both backends. Telem charges each engine's own list price with no markup and returns no $
+figure at tier `default`. Onset therefore prices each engine run that succeeded from Telem's price table (failed runs
+are free) and labels the result est. (exa's price is "what exa reports", so it is estimated at its $0.005 list price).
+That $ is converted to Tavily-credit units for the session Ledger and the meter, so budgets, the final reserve and the
+on-screen $ treat both backends alike. `TELEM_PROCESS_USD` (default $3) is a hard cap for each process.
+
+Observability: the first Telem call of a conversation returns a `session_id`, and every later call sends it back, so
+the Telem console shows the conversation as one session. Each question's metric carries `telem_trace` (the session id
+and the interaction id of each call), `telem_engines` (engine, ok, ms, result count) and `telem_routing` (what
+auto-routing chose). Telem documents no per-trace URL, so the details show these ids and no link.
+
+Measured: nothing yet. Every number in this section will come from `eval/telem_ab.py` (30 questions: entities, news
+and sports from 2026-11, travel and how-to, multi-part; Tavily via Telem vs auto vs family; hit@5, p50/p90, est. $ per
+question, failure rate), run once the Telem key is in `.env`, with a $3 cap.

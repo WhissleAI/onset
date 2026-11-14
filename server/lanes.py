@@ -549,6 +549,9 @@ def web_health() -> dict:
     if config.ROUTER:
         from . import router
         out["router"] = router.health()
+    from . import telem
+    if telem.enabled():
+        out["telem"] = telem.health()
     return out
 
 
@@ -652,15 +655,31 @@ def _from_cache(query: str, meter: dict, why: str | None) -> "WebResult":
 
 async def _live(query: str, topic: str, intent: str, text: str, final: bool, ledger, meter: dict,
                 entity: str = "", hints: dict | None = None) -> list[Doc]:
-    """The live lane: Tavily when configured (topic/freshness from the intent), else Wikipedia. A final query whose
-    Tavily call can't go out or fails falls back to Wikipedia (the user is waiting); a speculative one just errors."""
-    if config.WEB_BACKEND == "tavily":
-        plan = web_plan(intent or ("discourse.intent.news_query" if topic == "news" else ""), text, final, hints=hints)
-        if plan.get("time_range"):
-            meter["time_range"] = plan["time_range"]
+    """The live lane: Tavily or Telem (WEB_BACKEND; topic/freshness from the intent), else Wikipedia. A final query
+    whose paid call can't go out or fails tries WEB_FAILOVER's backend, then Wikipedia (the user is waiting); a
+    speculative one just errors."""
+    from . import telem
+    for i, b in enumerate(telem_chain()):
+        if i and not final:
+            break                                # speculation never pays a second backend
+        if i == 0 and len(telem_chain()) > 1 and final and web_down():
+            continue                             # breaker open on the primary: straight to the failover backend
         try:
-            return await tavily(query, plan, ledger, meter, final=final)
-        except (WebUnavailable, TavilyError, httpx.HTTPError) as e:
+            if b == "tavily":
+                plan = web_plan(intent or ("discourse.intent.news_query" if topic == "news" else ""), text, final,
+                                hints=hints)
+                if plan.get("time_range"):
+                    meter["time_range"] = plan["time_range"]
+                res = await tavily(query, plan, ledger, meter, final=final)
+            else:
+                tp = telem.plan(intent, text, final, hints=hints, topic=topic)
+                if tp.get("time_range"):
+                    meter["time_range"] = tp["time_range"]
+                res = await telem.search(query, tp, ledger, meter, final=final)
+            if i:
+                meter["failover"] = b
+            return res
+        except (WebUnavailable, TavilyError, telem.TelemError, httpx.HTTPError) as e:
             meter["fallback"] = f"{type(e).__name__}: {e}"[:120]
             if not final:
                 raise
@@ -675,11 +694,26 @@ async def _live(query: str, topic: str, intent: str, text: str, final: bool, led
     return res
 
 
+def telem_chain() -> list[str]:
+    """The paid backends in failover order: WEB_BACKEND, then WEB_FAILOVER (server/telem.py) when it names the other
+    one and its key is set. Then Wikipedia, then the recorded cache (web())."""
+    from . import telem
+    if config.WEB_BACKEND not in ("tavily", "telem"):
+        return []
+    out = [config.WEB_BACKEND]
+    fo = telem.WEB_FAILOVER
+    if fo in ("tavily", "telem") and fo != config.WEB_BACKEND and (
+            telem.TELEM_API_KEY if fo == "telem" else config.TAVILY_API_KEY):
+        out.append(fo)
+    return out
+
+
 def _network_failure(e: Exception) -> bool:
     """Failures that mean "the web is unreachable" (open the breaker), as opposed to a bad response for one query."""
     if isinstance(e, (httpx.TransportError, OSError, asyncio.TimeoutError)):
         return True
-    return isinstance(e, TavilyError) and e.status == 0
+    from . import telem
+    return isinstance(e, (TavilyError, telem.TelemError)) and e.status == 0
 
 
 async def web(query: str, topic: str = "general", *, intent: str = "", text: str = "", final: bool = False,
@@ -705,20 +739,21 @@ async def web(query: str, topic: str = "general", *, intent: str = "", text: str
             hints=hints))
     if config.WEB_BACKEND == "cache":
         return _from_cache(query, meter, None)
-    if config.WEB_CACHE_FALLBACK and web_down() and len(web_cache()):
+    if config.WEB_CACHE_FALLBACK and web_down() and len(web_cache()) and not (final and len(telem_chain()) > 1):
         return _from_cache(query, meter, f"live web down: {WEB_STATUS['last_error']}")
     try:
         res = await _live(query, topic, intent, text, final, ledger, meter, entity=entity, hints=hints)
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        primary_failed = not (config.WEB_BACKEND == "tavily" and meter.get("backend") == "wikipedia")
+        primary_failed = not (config.WEB_BACKEND in ("tavily", "telem") and meter.get("backend") == "wikipedia")
         if _network_failure(e) and primary_failed:
             _web_fail(e)
         if config.WEB_CACHE_FALLBACK and len(web_cache()) and (_network_failure(e) or final):
             return _from_cache(query, meter, f"{type(e).__name__}: {e}")
         raise
-    _web_ok()
+    if not meter.get("failover"):                 # a failover answer leaves the primary's breaker as it was
+        _web_ok()
     if config.WEB_CACHE_RECORD and len(res) and not getattr(res, "cached", False):
         c = web_cache()
         c.put(query, res, getattr(res, "backend", "") or meter.get("backend", ""))
@@ -735,6 +770,9 @@ async def probe_web(timeout: float = 4.0) -> dict:
     try:
         if config.WEB_BACKEND == "tavily":
             r = await asyncio.wait_for(client().get(config.TAVILY_BASE_URL + "/"), timeout)
+        elif config.WEB_BACKEND == "telem":
+            from . import telem
+            r = await telem.probe(timeout)
         else:
             r = await asyncio.wait_for(client().get(
                 "https://en.wikipedia.org/w/api.php", params={"action": "query", "format": "json"}), timeout)

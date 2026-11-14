@@ -1641,3 +1641,36 @@ missing model falls back to the VOI gate). All numbers: text-level replays, WEB_
 - **Wait-one-more-word** (per-update GBDT and a GRU over the frozen director + prefix graph state): commits 75-79 % of
   key-path questions early (0.76 s median lead on test) at 92-94 % precision vs 100 % at end of turn; not shipped.
 - Charts: `docs/img/keystone_kdir_curve.png`, `keystone_kdir_stream.png`, `keystone_kdir_network.png`.
+
+## Telem: second paid web backend, failover, page reads, monitors (branch feat/telem; server/telem.py, docs/RETRIEVAL.md §9)
+Built against docs.telem.ai (llms-full.txt, read 2026-11-14) and an in-process fake of router.telem.ai. Every flag is
+OFF by default. Nothing is measured live yet: the key in `.env` answers 401 "Invalid API key" (one check, num_results 1).
+- **Lane** (`WEB_BACKEND=telem`): `telem.search` plugs into `lanes._live`, using the same session Ledger (budget, final
+  reserve, cache, in-flight dedup), its own breaker (401 / 402 / 429), and a hard `TELEM_PROCESS_USD` cap ($3).
+  `TELEM_MODE=family` picks engines from `narrow.family` (live: brave+tinyfish, reference: exa+tinyfish, places:
+  brave+tinyfish). `auto` uses Telem's auto-routing, and `fixed` uses `TELEM_PROVIDERS`. News freshness is sent as
+  `published_after`, and narrowing is sent only in restrict mode, because Telem domains cannot "prefer".
+- **Docs** are merged by URL across engines. Each keeps its engine, rank, engine latency and `agree` (how many engines
+  found it). `score` is cross-engine reciprocal rank, kept out of the calibrator's Tavily `src_score`.
+- **Cost**: each engine run that succeeds is priced from Telem's price table (failed runs are free) and labelled est.
+  The $ is converted to Tavily-credit units so the meter, budgets and $ display work unchanged. The UI meter, scorecard
+  and results notes say "Telem, each engine at its own list price" rather than "priced as Tavily".
+- **Failover** (`WEB_FAILOVER=telem|tavily`): for a final question, primary → other paid backend → Wikipedia → recorded
+  cache. While the primary's breaker is open, the primary is skipped, and a failover answer leaves the breaker open.
+  Speculation never pays a second backend.
+- **Page reads** (`VERIFY_FETCH=telem`): `server/pagefetch.py` has the same contract as feat/tavily's `extract.extract`.
+  `FetchError` subclasses `ExtractError`, so the merge needs one line: `extract.recheck_page` calls `pagefetch.fetch`.
+  Failures are per URL, and a soft 404 counts as failed. `telem.pages_as_docs` turns a fetched page into Keystone-ready
+  Docs (key sentences). The ingest wiring needs the speculator's vectors and is not done.
+- **Observability**: the conversation's Telem `session_id` is reused on every later call. The metric carries
+  `telem_trace` (the session id and interaction ids), `telem_engines` and `telem_routing`. The question details show
+  "engines brave 0.41 s, exa 0.90 s · $0.010 est.", with the console ids in the tooltip. Telem documents no trace URL,
+  so the details show no link.
+- **Monitors** (`TELEM_MONITORS=1`, `server/telem_monitor.py`): an offer appears after the same live-family question is
+  asked 2× in 7 days, with an est. cost note. Creation uses a 6 h frequency and a 7 d TTL. Changes are read by cursor
+  into live Docs. State is kept in the data dir. There is no UI or polling loop yet (design only).
+- **Eval**: `eval/telem_ab.py` + `eval/telem/questions.jsonl` (30 questions: 10 entity, 9 news/sports dated
+  2026-11, 3 travel, 5 how-to, 3 multi-part). It compares Tavily through Telem, auto and family on hit@5, p50/p90, est.
+  $ per question and failure rate. It is retrieval only, loads no models, and stops itself at `--max-usd 2.5`. It has
+  not been run: waiting on a valid key.
+- Tests: `tests/test_telem.py` (9, mocked HTTP).

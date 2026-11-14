@@ -143,6 +143,7 @@
 
   function webNote() {
     const be = prices && prices.web_backend;
+    if (be === "telem") return "web lane = Telem: each search engine priced at its own list price (est.)";
     return be && be !== "tavily" ? `web lane = ${be}: paid-lane calls are free here and priced as Tavily basic searches` : "";
   }
 
@@ -314,7 +315,8 @@
     }
     if (ms.some((m) => !S[m].hasTok)) h += `<p class="res-note muted">* web calls only: this file has no answer-model token counts (recorded before the meter); the model's share at list price is well under a cent per question.</p>`;
     const be = rs.find((r) => r.web_backend)?.web_backend;
-    if (be && be !== "tavily") h += `<p class="res-note muted">Web lane in this run: ${esc(be)} (free); paid calls are priced as Tavily basic searches.</p>`;
+    if (be === "telem") h += `<p class="res-note muted">Web lane in this run: Telem; each search engine is priced at its own list price (est.).</p>`;
+    else if (be && be !== "tavily") h += `<p class="res-note muted">Web lane in this run: ${esc(be)} (free); paid calls are priced as Tavily basic searches.</p>`;
     return h + `</div>`;
   }
 

@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, calibrate, confidence, config, cost, coverage, ellipsis, director, embed, lanes, meter, narrow, planner, recheck, rerank, searchcache, verify
+from . import answer, calibrate, confidence, config, cost, coverage, ellipsis, director, embed, lanes, meter, narrow, planner, recheck, rerank, searchcache, telem, verify
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
@@ -252,7 +252,8 @@ class Speculator:
         if not m:
             return {}
         return {k: m[k] for k in ("backend", "depth", "topic", "time_range", "credits", "cached", "fallback", "replayed",
-                                  "cache_match", "cache_miss", "narrow", "semcache", "as_of", "age_s", "cache_query")
+                                  "cache_match", "cache_miss", "narrow", "semcache", "as_of", "age_s", "cache_query", "telem",
+                                  "failover")
                 + ROUTER_KEYS if k in m}
 
     @staticmethod
@@ -272,9 +273,11 @@ class Speculator:
         hints = dict(f.web_hints())
         topic = "news" if f.intent in NEWS_INTENTS else "general"
         ent = f.entity_query() if q == f.query() else ""
-        if config.WEB_BACKEND == "tavily":
+        if config.WEB_BACKEND in ("tavily", "telem"):
             # Arc read-out narrowing (server/narrow.py): query shaped from the slots, sources for the question's family
             q = narrow.shape_query(f, q)
+            if config.WEB_BACKEND == "telem":
+                hints["family"] = narrow.family(f)     # server/telem.py picks the engines per family
             doms, mode = narrow.domains(f)
             if doms:
                 hints["include_domains"], hints["domains_mode"] = doms, mode
@@ -1741,6 +1744,7 @@ class Speculator:
                 "web_backend": next((x.meter.get("backend") for x in reversed(web) if x.meter.get("backend")),
                                     config.WEB_BACKEND),
                 "session_credits": self.ledger.spent,
+                **telem.question_summary([x.meter for x in web] + [self.answer_meter]),
                 **router_counts(web)}
 
     def _nothing_new(self, f: Frame) -> bool:

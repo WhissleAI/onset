@@ -1,0 +1,30 @@
+{"id": "q01", "text": "who founded the company Nvidia", "expect": ["jensen", "huang"], "kind": "entity", "family": "reference"}
+{"id": "q02", "text": "what is the capital of Australia", "expect": ["canberra"], "kind": "entity", "family": "reference"}
+{"id": "q03", "text": "when did Apollo 11 land on the moon", "expect": ["1969"], "kind": "entity", "family": "reference"}
+{"id": "q04", "text": "who painted the Mona Lisa", "expect": ["leonardo"], "kind": "entity", "family": "reference"}
+{"id": "q05", "text": "how tall is Mount Everest", "expect": ["8849|8848|29032|29031|29029"], "kind": "entity", "family": "reference"}
+{"id": "q06", "text": "who discovered penicillin", "expect": ["fleming"], "kind": "entity", "family": "reference"}
+{"id": "q07", "text": "what year did the Berlin Wall fall", "expect": ["1989"], "kind": "entity", "family": "reference"}
+{"id": "q08", "text": "who was the first woman to win a Nobel Prize", "expect": ["curie"], "kind": "entity", "family": "reference"}
+{"id": "q09", "text": "what language is spoken in Brazil", "expect": ["portuguese"], "kind": "entity", "family": "reference"}
+{"id": "q10", "text": "who wrote the novel One Hundred Years of Solitude", "expect": ["marquez"], "kind": "entity", "family": "reference"}
+{"id": "cur01", "text": "who won the World Series this year", "expect": ["brewers"], "kind": "news", "family": "sports", "asked": "2026-11-14", "notes": "2026-10-28, Brewers beat Rays in 5"}
+{"id": "cur02", "text": "who won the Nobel Peace Prize this year", "expect": ["pillay"], "kind": "news", "family": "news", "asked": "2026-11-14", "notes": "2026-10-09, Navi Pillay"}
+{"id": "cur03", "text": "which party won the House in the midterm elections", "expect": ["democrat"], "kind": "news", "family": "news", "asked": "2026-11-14", "notes": "2026-11-03 midterms"}
+{"id": "cur04", "text": "um, who won the World Cup final this summer", "expect": ["spain"], "kind": "news", "family": "sports", "asked": "2026-11-14", "notes": "2026-07-19, Spain 1-0 Argentina"}
+{"id": "cur05", "text": "who got the Nobel Prize in literature this year", "expect": ["carson"], "kind": "news", "family": "news", "asked": "2026-11-14", "notes": "2026-10-08, Anne Carson"}
+{"id": "cur06", "text": "who won the men's US Open tennis final in September", "expect": ["zverev"], "kind": "news", "family": "sports", "asked": "2026-11-14", "notes": "2026-09-13, Zverev beat Shelton"}
+{"id": "cur07", "text": "who won the Tour de France this year", "expect": ["pogacar"], "kind": "news", "family": "sports", "asked": "2026-11-14", "notes": "2026-07-26, Pogacar 5th title"}
+{"id": "cur08", "text": "hey, who won the men's race at the New York City Marathon", "expect": ["almgren"], "kind": "news", "family": "sports", "asked": "2026-11-14", "notes": "2026-11-01, Andreas Almgren"}
+{"id": "cur09", "text": "who won the Ballon d'Or this year", "expect": ["kane"], "kind": "news", "family": "sports", "asked": "2026-11-14", "notes": "2026-10-26, Harry Kane"}
+{"id": "sc19", "text": "do I need a visa to visit Japan from the US", "expect": ["90|ninety"], "kind": "places", "family": "travel"}
+{"id": "sc20", "text": "when's the best time of year to visit Iceland to see the northern lights", "expect": ["september|october|november|december|january|february|march|winter"], "kind": "places", "family": "travel"}
+{"id": "sc21", "text": "how long is the flight from New York to London", "expect": ["hours"], "kind": "places", "family": "travel"}
+{"id": "sc10", "text": "okay so, how do I get a red wine stain out of a carpet", "expect": ["blot|blotting|vinegar|baking soda|dish soap|salt"], "kind": "howto", "family": "home"}
+{"id": "sc14", "text": "what are the usual symptoms of strep throat in adults", "expect": ["fever"], "kind": "howto", "family": "health"}
+{"id": "sc15", "text": "is it bad to take ibuprofen on an empty stomach", "expect": ["stomach"], "kind": "howto", "family": "health"}
+{"id": "sc24", "text": "hmm, what does the word ubiquitous actually mean, exactly", "expect": ["everywhere"], "kind": "howto", "family": "definition"}
+{"id": "sc25", "text": "so, um, what exactly is a Roth IRA and how does it work", "expect": ["retirement"], "kind": "howto", "family": "definition"}
+{"id": "mp01", "text": "which is taller, Mount Everest or K2", "expect": ["everest", "8848|8849|8,848|8,849|29,03|29032|29031|29,029|29029", "8611|8,611|28,251|28251"], "kind": "multipart", "family": "reference"}
+{"id": "mp02", "text": "who was born first, Mozart or Beethoven", "expect": ["mozart", "1756", "1770"], "kind": "multipart", "family": "reference"}
+{"id": "mp03", "text": "which is older, Harvard or Yale", "expect": ["harvard", "1636", "1701"], "kind": "multipart", "family": "reference"}
