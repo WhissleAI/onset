@@ -68,7 +68,12 @@ def claim_fact(claim: dict, answer: str):
     head = head[:k] if k > 0 else head                     # the subject is said before its predicate
     names = [m.group(1) for m in verify._NAME.finditer(head) if m.group(1) not in verify._COMMON]
     if not names:
-        return None
+        # "Harvard is older. It was founded in 1636": the pronoun's referent is the previous sentence's first name
+        before = verify._CITE.sub(" ", (answer or "")[:max(0, (answer or "").find(sent))])
+        prev = re.split(r"(?<=[.!?])\s+", before.strip())[-1] if before.strip() else ""
+        names = [m.group(1) for m in verify._NAME.finditer(prev) if m.group(1) not in verify._COMMON]
+        if not names or not re.match(r"\s*(it|he|she|they)\b", head, re.I):
+            return None
     return knowledge.FactQ(prop, names[0].lower())          # the sentence's subject: its first name
 
 
