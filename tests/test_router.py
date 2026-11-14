@@ -190,7 +190,8 @@ def test_route_fx_and_crypto():
     assert "70,000" in res[0].meta["card"]["spoken"] and res[0].source == "Coinbase spot price"
 
 
-def test_route_fact_and_fallback():
+def test_route_fact_and_fallback(monkeypatch):
+    monkeypatch.setattr(config, "ROUTER_FACTS_HEDGE_MS", -1)   # live Wikidata can exceed the hedge; test the fallback logic, not latency
     web, called = _web_spy()
     m: dict = {}
     res = asyncio.run(router.route("", F("who founded the company nvidia"), final=True, meter=m, web_fn=web))
