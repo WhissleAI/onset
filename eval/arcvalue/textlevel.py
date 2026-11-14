@@ -30,9 +30,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "eval"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from server import config, frame as framemod, lanes, narrow, router  # noqa: E402
-from server.session import clean, open_mic_skip  # noqa: E402
+from server.session import _rule_skip, clean, open_mic_skip  # noqa: E402
 from server.tagger import Tagger  # noqa: E402
 
 HANDOFF = Path(os.environ.get("ARC_HANDOFF", Path(__file__).resolve().parents[3] / "arc_tagger_handoff"))
@@ -201,7 +202,18 @@ def openmic() -> dict:
         utts[(r["scene"], r["utt"])] = r
     turns = [json.loads(x) for x in (DIRECTOR / "openmic_flux_turns.jsonl").read_text().splitlines() if x.strip()]
     turns = [t for t in turns if t["split"] == "test"]
-    c = {"arc": Counter(), "plain": Counter()}
+    # arms: "arc" = the default gate (session.open_mic_skip, OPENMIC_GATE) with the context the live session has (the
+    # ear's raw words, seconds since the last turn this arm answered in the scene); "arc_v1" = the old statement rule;
+    # "arc_director" = the default gate AND the director's addressed head (DIRECTOR_ADDRESSED=1), when its recorded
+    # inputs are on this machine (eval/arcvalue/director_addr.py); "plain" answers everything
+    from director_addr import turn_addr
+    from server import director as dirmod
+    addr = turn_addr()
+    m = dirmod.model()
+    thr = config.DIRECTOR_ADDR_THR or float(((m.thr if m else {}) or {}).get("director_addr", 0.5))
+    arms = ["arc", "arc_v1", "plain"] + (["arc_director"] if addr else [])
+    c = {a: Counter() for a in arms}
+    last: dict = {a: {} for a in arms}
     ex_saved, ex_missed = [], []
     kinds = Counter()
     for t in turns:
@@ -212,8 +224,20 @@ def openmic() -> dict:
         cov = [u for u in cov if u]
         req = any(u["addressed"] for u in cov)
         f = arc_frame(words)
-        skip = open_mic_skip(f) is not None or not f.has_content()
-        for arm, answered in (("arc", not skip), ("plain", True)):
+        sc, t0, t1 = t["scene"], t["words"][0][1], t["words"][-1][2]
+
+        def ctx(arm):
+            return {"raw": words, "since_request_s": (t0 - last[arm][sc]) if sc in last[arm] else None}
+        skip = open_mic_skip(f, ctx("arc")) is not None or (config.OPENMIC_GATE < 2 and not f.has_content())
+        ans = {"arc": not skip, "plain": True,
+               "arc_v1": not (_rule_skip(f) is not None or not f.has_content())}
+        if "arc_director" in arms:
+            a = addr.get((sc, t["turn"]))
+            ans["arc_director"] = open_mic_skip(f, ctx("arc_director")) is None and \
+                (a is None or a >= thr)
+        for arm, answered in ans.items():
+            if answered:
+                last[arm][sc] = t1
             c[arm]["turns"] += 1
             c[arm]["requests"] += req
             c[arm]["non_requests"] += not req
@@ -230,18 +254,22 @@ def openmic() -> dict:
             ex_missed.append({"scene": t["scene"], "heard": " ".join(words),
                               "addressed": [u["text"] for u in cov if u["addressed"]]})
     gold = [json.loads(x) for x in GOLD.read_text().splitlines() if x.strip()]
-    g = {"arc": Counter(), "plain": Counter()}
-    for r in gold:
+    g = {"arc": Counter(), "arc_v1": Counter(), "plain": Counter()}
+    for r in gold:       # single questions, no scene: no follow-up context
         words = r.get("raw_words") or r["words"]
         req = r["labels"]["respond"] != "none"
         f = arc_frame(words)
-        skip = open_mic_skip(f) is not None or not f.has_content()
-        for arm, answered in (("arc", not skip), ("plain", True)):
+        skip = open_mic_skip(f, {"raw": words}) is not None or (config.OPENMIC_GATE < 2 and not f.has_content())
+        v1 = _rule_skip(f) is not None or not f.has_content()
+        for arm, answered in (("arc", not skip), ("arc_v1", not v1), ("plain", True)):
             g[arm]["n"] += 1
             g[arm]["non_requests"] += not req
             g[arm]["answered_non_request"] += answered and not req
             g[arm]["missed_request"] += (not answered) and req
-    return {"director_test": {k: dict(v) for k, v in c.items()}, "gold": {k: dict(v) for k, v in g.items()},
+    for v in c.values():
+        v["handled_right"] = round(1 - (v["answered_non_request"] + v["missed_request"]) / max(1, v["turns"]), 4)
+    return {"director_test": {k: dict(v) for k, v in c.items()}, "director_addr_thr": thr,
+            "gold": {k: dict(v) for k, v in g.items()},
             "nonrequest_kinds_answered_by_arc": {f"{k}|{'answered' if a else 'held'}": n for (k, a), n in kinds.items()},
             "examples_held": ex_saved, "examples_missed": ex_missed}
 

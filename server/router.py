@@ -48,6 +48,37 @@ _IN_PLACE = re.compile(r"\b(?:in|for|at) (?P<p>[a-z][a-z .'-]{1,40}?)(?:\s+(?:to
 _NOT_PLACE = {"the morning", "the evening", "the afternoon", "the world", "the us", "general", "fahrenheit",
               "celsius", "degrees", "march", "april", "may", "june", "july", "august", "the summer", "the winter",
               "the spring", "the fall", "a row", "the day", "the week", "the weekend", "the past"}
+# Phrasings the plain patterns miss (arcvalue live-data set: ld02 "how hot is it in phoenix right now", ld04 "how cold
+# is it in chicago today", ld10 Flux's "what time WAS it in tokyo"). Each needs Arc's read-out too (a place the tagger
+# typed, or the matching intent), and the place must END the question (now-words aside): "what time was it in tokyo
+# when the bomb fell" and "how hot does it get in phoenix in july" stay on the web.
+_HOW_TEMP = re.compile(r"\bhow (?:hot|cold|warm|chilly|humid|windy|freezing|nice) (?:is it|will it be|is it going to be|"
+                       r"is it gonna be|s it|'s it)\b(?: (?:outside|out|today|now|right now))? (?:in|at|over in) ")
+_TIME_LOOSE = re.compile(r"\bwhat time (?:is|was|s) it (?:right now |now |currently )?(?:in|at|over in) ")
+_NOW_TAIL = {"now", "right", "currently", "today", "tonight", "at", "the", "moment", "outside", "please", "there"}
+
+
+def _ends_on_place(low: str, place: str) -> bool:
+    """The question ends with the place (and maybe "right now" / "today")."""
+    if not place or f" {place} " not in f" {low} ":
+        return False
+    tail = f" {low} ".rsplit(f" {place} ", 1)[1].split()
+    return all(t in _NOW_TAIL for t in tail)
+
+
+def time_loose(low: str, place: str) -> bool:
+    """'what time was it in tokyo' (the live ear's "was" for "is") / 'what time is it right now in sydney'."""
+    return bool(_TIME_LOOSE.search(low)) and _ends_on_place(low, place)
+
+
+_SKY = {"space", "outer space", "the sun", "sun", "the moon", "moon", "mars", "venus", "hell", "here", "there", "it",
+        "the oven", "an oven", "the fridge", "the core", "the earth's core"}
+
+
+def _arc_place(f: Frame | None) -> bool:
+    return f is not None and any(t == "place" for t, _ in f.slots)
+
+
 _CRYPTO_Q = re.compile(r"\b(bitcoin|btc|ethereum|ether|eth)\b")
 _RATE_Q = re.compile(r"\b(exchange rate|rate|worth|convert|conversion|how much is|how many|in|to)\b")
 
@@ -174,7 +205,9 @@ def plan(f: Frame) -> Plan:
     if f.intent == "discourse.intent.qa_currency" and f.intent_p >= 0.5 and re.search(r"\b(exchange|rate)\b", low):
         return Plan("wait", "fx", 0.5, {}, "currency question, second currency not said yet")
     # --- time / date
-    if _TIME_Q.search(low) or _DATE_Q.search(low):
+    loose_time = config.ROUTER_LOOSE and time_loose(low, place_of(f, text)) and (
+        _arc_place(f) or (f.intent == "discourse.intent.datetime_query" and f.intent_p >= 0.25))
+    if _TIME_Q.search(low) or _DATE_Q.search(low) or loose_time:
         what = "date" if _DATE_Q.search(low) and not _TIME_Q.search(low) else "time"
         return Plan("card", "time", 0.9, {"place": place_of(f, text), "what": what}, f"local {what}")
     # --- sunrise / sunset
@@ -189,8 +222,13 @@ def plan(f: Frame) -> Plan:
     # --- weather
     wx = toks & _WEATHER
     wx_intent = f.intent == "discourse.intent.weather_query" and f.intent_p >= 0.5
-    if wx and (wx_intent or toks & {"weather", "forecast", "rain", "snow", "temperature", "umbrella", "raining",
-                                    "snowing", "degrees"}):
+    # "how hot is it in phoenix": a temperature word in a how-<adj>-is-it question about a place Arc typed (or with
+    # the weather intent at a lower bar), the place ending the question
+    how_temp = config.ROUTER_LOOSE and wx and bool(_HOW_TEMP.search(low)) and place_of(f, text) not in _SKY \
+        and _ends_on_place(low, place_of(f, text)) \
+        and (_arc_place(f) or (f.intent == "discourse.intent.weather_query" and f.intent_p >= 0.25))
+    if wx and (wx_intent or how_temp or toks & {"weather", "forecast", "rain", "snow", "temperature", "umbrella",
+                                                "raining", "snowing", "degrees"}):
         when = weather.parse_day(text)
         if when == ("far",):
             return Plan("web", "weather", 0.4, {}, "weather outside the 7-day forecast")
@@ -466,7 +504,8 @@ def card_fits(card: dict, question: str) -> bool:
     if v == "sun":
         return bool(_SUN_Q.search(low))
     if v == "time":
-        return bool(_TIME_Q.search(low) or _DATE_Q.search(low))
+        return bool(_TIME_Q.search(low) or _DATE_Q.search(low) or
+                    (config.ROUTER_LOOSE and time_loose(low, place)))
     return False
 
 

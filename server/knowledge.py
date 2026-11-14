@@ -202,7 +202,12 @@ WD_API = "https://www.wikidata.org/w/api.php"
 SPARQL = "https://query.wikidata.org/sparql"
 
 
-async def _search(subject: str, k: int = 6) -> list[dict]:
+# Entity-search candidates looked at per fact lookup. 5 was too few: "hamlet" ranks the settlement, the 1948 film, a
+# given name, a video game and a family name ahead of the play (6th), so the film's composer answered "who wrote Hamlet".
+WD_CANDS = 8
+
+
+async def _search(subject: str, k: int = 10) -> list[dict]:
     hit = _cache.get(("s", subject))
     if hit is not None:
         return hit
@@ -221,8 +226,11 @@ def _sparql(ids: list[str], pids: list[str]) -> str:
     client: one query per lookup, not one per property)."""
     vals = " ".join(f"wd:{i}" for i in ids)
     props = " ".join(f"(p:{p} ps:{p} psv:{p} \"{p}\")" for p in pids)
-    return f"""SELECT ?item ?pid ?rank ?v ?vLabel ?vd ?amt ?unitLabel ?t ?prec WHERE {{
+    # the UNION's first branch gives each candidate's sitelink count (how many Wikipedias have an article on it): the
+    # popularity check in wikidata() ("Hamlet" the play: 143, the 1948 film: 45). Read back as (item, "_sl").
+    return f"""SELECT ?item ?sl ?pid ?rank ?v ?vLabel ?vd ?amt ?unitLabel ?t ?prec WHERE {{
  VALUES ?item {{{vals}}}
+ {{ ?item wikibase:sitelinks ?sl . }} UNION {{
  VALUES (?p ?ps ?psv ?pid) {{{props}}}
  ?item ?p ?st . ?st wikibase:rank ?rank . FILTER(?rank != wikibase:DeprecatedRank)
  ?st ?ps ?v .
@@ -230,6 +238,7 @@ def _sparql(ids: list[str], pids: list[str]) -> str:
             OPTIONAL {{ ?vn wikibase:timeValue ?t ; wikibase:timePrecision ?prec . }} }}
  FILTER NOT EXISTS {{ ?st pq:P582 ?end . }}
  OPTIONAL {{ ?v schema:description ?vd . FILTER(lang(?vd) = "en") }}
+ }}
  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en,mul". }}
 }} LIMIT 300"""
 
@@ -279,9 +288,19 @@ async def _wd_values(ids: list[str], pids: list[str]) -> dict[tuple, list[tuple]
     data = await get_json(SPARQL, {"query": _sparql(ids, pids), "format": "json"},
                           headers={"Accept": "application/sparql-results+json"}, timeout=config.ROUTER_SLOW_TIMEOUT_S,
                           breaker_s=20)
+    out = _rows(data)
+    _cache.put(key, out)
+    return out
+
+
+def _rows(data: dict) -> dict[tuple, list[tuple]]:
+    """SPARQL bindings -> {(item, pid): [(rank, value), ...]}, plus {(item, "_sl"): [("", sitelinks)]}."""
     out: dict[tuple, list[tuple]] = {}
     for b in data["results"]["bindings"]:
         item = b["item"]["value"].rsplit("/", 1)[-1]
+        if "sl" in b and "pid" not in b:
+            out[(item, "_sl")] = [("", int(b["sl"]["value"]))]
+            continue
         pid = b["pid"]["value"]
         rank = b["rank"]["value"].rsplit("#", 1)[-1]
         if "amt" in b:
@@ -296,44 +315,116 @@ async def _wd_values(ids: list[str], pids: list[str]) -> dict[tuple, list[tuple]
             if vd and pid in _DESCRIBE:
                 val = f"{val} ({vd})"                     # "Toyota (city in Aichi Prefecture, Japan)"
         out.setdefault((item, pid), []).append((rank, val))
-    _cache.put(key, out)
     return out
 
 
+# Sanity checks on the item a fact comes from (mp18: "who wrote Hamlet" answered "William Walton", the 1948 film's
+# composer). An item's kind is read off its Wikidata description.
+_MUSIC = re.compile(r"\b(opera|operetta|song|single|album|symphony|concerto|sonata|musical|ballet|anthem|hymn|"
+                    r"composition|oratorio|cantata|suite|march|soundtrack|lied|overture|requiem|piece)\b")
+_SCREEN = re.compile(r"\b(film|movie|video game|television|tv series|series|episode|miniseries|anime|soundtrack)\b")
+_NAMEISH = re.compile(r"\b(given name|family name|surname|disambiguation|wikimedia|name)\b")
+# a property id that only answers the question for some kinds of item: P86 (composer) / P676 (lyricist) are what
+# "wrote" means for music, never for a film's or a game's score
+_PID_KIND = {"P86": _MUSIC, "P676": _MUSIC}
+WD_POP_RATIO = 2.0       # "much more popular" (sitelinks), for the override and the unsure check below
+WD_TIE_RATIO = 0.8       # two same-name answering items this close in popularity, different values: unsure, no answer
+
+
+def _kind_ok(pid: str, desc: str) -> bool:
+    rx = _PID_KIND.get(pid)
+    if rx is not None:
+        d = (desc or "").lower()
+        return bool(rx.search(d)) and not (_SCREEN.search(d) and not re.search(r"\b(song|single|album)\b", d))
+    return True
+
+
+def _name_key(s: str) -> str:
+    s = re.sub(r"^(?:the|a|an) ", "", norm(s))
+    return re.sub(r"[;,:(].*$", "", s).strip()          # "Frankenstein; or, The Modern Prometheus", "Netflix, Inc."
+
+
+def _same_name(label: str, subject: str) -> bool:
+    return _name_key(label) == _name_key(subject)
+
+
 async def wikidata(q: FactQ) -> list:
-    """Docs answering q from Wikidata (strong), or []. Raises on network failure (the router logs it)."""
+    """Docs answering q from Wikidata (strong), or []. Raises on network failure (the router logs it).
+
+    Which item: the first entity-search candidate that HAS the property, kind-checked (a composer only "wrote" a piece
+    of music, never a film), the hinted kind first ("the novel X"). Popularity check (Wikipedia sitelinks): a later
+    candidate with the same name that also has the property and is WD_POP_RATIO x more popular wins ("Hamlet": the
+    play, 143, over the 1948 film, 45). Unsure -> [] so the router falls through to the next lane instead of answering:
+    two same-name items about as popular disagree, or the answer comes from an item that isn't even named like the
+    subject while a much more popular same-name item has no such property."""
     from .lanes import Doc
     cands = await _search(q.subject)
     if not cands:
         return []
     if q.hint:
         cands = sorted(cands, key=lambda c: 0 if q.hint in (c["desc"] or "").lower() else 1)
-    cands = cands[:5]
+    cands = cands[:WD_CANDS]
     ids = [c["id"] for c in cands]
     pids, kind, phrase = PROPS[q.prop]
     await _await_prefetch(ids)
     res = await _wd_values(ids, pids)
+    pop = {c["id"]: (res.get((c["id"], "_sl")) or [("", 0)])[0][1] for c in cands}
+    sub = q.subject.lower()
+    answers = []                                  # (candidate, pid, values), in search order
     for c in cands:
         for pid in pids:
-            if (c["id"], pid) not in res:
+            if (c["id"], pid) not in res or not _kind_ok(pid, c["desc"]):
                 continue
             vals = res[(c["id"], pid)]
             pref = [v for r, v in vals if r == "PreferredRank"]
             vals = pref or [v for _, v in vals]
             # a value naming the item itself ("Netflix" founded by "Netflix, Inc.") is the wrong item: try the next one
-            sub = q.subject.lower()
             vals = [v for v in dict.fromkeys(vals)
                     if q.prop not in _AGENT or sub not in v.lower().split(" (")[0]][:6]
-            if not vals:
-                continue
-            desc = f" ({c['desc']})" if c["desc"] else ""
-            text = f"{c['label']}{desc}: {phrase}: {', '.join(vals)}."
-            return [Doc(id=f"wikidata:{c['id']}:{pid}", title=f"{c['label']} · Wikidata", text=text,
-                        url=f"https://www.wikidata.org/wiki/{c['id']}#{pid}", source="Wikidata", score=1.0,
-                        meta={"tier": "facts", "strong": True, "fact": {"prop": q.prop, "pid": pid, "values": vals,
-                                                                        "item": c["label"]},
-                              "snapshot": "Wikidata, live"})]
-    return []
+            if vals:
+                answers.append((c, pid, vals))
+                break
+    if not answers:
+        return []
+    hinted = bool(q.hint) and q.hint in (answers[0][0]["desc"] or "").lower()
+    pick = answers[0]
+    unsure = ""
+    if not hinted and any(pop.values()):
+        same = [a for a in answers if _same_name(a[0]["label"], q.subject)]
+        best = max(same, key=lambda a: pop.get(a[0]["id"], 0), default=None)
+        if best is not None and pop.get(best[0]["id"], 0) > WD_POP_RATIO * pop.get(pick[0]["id"], 0) + 5:
+            pick = best
+        top = pop.get(pick[0]["id"], 0)
+        for a in same:
+            if a is not pick and top and pop.get(a[0]["id"], 0) >= WD_TIE_RATIO * top and set(a[2]) != set(pick[2]) \
+                    and _same_name(pick[0]["label"], q.subject):
+                unsure = f"two '{q.subject}' items disagree on {q.prop}"
+        if f" {_name_key(q.subject)} " not in f" {_name_key(pick[0]['label'])} ":
+            # the answer comes from an item not named like the subject ("Nineteen Eighty-Four" for "1984" is fine:
+            # the search ranked it first). Far down the list it is a loose match ("when was the founder born" ->
+            # Maria Montessori, 6th); next to a much more popular same-name item without the property, a wrong one
+            ids_ans = {a[0]["id"] for a in answers}
+            rivals = [x for x in cands if x["id"] not in ids_ans and _same_name(x["label"], q.subject)
+                      and not _NAMEISH.search((x["desc"] or "").lower())]
+            if cands.index(pick[0]) >= 2:
+                unsure = f"'{q.subject}' answered from a loose match ({pick[0]['label']})"
+            elif max((pop.get(x["id"], 0) for x in rivals), default=0) > WD_POP_RATIO * top + 5:
+                unsure = f"'{q.subject}' names something else with no {q.prop}"
+    if unsure:
+        _UNSURE.append({"subject": q.subject, "prop": q.prop, "why": unsure})
+        del _UNSURE[:-20]
+        return []
+    c, pid, vals = pick
+    desc = f" ({c['desc']})" if c["desc"] else ""
+    text = f"{c['label']}{desc}: {phrase}: {', '.join(vals)}."
+    return [Doc(id=f"wikidata:{c['id']}:{pid}", title=f"{c['label']} · Wikidata", text=text,
+                url=f"https://www.wikidata.org/wiki/{c['id']}#{pid}", source="Wikidata", score=1.0,
+                meta={"tier": "facts", "strong": True, "fact": {"prop": q.prop, "pid": pid, "values": vals,
+                                                                "item": c["label"], "sitelinks": pop.get(c["id"], 0)},
+                      "snapshot": "Wikidata, live"})]
+
+
+_UNSURE: list[dict] = []          # recent lookups the sanity check declined (health / debugging)
 
 
 _inflight: dict[tuple, asyncio.Future] = {}       # candidate ids -> a prefetch's SPARQL query on the wire
@@ -355,7 +446,7 @@ async def prefetch(subject: str) -> bool:
     search and ONE SPARQL query for every property in PROPS, split into the per-property entries wikidata() reads.
     Free (Wikidata); returns True when the cache was filled. Never raises."""
     try:
-        cands = (await _search(subject))[:5]
+        cands = (await _search(subject))[:WD_CANDS]
         if not cands:
             return False
         ids = [c["id"] for c in cands]
@@ -367,27 +458,11 @@ async def prefetch(subject: str) -> bool:
                                        "format": "json"},
                               headers={"Accept": "application/sparql-results+json"},
                               timeout=max(config.ROUTER_SLOW_TIMEOUT_S, 3.0), breaker_s=20)
-        rows: dict[tuple, list[tuple]] = {}
-        for b in data["results"]["bindings"]:
-            item = b["item"]["value"].rsplit("/", 1)[-1]
-            pid = b["pid"]["value"]
-            rank = b["rank"]["value"].rsplit("#", 1)[-1]
-            if "amt" in b:
-                val = _fmt_qty(b["amt"]["value"], (b.get("unitLabel") or {}).get("value", ""))
-            elif "t" in b:
-                val = _fmt_time(b["t"]["value"], int((b.get("prec") or {}).get("value", 11)))
-            else:
-                val = (b.get("vLabel") or b["v"])["value"]
-                if re.fullmatch(r"Q\d+", val) or val.startswith("http"):
-                    continue
-                vd = (b.get("vd") or {}).get("value", "")
-                if vd and pid in _DESCRIBE:
-                    val = f"{val} ({vd})"
-            rows.setdefault((item, pid), []).append((rank, val))
+        rows = _rows(data)
         for pids, _, _ in PROPS.values():
             key = ("q", tuple(ids), tuple(pids))
             if _cache.get(key) is None:
-                _cache.put(key, {k: v for k, v in rows.items() if k[1] in pids})
+                _cache.put(key, {k: v for k, v in rows.items() if k[1] in pids or k[1] == "_sl"})
         return True
     except Exception:
         return False

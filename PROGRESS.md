@@ -1302,3 +1302,31 @@ Screenshots (scratchpad feature_shots/loop/, 1280×720, light + dark, no horizon
 - The re-check badge is next to verify: "unverified · still unconfirmed" on conv21 turn 3, "✓ matches 1 source" on mp_03.
 - The "heard 'x' → Y" badge is not captured. In 8 browser replays of conv21 Flux never produced the unsure "mari gure" partial that the run_conv replays did, so there was no rewrite to show. The rewrites are in runs/conv_loop_on*_events.json (heard_fix events).
 - Console: only 404s for audio files served from my ad-hoc replay folder.
+
+## Arc-value gaps closed + Onset under Parity (branch feat/gaps; docs/ARC_VALUE.md sections 10-11)
+Five weak spots from the Arc-value report, each with a test (`tests/test_gaps.py`, 27) and a before/after from the
+arcvalue scorers. Every flag defaults ON; each off switch restores the old behaviour.
+- **Live-data phrasings** (`ROUTER_LOOSE=1`, server/router.py): "how hot / cold … is it in X" and "what time is / was
+  it in X" get the weather / clock card when Arc typed the place (or the intent is on at ≥ 0.25) and the place ends
+  the question. Card plans on the Flux-heard live set 13 → 16/16; live replay vs ground truth 13 → **16/16**; zero new
+  card fires on the 58 set, showcase, multi-part, corrections, gold (536) and 2,760 open-mic turns.
+- **Wikidata item check** (server/knowledge.py): root cause of mp18 = the play was the 6th search candidate (5 were
+  read) and P86 (composer) counted as "written by". Now: 8 candidates, sitelink counts in the same SPARQL query, P86 /
+  P676 only for musical works, a ≥ 2× more popular same-name item with the property wins, and unsure cases return
+  nothing so the router falls through. Fact-shaped eval questions + probes: 6 wrong → 0 (Hamlet ×3, Starry Night,
+  Dracula, Macbeth), 1 falls through (capital of Georgia), nothing else changed. mp18 now 2/2.
+- **Spoken birth years** (`PII_YEARS=1`, server/frame.py `spoken_years`): the tagger's date_of_birth span was right,
+  `_pii_hide` only hid digit years. Year words sent to search on the 69 DOB turns: 65 → **6**; all PII turns, any /
+  most hidden words sent: 441 / 365 → 423 / 304; over-redaction unchanged (4/597). Month and day stay.
+- **Open mic gate v2** (`OPENMIC_GATE=2`, server/openmic.py; `OPENMIC_FOLLOWUP_S=30`, `OPENMIC_DD_MIN=0.45`,
+  `OPENMIC_DD_ACT=0.95`): follow-up rescue (within 30 s of an answered request, same Arc speaker), tagger
+  device_directed, person-addressed sentences held, positive request evidence required; the director head is now
+  ANDed with it under `DIRECTOR_ADDRESSED=1`. Test scenes: handled right 67.6 → **86.8%**, non-requests answered 55 → 22%,
+  requests missed 9.0 → 4.7% (director AND: 89.3 / 14 / 7.4%). Val / train scenes: 65.3 → 83.2%, 67.2 → 85.6%, missed
+  ≤ 9.4%. Cost: the gold set's keyword-style single queries miss 14.5% (v1 7.1%). Push-to-talk never gates.
+- **Parity re-run** (Onset arm, runs/arcvalue_parity/): corrections 65/66 at **0.61 paid calls / q** (speed: 1.39;
+  Arc-off: 0.98); 58 set 56/58 at 0.17; showcase 13/15; follow-ups 31/34 at 0.14; noisy 14/15 + 14/15; live 16/16.
+  Multi-part 44/54 parts vs 47/54 under speed on the same branch: under Parity the answer starts before a second part
+  still on the wire lands (feat/cost follow-up).
+- Tests: 450 passed (423 on main e94f99d + 27 new); `tests/test_open_mic.py` and
+  `tests/test_director_v2.py` pin `OPENMIC_GATE=1` for the v1-rule cases; the director test now checks the AND.

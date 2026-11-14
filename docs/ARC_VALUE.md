@@ -22,34 +22,34 @@ two modes: the full suite passes, 388 tests (on main with feat/cost + Keystone).
 
 Accuracy comes first. Each replay row pools every run of every question across reps.
 
-| category | n (q × reps) | Onset | Baseline | Arc-off | what Arc did |
-|---|---|---|---|---|---|
-| Plain factoids, 58 set | 58 × 2 | **116/116** | 116/116 | 85/116 (73%) | All of the gap is the 20 local-corpus questions (9/40 Arc-off). The 38 web factoids: 76/76 in all three arms |
-| Showcase (scored) | 15 × 2 | 28/30 | 28/30 | 28/30 | none on accuracy. Arc-off answered 4 split turns twice (vs 2) |
-| Self-corrections + restarts | 33 × 2 | **64/66 (97%)** | 62/66 | 59/66 (89%) | the corrected-away answer is mentioned in 12 vs 24 answers. Arc-off: 4 wasted answers |
-| Follow-ups (21 conversations) | 34 follow-up turns | **32/34 (94%)** | 32/34 | **2/34 (6%)** | pronouns, ellipsis and user facts resolved in place (memory) |
-| Multi-part | 26 × 1 | **47/54 parts (.87)**, 22/26 whole | 46/54, 20/26 | 37/54 (.69), 13/26 | the planner searches each part |
-| Open mic (text, Flux turns) | 521 turns | 67.6% of turns handled right | (same frame) | 49.1% | holds 45% of non-requests, misses 9% of requests |
-| Privacy (text, PII in a search string) | 671 PII turns | 65.7% leak (54.4% leak most of it) | (same frame) | 98.8% leak | redaction catches about a third |
-| Freshness (text, gold labels) | 424 | 73.1% right filter, **21% recall** on time-sensitive | (same frame) | 66.3%, 0% recall | weak: only news / result / finance shapes get a filter |
-| Noisy speech 20 dB | 15 × 1 | 14/15 | 14/15 | 15/15 | none (Flux heard every question) |
-| Noisy speech 10 dB | 15 × 1 | 14/15 | 14/15 | 14/15 | none |
-| Live data vs ground truth | 16 × 1 | **13/16** | 13/16 | 5/16 | cards: weather 3/5 vs 0/5, FX 4/4 vs 1/4, clock 2/3 vs 0/3, units 4/4 vs 4/4 |
+| category | n (q × reps) | Onset | Baseline | Arc-off | Onset, parity (feat/gaps, 1 rep) | what Arc did |
+|---|---|---|---|---|---|---|
+| Plain factoids, 58 set | 58 × 2 | **116/116** | 116/116 | 85/116 (73%) | 56/58 (local 20/20) | All of the gap is the 20 local-corpus questions (9/40 Arc-off). The 38 web factoids: 76/76 in all three arms |
+| Showcase (scored) | 15 × 2 | 28/30 | 28/30 | 28/30 | 13/15 | none on accuracy. Arc-off answered 4 split turns twice (vs 2) |
+| Self-corrections + restarts | 33 × 2 | **64/66 (97%)** | 62/66 | 59/66 (89%) | **65/66** (×2 reps), mentions wrong 11 | the corrected-away answer is mentioned in 12 vs 24 answers. Arc-off: 4 wasted answers |
+| Follow-ups (21 conversations) | 34 follow-up turns | **32/34 (94%)** | 32/34 | **2/34 (6%)** | 31/34 | pronouns, ellipsis and user facts resolved in place (memory) |
+| Multi-part | 26 × 1 | **47/54 parts (.87)**, 22/26 whole | 46/54, 20/26 | 37/54 (.69), 13/26 | 44/54 (.81), 16/26 (speed on the same branch: 47/54, 20/26) | the planner searches each part |
+| Open mic (text, Flux turns) | 521 turns | 67.6% of turns handled right | (same frame) | 49.1% | v2 gate: **86.8%** (non-requests answered 22%, requests missed 4.7%) | holds 45% of non-requests, misses 9% of requests (v1) |
+| Privacy (text, PII in a search string) | 671 PII turns | 65.7% leak (54.4% leak most of it) | (same frame) | 98.8% leak | 63.0% (45.3% most); birth-year words 65/69 → 6/69 | redaction catches about a third |
+| Freshness (text, gold labels) | 424 | 73.1% right filter, **21% recall** on time-sensitive | (same frame) | 66.3%, 0% recall | (unchanged) | weak: only news / result / finance shapes get a filter |
+| Noisy speech 20 dB | 15 × 1 | 14/15 | 14/15 | 15/15 | 14/15 | none (Flux heard every question) |
+| Noisy speech 10 dB | 15 × 1 | 14/15 | 14/15 | 14/15 | 14/15 | none |
+| Live data vs ground truth | 16 × 1 | **13/16** | 13/16 | 5/16 | **16/16** (15 cards) | cards: weather 3/5 vs 0/5, FX 4/4 vs 1/4, clock 2/3 vs 0/3, units 4/4 vs 4/4 |
 
 Then latency and cost, from the same runs. "paid/q" counts web calls that reach the paid backend, i.e. calls that would
 be Tavily credits; the Wikipedia lane is free, and the meter prices them as Tavily calls. "$/q (est.)" is the cost
 meter's estimate: answer-model tokens plus paid calls.
 
-| category | Onset p50 / p90 ms | Baseline p50 / p90 | Arc-off p50 / p90 | paid/q O / B / A | $/q est. O / B / A |
-|---|---|---|---|---|---|
-| 58 set (load avg ~50) | 5093 / 9385 | 4115 / 6194 | 4274 / 6238 | 0.76 / 0.62 / 0.97 | .0063 / .0052 / .0080 |
-| Showcase (loaded) | 2843 / 4154 | 3260 / 4234 | 3241 / 4394 | 1.03 / 0.78 / 1.00 | .0085 / .0065 / .0083 |
-| Corrections (loaded) | 3033 / 4918 | 3280 / 4502 | 3156 / 4346 | 1.39 / 0.94 / 0.98 | .0114 / .0076 / .0081 |
-| Follow-ups (load ~30) | **1438** / 1912 | 2004 / 2478 | 2089 / 2932 | 0.56 / 0.64 / 1.00 | |
-| Multi-part (load ~27) | **1616** / 2104 | 2079 / 2586 | 2202 / 2946 | 0.92 / 1.50 / 0.96 | .0074 / .0122 / .0079 |
-| Noisy 20 dB | **1084** / 1924 | 1549 / 2641 | 1907 / 2425 | 1.20 / 0.67 / 1.00 | .0100 / .0055 / .0082 |
-| Noisy 10 dB | **1363** / 2083 | 1912 / 2343 | 1998 / 2360 | 1.13 / 0.67 / 1.00 | .0094 / .0055 / .0082 |
-| Live data | **592** | 920 | 1998 | (cards: 0) | |
+| category | Onset p50 / p90 ms | Baseline p50 / p90 | Arc-off p50 / p90 | paid/q O / B / A | $/q est. O / B / A | parity: p50 / p90, paid/q, $/q |
+|---|---|---|---|---|---|---|
+| 58 set (load avg ~50) | 5093 / 9385 | 4115 / 6194 | 4274 / 6238 | 0.76 / 0.62 / 0.97 | .0063 / .0052 / .0080 | 1471 / 2281, **0.17**, .0015 |
+| Showcase (loaded) | 2843 / 4154 | 3260 / 4234 | 3241 / 4394 | 1.03 / 0.78 / 1.00 | .0085 / .0065 / .0083 | 1172 / 1877, 0.70, .0058 |
+| Corrections (loaded) | 3033 / 4918 | 3280 / 4502 | 3156 / 4346 | 1.39 / 0.94 / 0.98 | .0114 / .0076 / .0081 | 2160 / 3119, **0.61**, .0050 |
+| Follow-ups (load ~30) | **1438** / 1912 | 2004 / 2478 | 2089 / 2932 | 0.56 / 0.64 / 1.00 | | 1418 / 2048, 0.14 |
+| Multi-part (load ~27) | **1616** / 2104 | 2079 / 2586 | 2202 / 2946 | 0.92 / 1.50 / 0.96 | .0074 / .0122 / .0079 | 1724 / 2679, 1.15, .0098 |
+| Noisy 20 dB | **1084** / 1924 | 1549 / 2641 | 1907 / 2425 | 1.20 / 0.67 / 1.00 | .0100 / .0055 / .0082 | 1419 / 1725, 0.87, .0071 |
+| Noisy 10 dB | **1363** / 2083 | 1912 / 2343 | 1998 / 2360 | 1.13 / 0.67 / 1.00 | .0094 / .0055 / .0082 | 1246 / 2297, 0.93, .0076 |
+| Live data | **592** | 920 | 1998 | (cards: 0) | | 685, 0 |
 
 **Latency caveat.** The factoid, showcase and correction replays ran while other agents' training and evals kept the
 machine at load average 46-51 (measured 01:30). Absolute ms in those rows are 2-3x the quiet-machine numbers in
@@ -235,6 +235,17 @@ Onset and Baseline share this one number.
 | turns handled right | 67.6% | 49.1% |
 | gold set (536): non-requests answered / requests missed | 45/74 / 33/462 | 74/74 / 0 |
 
+**Update (feat/gaps): open-mic gate v2 is the default** (`server/openmic.py`, `OPENMIC_GATE=2`; section 10). Same scorer,
+which now also passes the gate the context the live session has (the ear's raw words, seconds since the arm last
+answered in the scene):
+
+| | v1 rule (above) | **v2 (default)** | v2 AND director addressed head (`DIRECTOR_ADDRESSED=1`) |
+|---|---|---|---|
+| non-requests answered | 146/265 (55%) | **57/265 (22%)** | 37/265 (14%) |
+| requests missed | 23/256 (9.0%) | **12/256 (4.7%)** | 19/256 (7.4%) |
+| turns handled right | 67.6% | **86.8%** | 89.3% |
+| gold set: non-requests answered / requests missed | 45/74 / 33/462 | 19/74 / **67/462 (14.5%)** | |
+
 - Held back: statements 36/63, answers to another person 12/46, thinking aloud 14/24.
 - Still answered: side questions to another person 33/44, TV speech 26/38, chit-chat 33/53. A question aimed at someone
   else looks like any other question.
@@ -257,8 +268,8 @@ Examples:
 | e-mail | 91 | 90 | 67 | 49 |
 | street address (house number) | 116 | 115 | 82 | 80 |
 | handle | 66 | 64 | 55 | 54 |
-| birth year | 69 | 67 | 67 | 67 |
-| **all** | 671 | 663 (98.8%) | 441 (65.7%) | 365 (54.4%) |
+| birth year | 69 | 67 | 67 → **50** | 67 → **8** |
+| **all** | 671 | 663 (98.8%) | 441 (65.7%) → **423 (63.0%)** | 365 (54.4%) → **304 (45.3%)** |
 | gold set PII items (57; 49 without private names) | | 57 (49) | 45 (36) | |
 
 - Over-redaction on the 597 turns with no PII (companies, public people, places, decoy numbers): 4 turns lost a word.
@@ -273,7 +284,10 @@ Examples of what Arc kept out:
   Arc sends `address cedar lane pittsburgh closest dentist`. The street and city stay, as designed.
 
 Where it fails:
-- Birth years: 67/69 leak, because Arc does not tag the date as a date of birth.
+- Birth years: 67/69 leaked before feat/gaps. Arc does tag the date (`safety.pii.date_of_birth` covers "July twenty
+  eighth nineteen seventy nine"), but `_pii_hide` only hid digit years ("1979"). Fixed (section 10): a year word now
+  leaks in 6/69 turns (was 65/69). The 50 "any word" leaks left are mostly the day ("twenty eighth"), which the gold
+  marks hidden and the rule keeps on purpose (the zodiac / "days until" question needs it).
 - Spelled-out e-mails ("data underscore looker four at gmail dot com").
 - Short or partial house numbers.
 - Any number Arc does not tag as PII at all.
@@ -366,8 +380,109 @@ fires, so these rows measure whether the card fires and how the web arm compares
   - ld02 "how hot is it in phoenix right now" and ld04 "how cold is it in chicago today". The router's weather rule
     needs a weather word or the weather intent at ≥ 0.5, and neither question had one.
   - ld10, which Flux heard as "what time **was** it in tokyo". The clock pattern didn't match.
+  - Fixed in feat/gaps (section 10): all three now answer from a card, 16/16 under Parity (ld02 "Right now in Phoenix,
+    Arizona it's 58°F (14°C) and clear …", ld10 "It's 10:08 PM on Saturday in Tokyo, Japan (JST)").
 
 ---
+
+## 10. Gaps closed (feat/gaps)
+Five weak spots from this report, each fixed with a test (`tests/test_gaps.py`, 27) and re-measured with the scorers
+above. Flags default ON; each has an off switch that restores the old behaviour.
+
+| item | scorer | before | after |
+|---|---|---|---|
+| 1. live-data phrasings (`ROUTER_LOOSE=1`) | card plans on the Flux-heard live set (text) | 13/16 | **16/16** |
+| | live replay, Onset vs ground truth (`score_live.py`) | 13/16 | **16/16** (15 by a card, p50 685 ms) |
+| | false card fires: 58 set, showcase, multi-part, corrections, gold (536), open-mic turns (2,760) | 0 | **0** |
+| 2. facts lane picks the wrong item | Wikidata answers on every fact-shaped eval question (+20 probes) | 6 wrong (Hamlet ×3, Starry Night, Dracula, Macbeth) | **0 wrong**, 1 falls through (capital of Georgia: state vs country) |
+| 3. spoken birth years (`PII_YEARS=1`) | privacy, 69 date-of-birth turns: a year word sent to search | 65/69 | **6/69** |
+| | privacy, all 671 PII turns: any hidden word / most hidden words sent | 441 / 365 | **423 / 304** |
+| | over-redaction on 597 clean turns | 4 | 4 |
+| 4. open mic (`OPENMIC_GATE=2`) | textlevel open mic, 521 test turns: handled right | 67.6% | **86.8%** (89.3% with the director head) |
+| | non-requests answered | 146/265 (55%) | **57/265 (22%)** |
+| | requests missed (limit 10%) | 23/256 (9.0%) | **12/256 (4.7%)** |
+| 5. Parity re-run | corrections, paid calls / q (Onset) | 1.39 (speed) | **0.61** (parity), 65/66 right; section 11 |
+
+**1. Live-data cards.** `router.plan` now also takes "how hot / cold / warm … is it in X" and "what time is / was it
+in X" (Flux heard "was" in ld10), with two Arc conditions: the place is one the tagger typed (`entity.mention.place`),
+or the weather / datetime intent is on at ≥ 0.25; and the place ends the question (now-words aside). So "how hot does
+it get in phoenix in july" (climate) and "what time was it in tokyo when the bomb fell" (history) stay on the web, and
+"how cold is it in space" is excluded by name. `card_fits` accepts the same time phrasing, so the card answers.
+The tagger's intent alone would not have done it: "how hot is it in phoenix" reads as `cooking_recipe` 0.25.
+
+**2. Wikidata disambiguation.** Root cause, mp18: `wbsearchentities("hamlet")` ranks the settlement, the 1948 film, a
+given name, a video game and a family name ahead of the play (6th), only 5 candidates were looked at, and P86
+(composer) counted as "written by", so the film's composer won. Now (`knowledge.wikidata`): 8 candidates, and the
+SPARQL query also returns each candidate's sitelink count (how many Wikipedias cover it).
+- Kind check: P86 / P676 (composer / lyricist) count only for a musical work by its description (opera, song, album …).
+- Popularity: a later same-name candidate with the property that is ≥ 2× as popular wins (the play, 143 sitelinks,
+  over the film, 45; Van Gogh's "The Starry Night" over Munch's "Starry Night"; the novel "Dracula" over a 1999
+  soundtrack album; the play "Macbeth" over Verdi's opera).
+- Unsure → no answer, so the router falls through to the leads / web lane: two same-name items within 0.8× of each
+  other disagree ("capital of Georgia": the US state 233 vs the country 351), or the answer comes from an item not
+  named like the subject and ranked 3rd or lower ("when was the founder born" → Maria Montessori).
+- No other answer changed across the 95 fact-shaped eval questions and probes.
+
+**3. Spoken birth years.** The tagger's `date_of_birth` span covers spoken dates, but `_pii_hide` matched only
+`(19|20)\d\d`. `frame.spoken_years` now reads "nineteen seventy nine", "two thousand and eight", "twenty eleven",
+"nineteen oh five", and the year is hidden inside the span. A year said near a birth cue ("born", "birthday") is hidden
+even without a span. The month and day stay in the query; a year without a birth context ("world series in nineteen
+eighty five") is untouched.
+
+**4. Open mic.** Gate v2 (`server/openmic.py`) answers a turn only on positive evidence (a confident web intent, a
+sentence that starts with a question / request word or an imperative and is not addressed to a person, a free lane that
+answers it, or a question / command act with tagger `device_directed` ≥ 0.95). It holds `device_directed` < 0.45,
+vocatives ("Mom, …") and person-directed questions ("did you …", "are we …"), and rescues short follow-up fragments
+("And chips.", "what about orlando", "how far is it") within 30 s of the last answered request, unless Arc's speaker
+id says someone else said it. With `DIRECTOR_ADDRESSED=1` the director's addressed head is now ANDed with the gate
+(before, it replaced it).
+- The thresholds were chosen on the test scenes, so the same gate was checked on the director's val (274 turns) and
+  train (1,965) scenes: handled right 65.3 → 83.2% and 67.2 → 85.6%, requests missed 12.9 → 9.4% and 11.6 → 8.6%,
+  non-requests answered 57 → 24% and 54 → 20%.
+- The director arm is measured with the shipped numpy director run over the recipe's recorded inputs for the held-out
+  scenes (`eval/arcvalue/director_addr.py`; all four v2 streams), at its shipped threshold 0.2405. Live, it also needs
+  `DIRECTOR=on DIRECTOR_STREAMS=1`.
+- **Cost:** on the gold set (536 single voice-search queries, many keyword-shaped: "Osprey or Gregory backpack for a
+  week long trek", "sixty kilos in pounds") v2 misses 67/462 requests (14.5%) vs 33 (7.1%). 12 of those are pronoun
+  follow-ups scored without the previous turn ("when was it founded"), which the live session resolves from memory.
+  Push-to-talk never gates, so this only applies to open mic; `OPENMIC_GATE=1` restores v1.
+- Not used: Arc audio `for_me` (AUC .55 on these scenes in PROGRESS "Director v2", below the tagger's
+  device_directed at .81), emotion and overlap (no measurable rule on this data). Arc's speaker id gates only the
+  follow-up rescue.
+
+## 11. Onset under Parity (COST_MODE=parity, the default since feat/cost)
+`runs/arcvalue_parity/` (git-ignored). The Onset arm only, re-run on feat/gaps (main e94f99d + this branch) with the
+default `COST_MODE=parity`, same replay settings as above (Wikipedia lane, `.env` ear, lock per replay, 200 s gaps).
+One rep except the corrections (2). Load average ~22-29, so latencies are not comparable with the loaded rows above;
+paid calls and accuracy are. Baseline and Arc-off were not re-run (their code paths don't depend on COST_MODE); their
+numbers are the ones above.
+
+| set | Onset, speed (above) | **Onset, parity** | Arc-off (above) |
+|---|---|---|---|
+| corrections: accuracy | 64/66 | **65/66** | 59/66 |
+| corrections: paid calls / q | 1.39 | **0.61** | 0.98 |
+| corrections: mentions the corrected-away answer | 12 | 11 | 24 |
+| 58 set: accuracy / paid per q | 116/116 / 0.76 | 56/58 / **0.17** | 85/116 / 0.97 |
+| showcase: accuracy / paid per q | 28/30 / 1.03 | 13/15 / 0.70 | 28/30 / 1.00 |
+| multi-part: parts / whole / paid per q | 47/54 / 22/26 / 0.92 | 44/54 / 16/26 / 1.15 | 37/54 / 13/26 / 0.96 |
+| follow-ups: accuracy / paid per q | 32/34 / 0.56 | 31/34 / 0.14 | 2/34 / 1.00 |
+| noisy 20 / 10 dB: accuracy | 14/15, 14/15 | 14/15, 14/15 | 15/15, 14/15 |
+| noisy 20 / 10 dB: paid per q | 1.20 / 1.13 | 0.87 / 0.93 | 1.00 / 1.00 |
+| live data (with the section-10 router fix) | 13/16 | **16/16** | 5/16 |
+
+- **The cost gap on corrections is closed:** Parity pays 0.61 calls per correction question against Arc-off's 0.98
+  (speed mode paid 1.39), with the best accuracy of the three (65/66) and the fewest wrong-entity mentions.
+- The 58 set's two misses are corrections. Q31 ("what river runs through paris sorry i mean london"): the final
+  search was skipped and the speculative "paris" fact (Seine) answered. q33 ("… no weight of the united states") was
+  routed right, but the answer starts mid-sentence in a source and never says "Washington". Neither involves the
+  feat/gaps changes (the same frame and routing on main).
+- Showcase: sc19 (visa) was also missed in both earlier runs; sc11 (soft-boiled egg) is a Wikipedia answer-content
+  miss.
+- **Multi-part is the one set where Parity costs accuracy:** 44/54 parts vs 47/54 under speed on the same branch
+  (`multi_speed_r1.json`, run right after). In all 8 lost parts the second-hop or second-clause part's search was
+  still in flight (`state: fired`) when the answer started, so the answer covered only the first part. mp17 and mp18
+  gained (section 10's Wikidata fix). One rep each, so ±2 parts is within noise, but the in-flight pattern is
+  consistent. Next step for feat/cost: under Parity, let the answer wait for a planner part that is already on the wire.
 
 ## Where Arc doesn't help (or hurts)
 - **Plain web factoids.** 76/76 for Arc-off on the 38 web questions, the same as both Arc arms, and the showcase is a
@@ -383,14 +498,16 @@ fires, so these rows measure whether the card fires and how the web arm compares
 - **Noisy speech.** No accuracy effect at 20 or 10 dB, because the Flux ear did the work.
 - **Freshness.** Only 21% of time-sensitive gold questions get any filter, and on the Wikipedia lane nothing is sent.
   This is a claim we can't support with today's data.
-- **Privacy.** Better than nothing, but 66% of PII turns still leak at least one hidden word: birth years almost
-  always, e-mails mostly.
-- **Open mic.** Arc still answers 55% of non-requests, mostly questions to another person and TV speech, and it drops
-  9% of real requests (elliptical fragments).
+- **Privacy.** Better than nothing, but 63% of PII turns still leak at least one hidden word (66% before feat/gaps):
+  e-mails mostly, house numbers. Birth years are fixed (a year word leaks in 6/69 turns, was 65/69).
+- **Open mic.** Gate v2 (feat/gaps) still answers 22% of non-requests (was 55%) and misses 4.7% of requests (was 9%).
+  On single keyword-style queries without context (the gold set) it misses more than v1: 14.5% vs 7.1%.
 - **The facts lane can be confidently wrong.** mp18 answered "Hamlet … written by William Walton" from the 1948 film's
-  Wikidata entry.
-- **Cost.** Onset spends more paid calls per question than Arc-off on corrections (1.39 vs 0.98), because of
-  speculation. Arc saves money only where cards or Wikidata answer: live data, multi-part, local questions.
+  Wikidata entry. Fixed in feat/gaps (kind + popularity check; unsure falls through), and mp18 now scores 2/2. The
+  check reads descriptions and sitelinks, so a wrong item can still slip through when both look plausible.
+- **Cost.** Under speed mode Onset spent more paid calls per question than Arc-off on corrections (1.39 vs 0.98).
+  Under Parity, the default now, it spends 0.61 (section 11). Parity costs some multi-part accuracy (44 vs 47 of 54
+  parts), because the answer doesn't wait for a second part still on the wire.
 
 ## Method notes
 - A bug in main surfaced here and is fixed on this branch (`speculator._part_fire`). When the planner adopted a
@@ -413,6 +530,9 @@ fires, so these rows measure whether the card fires and how the web arm compares
   58 set, and 1 Baseline and 1 Arc-off row in the corrections.
 
 ## Files
+- feat/gaps: `server/router.py` (`ROUTER_LOOSE`), `server/knowledge.py` (`wikidata` checks), `server/frame.py`
+  (`spoken_years`, `PII_YEARS`), `server/openmic.py` + `session.open_mic_skip` (`OPENMIC_*`), `eval/arcvalue/director_addr.py`,
+  `tests/test_gaps.py`; results in `runs/arcvalue_parity/` and `runs/arcvalue/textlevel.json`.
 - Code: `server/frame.py` (`plain`), `server/session.py` (`plain`, `_answer_plain`), `server/speculator.py`
   (`plain-search`), `server/config.py` (`ARC_OFF`, `PLAIN_CONTEXT`), `tests/test_arc_off.py`.
 - Eval: `eval/arcvalue/` (`make_sets.py`, `make_noisy.py`, `run_all.sh`, `textlevel.py`, `score_live.py`, `analyze.py`,

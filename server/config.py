@@ -196,6 +196,11 @@ DIRECTOR_KEEP = os.environ.get("DIRECTOR_KEEP", "0") == "1"
 DIRECTOR_STREAMS = os.environ.get("DIRECTOR_STREAMS", "0") == "1"
 DIRECTOR_ARC_EAR = os.environ.get("DIRECTOR_ARC_EAR", "0") == "1"
 DIRECTOR_ADDRESSED = os.environ.get("DIRECTOR_ADDRESSED", "0") == "1"
+# Open-mic gate (server/openmic.py; open mic only, push-to-talk never gates). OPENMIC_GATE=1 is the old statement rule.
+OPENMIC_GATE = int(os.environ.get("OPENMIC_GATE", "2"))
+OPENMIC_FOLLOWUP_S = float(os.environ.get("OPENMIC_FOLLOWUP_S", "30"))   # "and chips" this soon after an answer = a request
+OPENMIC_DD_MIN = float(os.environ.get("OPENMIC_DD_MIN", "0.45"))   # tagger device_directed below this: held
+OPENMIC_DD_ACT = float(os.environ.get("OPENMIC_DD_ACT", "0.95"))   # a question / command act counts as a request at/above this
 DIRECTOR_ADDR_THR = float(os.environ.get("DIRECTOR_ADDR_THR", "0") or 0)       # 0 = the model's own (director.json)
 DIRECTOR_ROUTE = os.environ.get("DIRECTOR_ROUTE", "0") == "1"
 DIRECTOR_ROUTE_THR = float(os.environ.get("DIRECTOR_ROUTE_THR", "0.8"))
@@ -252,6 +257,10 @@ ROUTER_TIMEOUT_S = float(os.environ.get("ROUTER_TIMEOUT_S", "0.6"))    # one fre
 ROUTER_LANE_TIMEOUT_S = float(os.environ.get("ROUTER_LANE_TIMEOUT_S", "2.0"))   # a whole cheap lane (geocode + forecast)
 ROUTER_SLOW_TIMEOUT_S = float(os.environ.get("ROUTER_SLOW_TIMEOUT_S", "1.5"))   # one request to a slower host (SPARQL, met.no)
 ROUTER_CARD_ANSWER = os.environ.get("ROUTER_CARD_ANSWER", "1") == "1"  # a fitting card answers itself (no model call)
+# PII_YEARS=1: a spoken birth year is hidden like a digit one ("nineteen eighty five"), inside the tagger's
+# date_of_birth span and next to a birth cue ("born", "birthday") when the tagger gave no span (server/frame.py)
+PII_YEARS = os.environ.get("PII_YEARS", "1") == "1"
+ROUTER_LOOSE = os.environ.get("ROUTER_LOOSE", "1") == "1"   # wider card detection: "how hot is it in X", "what time was it in X" (needs an Arc place / intent)
 ROUTER_LEADS = os.environ.get("ROUTER_LEADS", "1") == "1"              # local Wikipedia lead index (if built)
 ROUTER_LEADS_STRONG = float(os.environ.get("ROUTER_LEADS_STRONG", "0.76"))   # lead cosine that counts as an answer (calibrated on the eval factoids)
 ROUTER_UA = os.environ.get("ROUTER_UA", "HeadStartDemo/0.1 (https://github.com/; voice search research prototype)")
