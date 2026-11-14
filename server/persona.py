@@ -367,8 +367,9 @@ def interest_sources(f, answer_text: str, docs: list, vecs: dict, n: int = 2) ->
     in the answer ([1]), or, when it cites nothing, a source whose title shares a word with the question. Never a
     Keystone cell (its title can be the user's own question), a local recording moment, a card or memory."""
     cited = {int(x) for x in re.findall(r"\[(\d+)\]", answer_text or "")}
-    try:
-        qw = {w for w in _norm(f.resolved_text).split() if len(w) > 2}
+    try:                                     # the question's subject words (Arc entity phrases, else content words)
+        qw = {w for w in _norm(" ".join(list(getattr(f, "phrases", ()) or ()) + [subject(f)])).split()
+              if len(w) > 2 and w not in _STOPS and w not in _GENERIC}
     except Exception:
         qw = set()
     out = []
@@ -384,6 +385,9 @@ def interest_sources(f, answer_text: str, docs: list, vecs: dict, n: int = 2) ->
         if len(out) >= n:
             break
     return out
+
+
+_GENERIC = {"answer", "short", "exactly", "give", "tell", "more", "just", "about", "the", "what", "does", "much"}
 
 
 # ------------------------------------------------------------------------------------------------- retrieval
@@ -457,6 +461,13 @@ class View:
         if doc_id not in self._cats:
             self._cats[doc_id] = category(vec)
         return self._cats[doc_id]
+
+    def other_sense(self, doc_id: str, vec) -> bool:
+        """This source is of a named category other than the user's recent one (the case the bias may overturn)."""
+        if not self.sense or vec is None:
+            return False
+        c = self.cat(doc_id, vec)
+        return bool(c) and c != self.sense
 
     def eligible(self, ids, vecs: dict, skip=()) -> set:
         """Docs the interest bias may lift: of the user's recent category, not an earlier turn's own source."""
@@ -556,5 +567,7 @@ def warmup():
 
 
 def hint_tokens(text: str) -> int:
-    """Estimated tokens a hint adds to the prompt (4 characters per token, + the 'Note:' wrapper)."""
-    return math.ceil((len(text) + 7) / 4) if text else 0
+    """Estimated tokens a hint adds to the prompt (the 'Note:' wrapper included). Calibrated on claude-haiku-5-5's
+    count_tokens for the hints here: ~3 characters per token (exact: short 50, fuller 49, more 32, fix 34, units
+    15, sense line 28; docs/PERSONALIZATION.md)."""
+    return math.ceil((len(text) + 7) / 3) if text else 0

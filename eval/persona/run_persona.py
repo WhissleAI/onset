@@ -23,7 +23,8 @@ ap.add_argument("--gap", type=float, default=3.0, help="seconds of silence betwe
 ap.add_argument("--tag", default="")
 ap.add_argument("--judge", action="store_true")
 ap.add_argument("--events", action="store_true", help="also keep spec / sources / route events (debug)")
-ap.add_argument("--judge-only", default="", help="re-judge an existing runs/persona_<tag>.json")
+ap.add_argument("--judge-only", default="", help="re-score + re-judge an existing runs/persona_<tag>.json")
+ap.add_argument("--rescore", default="", help="re-score an existing runs/persona_<tag>.json (no judge calls)")
 args = ap.parse_args()
 from server import ear, embed, lanes, answer, searchcache, router, persona, meter, config   # noqa
 from server.session import Session            # noqa
@@ -58,15 +59,17 @@ def style_ok(ans, st):
 
 
 def sense_ok(ans, s, sources=()):
-    """The intended meaning: the answer names it (want) and not the other one (not), or the top source is that
-    meaning's article (src) and the answer doesn't talk about the other one."""
+    """The intended meaning LEADS the answer: its first sentence names it (want) and not the other meaning (not), or
+    the top source is that meaning's article (src) and the first sentence doesn't talk about the other one. (A
+    closing aside about the other meaning is allowed: "The Jaguar XJ220 reached 217 mph [1]. The animal ...")."""
     if not s:
         return None
-    a = (ans or "").lower()
-    if re.search(s["not"], a):
+    a = re.sub(r"\[\d+\]", "", (ans or "").lower())
+    first = re.split(r"(?<=[.!?])\s+", a.strip(), maxsplit=1)[0]
+    if re.search(s["not"], first):
         return False
     top = (sources[0] if sources else "").lower()
-    return bool(re.search(s["want"], a)) or bool(s.get("src") and re.search(s["src"], top))
+    return bool(re.search(s["want"], first)) or bool(s.get("src") and re.search(s["src"], top))
 
 
 async def run(sess):
@@ -181,10 +184,17 @@ def summarize(res, jmeta=None):
 
 async def main():
     out = ROOT / "runs" / (f"persona_{args.tag}.json" if args.tag else "persona.json")
-    if args.judge_only:
-        src = ROOT / "runs" / f"persona_{args.judge_only}.json"
+    if args.rescore or args.judge_only:
+        src = ROOT / "runs" / f"persona_{args.rescore or args.judge_only}.json"
         d = json.loads(src.read_text())
-        jm = await judge(d["rows"])
+        gold = {x["id"]: x for x in (json.loads(l) for l in Path(args.sessions).read_text().splitlines() if l.strip())}
+        for r in d["rows"]:
+            for t in r["turns"]:
+                g = gold[r["id"]]["turns"][t["i"] - 1]
+                t["correct"] = ok(t["answer"], g["expect"]) if g["expect"] else None
+                t["sense_ok"] = sense_ok(t["answer"], g.get("sense"), t.get("sources") or [])
+                t["style_ok"] = style_ok(t["answer"], g.get("style"))
+        jm = await judge(d["rows"]) if args.judge_only else d.get("judge")
         d["judge"] = jm
         d["summary"] = summarize(d["rows"], jm)
         src.write_text(json.dumps(d, indent=1))

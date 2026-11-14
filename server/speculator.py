@@ -474,7 +474,10 @@ class Speculator:
         keep = [i for i in ids if i in fresh]
         ids = keep if len(keep) >= 3 else ids
         # carried docs (earlier turns' sources) get no bias: they ARE the history, and would win by construction
-        only = self.persona.eligible(ids, self.vecs, skip=self.carried_ids)
+        # only a disambiguation: the plain top is clearly ANOTHER sense (Cheetah = animal while you ask about cars)
+        top = plain[0][0]
+        only = self.persona.eligible(ids, self.vecs, skip=self.carried_ids) \
+            if self.persona.other_sense(top.id, self.vecs.get(top.id)) else set()
         out = plain if not only else \
             [(self.pool[i], sc) for i, sc in persona.bias_rank(ids, self.vecs, qvec, self.persona.vec, k, only=only)]
         before = self.persona.changed

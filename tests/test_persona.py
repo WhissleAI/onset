@@ -174,6 +174,10 @@ def test_speculator_rank_hint_and_event(monkeypatch):
     assert "Answer about Jaguar XJ220" in sp._hint(f)
     sp.persona = None
     assert sp._rank_for(f, _unit(1, 0.1, 0.1))[0][0].title == "Jaguar"   # no persona: unchanged
+    # the plain top has no named category ("Eiffel Tower" while you asked about paintings): never overturned
+    monkeypatch.setattr(persona.View, "cat", lambda self, i, v: "car" if i == "car" else "")
+    sp.persona = persona.View(p)
+    assert sp._rank_for(f, _unit(1, 0.1, 0.1))[0][0].title == "Jaguar" and not sp.persona.changed
     sp.close()
 
 
@@ -246,7 +250,7 @@ def test_interest_sources_cited_or_named_never_keystone_cells():
     got = [t for t, _ in persona.interest_sources(f, "It makes 379 hp [3].", docs, vecs)]
     assert got == ["Porsche 911"]                                     # the cited one, suffix stripped
     got = [t for t, _ in persona.interest_sources(f, "The sources don't say.", docs, vecs)]
-    assert got == ["Tax horsepower", "Porsche 911"]                   # no citation: titles that share a word
+    assert got == ["Porsche 911"]                   # no citation: a title naming the subject ("Tax horsepower": no)
     assert "Pony" not in got and not any("how much" in t for t in got)
 
 
