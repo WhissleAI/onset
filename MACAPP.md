@@ -10,8 +10,8 @@ Onset.app/Contents/
   Resources/app/               server/, web/, scripts/fetch_models.py, models/manifest.json, libarctag.dylib (built from vendor/arctag/src)
 ~/Library/Application Support/Onset/
   models/                      arc-v1, arctag, embeddinggemma-2, index-data, demo-audio (models/manifest.json)
-  data/                        memory (MEM_DIR), search cache
-  logs/server.log              server output (server.log.1 = the previous run). Keys are never logged.
+  data/                        memory (MEM_DIR=data/memory), search cache (data/search_cache.json)
+  logs/server.log              server output + request log (server.log.1 … .5 = earlier runs). Keys are never logged.
 ```
 
 ## Name and identity
@@ -21,19 +21,33 @@ Onset.app/Contents/
 
 ## Build
 ```sh
-scripts/build_macapp.sh              # -> dist/Onset.app (~0.9 GB). About 30 s when the Python runtime is reused.
+scripts/build_macapp.sh              # -> dist/Onset.app (745 MB). About 30 s when the Python runtime is reused.
+scripts/build_macapp.sh --no-swap    # leave the new build in dist/.staging/Onset.app (test it there)
+scripts/build_macapp.sh --swap       # promote the staged build to dist/ (refused while Onset runs from dist/)
 scripts/build_macapp.sh --clean      # also rebuild the Python runtime (downloads ~350 MB of wheels; ~3 min)
 scripts/build_macapp.sh --dev-env    # developer build: keys missing from the Keychain come from this repo's .env
 scripts/build_macapp.sh --dmg        # also dist/Onset.dmg (a second compressed copy)
 ```
 Needs the Xcode command line tools (`swiftc`, `cc`, `codesign`, `iconutil`) and [uv](https://docs.astral.sh/uv/).
-Only `dist/<APP_NAME>.app` remains: intermediates (`build/macapp`, the uv cache, the downloaded interpreter) are deleted.
+**A running app is never rebuilt over or quit.** Every build goes to `dist/.staging/<APP_NAME>.app` first. It
+replaces `dist/<APP_NAME>.app` only when nothing (app or server) is running from there; otherwise it stays staged
+and the script says so. Intermediates (`build/macapp`, the uv cache, the downloaded interpreter) are deleted.
 The bundled Python is kept between builds while `macapp/requirements.txt` and `PYTHON_VERSION` don't change
 (`Resources/python/.req_stamp`).
 
-Python runtime: `uv python install` gets a relocatable python-build-standalone CPython, `uv pip install` installs the
-pinned requirements into it, then tests, Tk, headers and `torch/include` are removed. Sizes: Python 880 MB (torch is
-most of it), app code 3 MB.
+Python runtime: `uv python install` gets a relocatable python-build-standalone CPython, and `uv pip install` installs
+the pinned requirements into it. Then tests, Tk, headers, pip, `.pyi` stubs and `torch/include` are removed.
+`macapp/prune_bytecode.py` keeps precompiled `.pyc` only for the modules the server imports; it removes 6,200 files
+(123 MB), mostly transformers' ~500 unused model families. Warm-up is unchanged at about 16 s.
+
+Size, 745 MB in total:
+- Python runtime: 735 MB, of which torch is 344 MB (`libtorch_cpu.dylib` alone is 215 MB), transformers 116 MB,
+  scipy 88 MB, numpy 45 MB, sympy 44 MB (needed by torch), scikit-learn 35 MB (needed by sentence-transformers),
+  PIL + torchvision 24 MB (EmbeddingGemma 2's processor imports them), and about 100 MB of kept bytecode.
+- App code: 3 MB.
+
+Further cuts would need a different runtime, not trimming: an ONNX/CoreML EmbeddingGemma and Arc would drop torch,
+transformers, scipy and sympy, about 600 MB.
 
 Signing: ad-hoc (`codesign -s -`) with the hardened runtime. The shell has `macapp/app.entitlements` (audio-input,
 network client/server). The bundled `python3.11` has `macapp/python.entitlements`: it loads its own ad-hoc-signed
@@ -82,7 +96,11 @@ The server resolves each path in this order (`server/modelpaths.py`): its own en
    the error with **Open Logs**. If the app itself dies, the server's parent watchdog exits within about 1 s.
    **Quit** sends SIGTERM, then SIGKILL after 4 s.
 
-Menu: About, Settings… (⌘,), Forget Memory…, Open Logs, Open Models Folder, Restart Server, View > Reload (⌘R).
+Menu: About, Settings… (⌘,), Forget Memory…, Open Logs, Open Models Folder, Restart Server; View > Show Details and
+Question List (⌘D), Reload (⌘R); **Replay** (every question from `/api/questions`; ⌥⌘1–9 for the first nine).
+The page opens in its compact "minimal" view, which hides the question list; ⌘D, or D in the page, shows it.
+A dropped websocket shows a "Reconnecting to the local server…" banner, and the page reconnects every 1.5 s.
+When the server is restarted after a crash or a Settings change, the page reloads against it.
 
 Settings stores the Anthropic, Tavily and Deepgram keys in the login Keychain (generic passwords, service = bundle id).
 A saved key is shown only as "saved". Saving restarts the server with the new environment.
@@ -97,9 +115,16 @@ mic modes work in the window: hold Space for push-to-talk (the web view is made 
 shown), or click Ask for the open mic.
 
 ## Verify (unattended)
+Test instances run from staging, hidden, with their own support folder, so they never touch the user's window, logs,
+port or memory:
 ```sh
-open dist/Onset.app --args -snapshotDir /tmp/shots -autoReplay q01.wav [-autoQuit YES]
+dist/.staging/Onset.app/Contents/MacOS/Onset -hidden YES -supportDir /tmp/onset_test \
+  -modelsDir "$HOME/Library/Application Support/Onset/models" -snapshotDir /tmp/shots \
+  -autoReplay q01.wav,q02.wav,q03.wav,q04.wav,q05.wav,q06.wav,q07.wav,q08.wav -autoQuit YES &
+.venv/bin/python scripts/soak_ws.py --port <P> --n 10   # replay + push-to-talk + open-mic runs on ONE websocket
 ```
+`-hidden YES` gives no Dock icon, no activation and an off-screen window (it still renders). `-autoReplay` replays
+each file through the page in turn, waiting for the page's run to end, the way a person clicks through the list.
 The app saves `01_splash_warming.png`, `02_ui_loaded.png`, `03_replay_speaking.png` and `04_replay_answered.png`
 using its own snapshot APIs. It also writes `page_after_replay.txt` and `automation.log` (state changes and the mic
 preconditions: secure context, getUserMedia, AudioWorklet). `scripts/preflight.py --port <P>` also works against the
@@ -121,6 +146,26 @@ app's server; P is in the first line of server.log.
 3. `xcrun stapler staple dist/Onset.app`, then build the dmg (`--dmg`) and staple that too.
 With a team ID, library validation could be turned back on for python (`disable-library-validation` removed), since
 every library would then carry the same team signature.
+
+## Search cache across launches
+The app sets `CACHE_PERSIST=1` and `CACHE_PATH=<data>/search_cache.json`, so a search made in an earlier session is
+reused (exact meaning, or embedding nearest neighbour ≥ 0.92) while it is fresh. The TTLs are unchanged: live data
+10 min, general 6 h, stable 3 days. The file holds web docs only (never cards / facts), is bounded by `CACHE_MAX` (400)
+and is written atomically (tmp file + rename). A hit is always labelled "cached · as of <time>", with the date when it
+is from an earlier day, and is never shown as live. **Clear Search Cache…** (app menu) calls `POST /api/cache/clear`,
+which also clears the router's in-memory card / fact lookups.
+
+The router's card / fact caches stay in memory per launch. They use monotonic-clock expiries and tuple-keyed values,
+and cards carry their own "as of": persisting them is not a small change.
+
+## Request log (server.log)
+Each line starts with `[req HH:MM:SS.mmm]`. It records websocket open and close (duration, number of runs), each run's
+start (replay file / push-to-talk / open mic, ear) and stop (seconds of audio), and each question's endpoint
+(semantic / ear) and completion: ready ms, path, lane, fallback, error, and the first 80 characters of the question.
+It also logs open-mic "heard" (not a request), answer errors, ear fallback/errors, and any crash of the websocket
+handler with its traceback. If the user reports "stuck after N questions", the last lines show whether the question
+never reached an endpoint (the ear), never finished (the lanes/answer) or the socket closed. `REQUEST_LOG=0` turns
+it off.
 
 ## Troubleshooting
 - **Stuck on "Models needed"**: `python3 scripts/fetch_models.py status`. Import the local-only models; a link

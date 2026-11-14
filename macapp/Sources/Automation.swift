@@ -42,27 +42,62 @@ final class Automation {
                 app.web.evaluateJavaScript("JSON.stringify({secure: window.isSecureContext, getUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia), audioWorklet: !!(window.AudioContext && AudioContext.prototype && 'audioWorklet' in AudioContext.prototype)})") { r, _ in
                     self.note("mic preconditions \((r as? String) ?? "?")")
                 }
-                self.note("replay \(f)")
-                app.web.evaluateJavaScript("window.__hs.replay(\(Self.js(f))); true") { _, e in
-                    if let e = e { self.note("replay error \(e)") }
-                }
+                // -autoReplay a.wav,b.wav,...: each replayed through the page in turn, the next one once the page's run
+                // has ended (as a person clicking through the list would); then the snapshots of the LAST one
+                let files = f.split(separator: ",").map(String.init)
+                self.replaySequence(files, index: 0, app: app) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.saveWeb(app.web, "03_replay_speaking.png") {} }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 14) {
                     self.saveWeb(app.web, "04_replay_answered.png") {
                         app.web.evaluateJavaScript("document.body.innerText") { r, _ in
                             try? ((r as? String) ?? "").write(to: self.dir!.appendingPathComponent("page_after_replay.txt"),
                                                                atomically: true, encoding: .utf8)
-                            self.finish(app)
+                            self.note("replay menu items: \(app.replayMenu.items.count)")
+                            app.toggleDetails()        // View > Show Details: the question list + timeline
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                self.saveWeb(app.web, "05_details_question_list.png") {
+                                    app.toggleDetails()
+                                    self.finish(app)
+                                }
+                            }
                         }
                     }
+                }
                 }
             }
         }
     }
 
+    /// Replays files[0..<n-1] one after another (waiting for each page run to end), then starts the last one and
+    /// calls `last` right away (the caller snapshots it mid-run and after).
+    private func replaySequence(_ files: [String], index: Int, app: AppDelegate, last: @escaping () -> Void) {
+        let f = files[index]
+        note("replay \(index + 1)/\(files.count) \(f)")
+        app.web.evaluateJavaScript("window.__hs.replay(\(Self.js(f))); true") { _, e in
+            if let e = e { self.note("replay error \(e)") }
+        }
+        if index == files.count - 1 { return last() }
+        var waited = 0.0
+        func poll() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                waited += 0.5
+                app.web.evaluateJavaScript("!!(window.__hs.run && window.__hs.run.running)") { r, _ in
+                    let running = (r as? Bool) ?? false
+                    if (!running && waited > 2) || waited > 40 {
+                        self.note("replay \(index + 1) ended after \(waited) s\(waited > 40 ? " (TIMEOUT)" : "")")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            self.replaySequence(files, index: index + 1, app: app, last: last)
+                        }
+                    } else { poll() }
+                }
+            }
+        }
+        poll()
+    }
+
     private func finish(_ app: AppDelegate) {
         note("done")
-        if autoQuit { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { NSApp.terminate(nil) } }
+        if autoQuit { NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 1.0) }
     }
 
     private static func js(_ s: String) -> String {

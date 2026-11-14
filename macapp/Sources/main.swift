@@ -11,14 +11,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     var splashHost: NSHostingView<SplashView>!
     var settingsWindow: NSWindow?
     var loadedPort = 0
+    var loadedGeneration = 0
     var quitting = false
+    static let hidden = UserDefaults.standard.bool(forKey: "hidden")
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
+        // a rebuilt app may reuse last launch's port: drop cached pages/scripts (localStorage, the memory id, stays)
+        let cacheTypes: Set<String> = [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache]
+        WKWebsiteDataStore.default().removeData(ofTypes: cacheTypes, modifiedSince: .distantPast) {}
         buildWindow()
         server.onState = { [weak self] s in self?.apply(s) }
         server.start()
-        NSApp.activate(ignoringOtherApps: true)
+        if !Self.hidden { NSApp.activate(ignoringOtherApps: true) }
     }
 
     // MARK: window
@@ -29,8 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                           backing: .buffered, defer: false)
         window.title = AppInfo.name
         window.minSize = NSSize(width: 820, height: 560)
-        window.setFrameAutosaveName("MainWindow")
-        if !window.setFrameUsingName("MainWindow") { window.center() }
+        if !Self.hidden {
+            window.setFrameAutosaveName("MainWindow")
+            if !window.setFrameUsingName("MainWindow") { window.center() }
+        }
         window.delegate = self
         window.isReleasedWhenClosed = false
 
@@ -61,15 +68,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
                 v.topAnchor.constraint(equalTo: root.topAnchor), v.bottomAnchor.constraint(equalTo: root.bottomAnchor)])
         }
         window.contentView = root
-        window.makeKeyAndOrderFront(nil)
+        if Self.hidden {
+            // test instance (-hidden YES): no Dock icon, never activated, window parked off-screen (it still renders,
+            // so the automation snapshots work) — it does not take over the user's screen
+            window.setFrameOrigin(NSPoint(x: -20000, y: -20000))
+            window.orderBack(nil)
+        } else {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     func apply(_ s: ServerManager.State) {
         splash.state = s
         switch s {
         case .ready(let port):
-            if loadedPort != port || web.url == nil {
+            // a new server (first start, restart after a crash, Settings saved): always reload the page, so the
+            // websocket, the question list and the warm state come from this server
+            if loadedPort != port || web.url == nil || loadedGeneration != server.generation {
                 loadedPort = port
+                loadedGeneration = server.generation
                 web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/")!))
             } else {
                 showWeb(true)
@@ -88,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if case .ready = server.state { showWeb(true) }
+        loadReplayMenu()
         Automation.shared.pageLoaded(app: self)
     }
 
@@ -180,6 +198,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         }
     }
 
+    @objc func clearCache() {
+        let a = NSAlert()
+        a.messageText = "Clear search cache?"
+        a.informativeText = "Forgets earlier search results that \(AppInfo.name) reuses across launches. The next questions search live again."
+        a.addButton(withTitle: "Clear"); a.addButton(withTitle: "Cancel")
+        a.beginSheetModal(for: window) { [weak self] r in
+            guard r == .alertFirstButtonReturn, let self = self else { return }
+            if case .ready(let port) = self.server.state, let u = URL(string: "http://127.0.0.1:\(port)/api/cache/clear") {
+                var req = URLRequest(url: u); req.httpMethod = "POST"
+                URLSession.shared.dataTask(with: req).resume()
+            } else {   // server not running: remove the file directly
+                try? FileManager.default.removeItem(at: AppInfo.dataDir.appendingPathComponent("search_cache.json"))
+            }
+        }
+    }
+
     @objc func openLogs() {
         try? FileManager.default.createDirectory(at: AppInfo.logsDir, withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: AppInfo.serverLog.path) {
@@ -187,6 +221,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         } else {
             NSWorkspace.shared.open(AppInfo.logsDir)
         }
+    }
+
+    // MARK: replay menu + details (the page's default "minimal" view hides its question list; D or ⌘D shows it)
+
+    let replayMenu = NSMenu(title: "Replay")
+
+    func loadReplayMenu() {
+        guard loadedPort > 0, let u = URL(string: "http://127.0.0.1:\(loadedPort)/api/questions") else { return }
+        URLSession.shared.dataTask(with: u) { [weak self] data, _, _ in
+            guard let self = self, let d = data,
+                  let rows = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]] else { return }
+            DispatchQueue.main.async { self.fillReplayMenu(rows) }
+        }.resume()
+    }
+
+    func fillReplayMenu(_ rows: [[String: Any]]) {
+        replayMenu.removeAllItems()
+        let groups: [(String, ([String: Any]) -> Bool)] = [
+            ("Web questions", { ($0["kind"] as? String) != "local" && $0["parts"] == nil }),
+            ("Multi-part", { $0["parts"] != nil }),
+            ("Local moments", { ($0["kind"] as? String) == "local" })]
+        var n = 0
+        for (title, keep) in groups {
+            let items = rows.filter(keep)
+            if items.isEmpty { continue }
+            let head = NSMenuItem(title: title, action: nil, keyEquivalent: ""); head.isEnabled = false
+            replayMenu.addItem(head)
+            let sub = NSMenu(title: title)
+            for r in items {
+                guard let f = r["file"] as? String else { continue }
+                let text = (r["text"] as? String) ?? f
+                let it = NSMenuItem(title: text, action: #selector(replayItem(_:)), keyEquivalent: "")
+                it.representedObject = f
+                it.target = self
+                if title == "Web questions" && n < 9 { n += 1; it.keyEquivalent = String(n); it.keyEquivalentModifierMask = [.command, .option] }
+                (items.count > 12 ? sub : replayMenu).addItem(it)
+            }
+            if items.count > 12 {
+                let more = NSMenuItem(title: "All \(items.count)", action: nil, keyEquivalent: ""); more.submenu = sub
+                replayMenu.addItem(more)
+            }
+            replayMenu.addItem(.separator())
+        }
+        if replayMenu.items.isEmpty {
+            let none = NSMenuItem(title: "No replay questions (demo-audio not installed)", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            replayMenu.addItem(none)
+        }
+    }
+
+    @objc func replayItem(_ sender: NSMenuItem) {
+        guard let f = sender.representedObject as? String,
+              let d = try? JSONSerialization.data(withJSONObject: [f]), let arr = String(data: d, encoding: .utf8) else { return }
+        web.evaluateJavaScript("window.__hs && window.__hs.replay(\(arr)[0]); true", completionHandler: nil)
+    }
+
+    @objc func toggleDetails() {
+        // same as pressing D in the page: toggles the question list / timeline / sources ("minimal" is the default)
+        web.evaluateJavaScript("dispatchEvent(new KeyboardEvent('keydown', {key: 'd', code: 'KeyD'})); !document.body.classList.contains('minimal')",
+                               completionHandler: nil)
     }
 
     @objc func openModels() { NSWorkspace.shared.open(AppInfo.modelsDir) }
@@ -223,6 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         app.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         app.addItem(.separator())
         app.addItem(withTitle: "Forget Memory…", action: #selector(forgetMemory), keyEquivalent: "")
+        app.addItem(withTitle: "Clear Search Cache…", action: #selector(clearCache), keyEquivalent: "")
         app.addItem(withTitle: "Open Logs", action: #selector(openLogs), keyEquivalent: "")
         app.addItem(withTitle: "Open Models Folder", action: #selector(openModels), keyEquivalent: "")
         app.addItem(withTitle: "Restart Server", action: #selector(restartServer), keyEquivalent: "")
@@ -245,10 +340,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
         let viewItem = NSMenuItem(); main.addItem(viewItem)
         let view = NSMenu(title: "View")
+        view.addItem(withTitle: "Show Details and Question List", action: #selector(toggleDetails), keyEquivalent: "d")
         view.addItem(withTitle: "Reload", action: #selector(reloadPage), keyEquivalent: "r")
         view.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
             .keyEquivalentModifierMask = [.command, .control]
         viewItem.submenu = view
+
+        let replayItemTop = NSMenuItem(); main.addItem(replayItemTop)
+        let loading = NSMenuItem(title: "Loading…", action: nil, keyEquivalent: ""); loading.isEnabled = false
+        replayMenu.addItem(loading)
+        replayItemTop.submenu = replayMenu
 
         let winItem = NSMenuItem(); main.addItem(winItem)
         let win = NSMenu(title: "Window")
@@ -268,14 +369,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         quitting = true
         DispatchQueue.global().async {
             self.server.stop()
-            DispatchQueue.main.async { NSApp.reply(toApplicationShouldTerminate: true) }
+            // reply through the run loop, not the main dispatch queue: terminate: may have been called from a main-queue
+            // block, and .terminateLater then waits in a nested run loop while that block still holds the queue
+            self.performSelector(onMainThread: #selector(self.replyTerminate), with: nil, waitUntilDone: false,
+                                 modes: [RunLoop.Mode.common.rawValue, RunLoop.Mode.modalPanel.rawValue,
+                                         RunLoop.Mode.eventTracking.rawValue])
         }
         return .terminateLater
     }
+
+    @objc func replyTerminate() { NSApp.reply(toApplicationShouldTerminate: true) }
 }
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
-app.setActivationPolicy(.regular)
+app.setActivationPolicy(AppDelegate.hidden ? .accessory : .regular)
 app.run()

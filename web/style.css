@@ -620,3 +620,9 @@ body:not(.minimal) .lane-card .lc-days, body:not(.minimal) .lane-card .lc-sub { 
 body:not(.minimal) .lane-card { padding: 4px 8px; margin-top: 4px; font-size: 12px; }
 body:not(.minimal) .lane-card .lc-h { margin-bottom: 0; }
 .lg.t-card { background: #0a7d4f; } .lg.t-facts { background: #3b5bdb; }
+
+/* websocket dropped: shown until it reconnects (app.js reconnectBanner) */
+.reconnect { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; padding: 8px 16px;
+  border-radius: 999px; background: var(--err, #d93025); color: #fff; font-size: 13px; font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+.reconnect[hidden] { display: none; }

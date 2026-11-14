@@ -25,6 +25,7 @@ final class ServerManager {
     var onState: ((State) -> Void)?
     private(set) var state: State = .idle { didSet { let s = state; DispatchQueue.main.async { self.onState?(s) } } }
     private(set) var port = 0
+    private(set) var generation = 0          // +1 per server launch: the page reloads against each new server
     private var proc: Process?
     private var stopping = false
     private var crashes: [Date] = []
@@ -55,6 +56,11 @@ final class ServerManager {
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONDONTWRITEBYTECODE"] = "1"        // the bundle is signed: never write into it
         env["TOKENIZERS_PARALLELISM"] = "false"
+        // reuse earlier searches across launches: the semantic search cache persists to data/search_cache.json
+        // (bounded by CACHE_MAX, atomic writes, TTLs live 10 min / general 6 h / stable 3 days; hits labelled "cached")
+        if env["CACHE_PERSIST"] == nil { env["CACHE_PERSIST"] = "1" }
+        env["CACHE_PATH"] = AppInfo.dataDir.appendingPathComponent("search_cache.json").path
+        env["MEM_DIR"] = AppInfo.dataDir.appendingPathComponent("memory").path
         let ear = UserDefaults.standard.string(forKey: "ear") ?? "auto"
         switch ear {
         case "arc": env["EAR"] = "arc"
@@ -159,12 +165,13 @@ final class ServerManager {
         let fm = FileManager.default
         try? fm.createDirectory(at: AppInfo.logsDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: AppInfo.dataDir, withIntermediateDirectories: true)
-        port = freePort(preferred: UserDefaults.standard.object(forKey: "port") as? Int)
-        UserDefaults.standard.set(port, forKey: "port")
-        // keep the previous log as server.log.1
-        let prev = AppInfo.logsDir.appendingPathComponent("server.log.1")
-        try? fm.removeItem(at: prev)
-        try? fm.moveItem(at: AppInfo.serverLog, to: prev)
+        port = freePort(preferred: UserDefaults.standard.object(forKey: AppInfo.portKey) as? Int)
+        UserDefaults.standard.set(port, forKey: AppInfo.portKey)
+        generation += 1
+        // keep the last 5 logs: server.log (this run), server.log.1 (previous) ... server.log.5
+        let logURL = { (i: Int) in AppInfo.logsDir.appendingPathComponent(i == 0 ? "server.log" : "server.log.\(i)") }
+        try? fm.removeItem(at: logURL(5))
+        for i in stride(from: 4, through: 0, by: -1) { try? fm.moveItem(at: logURL(i), to: logURL(i + 1)) }
         fm.createFile(atPath: AppInfo.serverLog.path, contents: nil)
         let log = try? FileHandle(forWritingTo: AppInfo.serverLog)
 

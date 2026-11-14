@@ -9,11 +9,19 @@ enum AppInfo {
     static var resources: URL { Bundle.main.resourceURL! }
     static var python: URL { resources.appendingPathComponent("python/bin/python3") }
     static var appRoot: URL { resources.appendingPathComponent("app") }
+    /// Test instances (MACAPP.md "Verify") pass -supportDir / -modelsDir so they never touch the user's logs, memory,
+    /// port or models folder.
+    static var supportOverride: String? { UserDefaults.standard.string(forKey: "supportDir") }
     static var support: URL {
+        if let o = supportOverride { return URL(fileURLWithPath: o, isDirectory: true) }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent(name, isDirectory: true)
     }
-    static var modelsDir: URL { support.appendingPathComponent("models", isDirectory: true) }
+    static var modelsDir: URL {
+        if let o = UserDefaults.standard.string(forKey: "modelsDir") { return URL(fileURLWithPath: o, isDirectory: true) }
+        return support.appendingPathComponent("models", isDirectory: true)
+    }
+    static var portKey: String { supportOverride == nil ? "port" : "port.test" }
     static var dataDir: URL { support.appendingPathComponent("data", isDirectory: true) }
     static var logsDir: URL { support.appendingPathComponent("logs", isDirectory: true) }
     static var serverLog: URL { logsDir.appendingPathComponent("server.log") }
