@@ -1845,3 +1845,34 @@ Model versions: search director v000 (2026-11-13) · Keystone director v000 (202
     heldout80 0.1895 -> 0.1861; all CIs include 0), but at the val thresholds heldout80 p50 132.5 -> 160.3 ms,
     test p50 254.9 -> 257.6 ms, test_v2 premature 32.2 -> 35.1 /100 q, addressed AUC 0.902 -> 0.885: **kept**
     (the gate's no-p50-regression rule).
+
+## Memory graph, full size + Results headline on real Tavily (branch feat/ui; web/graphbig.js, web/graphlayout.js)
+- **Memory, full size:** click the small graph (or its expand button, or Enter on it) for a window-sized view. One soft
+  cell per turn, with the question as its header; an entity sits in the turn it was first heard, what the user told
+  Onset in a "You told me" cell, and a turn that added nothing new ("when was it founded?") gets a cell saying what it
+  went back to ("back to Din Tai Fung"). The current turn is outlined in green and its entities drawn larger. Every
+  node is labelled (ellipsis past 30 characters + tooltip); relation labels (subject → relation → object) are placed
+  where they collide with nothing, and always shown for the entity you point at. Zoom: wheel, trackpad pinch (Chromium
+  ctrl-wheel and WKWebView gesture events), − / Fit / + buttons and the keys - 0 +; pan by dragging the background;
+  drag nodes. Hover or click an entity: its edges light up, the rest dims, and the side panel shows type, Wikidata id
+  or "you told me", turns ("first heard in turn 1; again in 5, 6"), the question that introduced it, facts, and each
+  relation with its source (Wikidata fact / from an answer / asked or mentioned together / you told me). With nothing
+  selected the side panel is the conversation outline (click a turn to zoom to it). Search dims everything else; Enter
+  jumps to the first match. Legend for node colours and edge styles. Same overlay rules as Results: Esc (clears search,
+  then the selection, then closes), Tab stays inside, focus returns to what opened it, no key reaches the page while
+  it's open (Space is not push-to-talk; it opens on the graph itself, not on Close, so Space can't close it).
+- **Small panel:** drawn at the panel's own pixel width (no scaled text), fit-to-bounds, labels only where they don't
+  collide or leave the box, top N (6-10 by width) by focus > current turn > recency > connections; ellipsis + full-name
+  tooltips; "+N more" hint; relation labels only for the focus / current turn and only where they fit. The
+  subtitle and the "For you" line ("8 questions · kept on this device") moved to their own rows (was cut to "n…").
+- **Results slide:** headline row labelled "real Tavily, 100 spoken questions, 2026-11-14" (RETRIEVAL §10): 486 ms
+  sooner (76/100), 0.46 vs 0.63 paid/q (27% fewer: 46 vs 63 credits), 80/82 vs 79/82 right; per-set strip (showcase
+  656 ms 0.70 vs 0.73; 58 set 410 ms 0.22 vs 0.52; current events 424 ms 1.00 vs 0.92). Each card has a lane tag
+  (Wikipedia lane / text-level / PERSONA flag, small set). Comparisons are muted grey, not the accent. 0.369 appears
+  once (card 03, with the warming curve 0.64 → 0.36). Card 04 = persona A/B (PERSONALIZATION §4: sense 8/9 vs 6/9,
+  style 11/12 vs 7/12; flag off by default); the self-corrections card is gone from the slide. "Save as image" draws
+  the new layout; the trainer's "Model versions" line is kept.
+- Tests: tests/test_graph_layout.py (layout helpers under node: no label overlap, bounds, priority, fit, one cell per
+  turn) + Results checks (verbatim quotes for every set, 27% recomputed from the credit totals, no number twice, lane
+  on every card, comparison not in the accent). Playwright 1280x720 light + dark (busy 8-turn session): no console
+  errors, no horizontal scroll, no overlapping labels small or big, no keys leak while open.
