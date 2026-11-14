@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from . import config
+from . import config, safety
 
 STOP = set("""a an the is are was were be been being am do does did of in on at to for from by with about into over
 what what's whats who who's whos whom whose which when where where's why how how's hows can could would should will
@@ -87,7 +87,9 @@ PII_REDACT = {"safety.pii.phone_number": "phone", "safety.pii.email": "email", "
 _STREET = {"street", "st", "avenue", "ave", "road", "rd", "lane", "ln", "drive", "dr", "boulevard", "blvd", "court",
            "ct", "way", "place", "pl", "apartment", "apt", "suite", "unit", "terrace", "circle", "highway", "parkway"}
 _EMAILISH = {"at", "dot", "com", "gmail", "yahoo", "hotmail", "outlook", "underscore", "net", "org"}
-PROFANITY = set("fuck fucking fucked fucker shit shitty bullshit bitch bastard asshole dick damn crap piss cunt".split())
+# the old hard-coded profanity list: now only the fallback when the tagger is unavailable (server/safety.py masks with
+# the Arc Tagger's own profanity / toxicity heads, TAGGER_SAFETY=1)
+PROFANITY = set(safety.WORDS)
 
 
 def _pii_hide(kind: str, toks: list[str], a: int, b: int, raw: list[str] = ()) -> set:
@@ -211,6 +213,9 @@ class Frame:
     directed: float | None = None    # discourse.assistant.device_directed probability
     redacted: tuple = ()             # kinds of personal data kept out of the web query: ("phone", "email")
     redact_tok: frozenset = frozenset()
+    mask_tok: frozenset = frozenset()  # profanity / toxicity (server/safety.py): out of the query, shown masked
+    mask_kind: tuple = ()            # ((index, kind), ...) for mask_tok: profanity | insult | hate | threat | self_harm
+    safety: str = ""                 # the turn's safety flag: "" | insult | hate | threat | self_harm (safety.turn_flag)
     cue: frozenset = frozenset()      # token indices of the self-correction cue ("actually make that")
     content_idx: tuple = ()          # token index of each content word (what goes into the search query)
     jailbreak: bool = False          # safety.jailbreak.attempt on the spoken question
@@ -245,7 +250,9 @@ class Frame:
 
     @property
     def text(self):
-        return " ".join(w for w in self.words if w)
+        """The question as said, minus masked profanity / toxicity (server/safety.py): this is what reaches the metric,
+        the logs, drafts and history."""
+        return " ".join(w for i, w in enumerate(self.words) if w and i not in self.mask_tok)
 
     @property
     def sig(self):
@@ -266,6 +273,8 @@ class Frame:
         for i, w in enumerate(self.words):
             if i in self.dropped or not w:
                 continue
+            if i in self.mask_tok:
+                continue                          # profanity / toxicity: dropped silently
             if i in self.redact_tok:
                 if not masked:
                     out.append("[private]")       # personal data never leaves the device
@@ -388,8 +397,13 @@ class Frame:
                 "command_complete": self.command_complete, "readout": self.readout(),
                 # per-token read-out for the annotated transcript (indices into words)
                 "content_idx": list(self.content_idx), "dropped": sorted(self.dropped), "cue": sorted(self.cue),
-                "redact": sorted(self.redact_tok), **self._mem_json(), **self._conf_json(),
+                "redact": sorted(self.redact_tok - self.mask_tok), **self._mask_json(), **self._mem_json(), **self._conf_json(),
                 **({"heard": list(self.resolved)} if self.resolved else {})}
+
+    def _mask_json(self) -> dict:
+        if not self.mask_tok and not self.safety:
+            return {}
+        return {"mask": sorted(self.mask_tok), "mask_kind": [list(x) for x in self.mask_kind], "safety": self.safety}
 
     def _mem_json(self) -> dict:
         if not (self.inline or self.mem_ref or self.user_used):
@@ -676,7 +690,8 @@ def _apply_user(f: Frame, toks: list[str], content: list, user: dict, ent) -> li
 
 
 def build(words: list[str], spans: list[dict], current: dict | None, events_seen: set | None = None,
-          prev_intent: tuple | None = None, local_ok: bool = True, carry: dict | None = None) -> Frame:
+          prev_intent: tuple | None = None, local_ok: bool = True, carry: dict | None = None,
+          safety_tagger: bool | None = None) -> Frame:
     toks = [norm(w) for w in words]
     f = Frame(words=list(words), spans=spans)
     cur = current or {}
@@ -711,7 +726,13 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
         if by:
             pii.append({"type": "safety.pii.date_of_birth"})
             redact_tok |= by
-    redact_tok |= {i for i, t in enumerate(toks) if t in PROFANITY}   # never useful to search, never sent
+    # profanity / toxicity (server/safety.py): the tagger's own heads (the word list only without them). Never useful
+    # to search, never sent; the turn's flag (insult / hate / threat / self_harm) decides whether it is searched at all
+    masks = safety.mask_idx(words, spans, tagger=safety_tagger)
+    f.mask_tok = frozenset(masks)
+    f.mask_kind = tuple(sorted(masks.items()))
+    f.safety = safety.turn_flag(words, spans, cur, tagger=safety_tagger, masked=masks) or ""
+    redact_tok |= set(masks)
     f.redact_tok = frozenset(redact_tok)
     f.redacted = tuple(dict.fromkeys(PII_REDACT[s["type"]] for s in pii))
     f.command_complete = bool(events_seen and "discourse.assistant.command_complete" in events_seen)

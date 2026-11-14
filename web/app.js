@@ -79,6 +79,9 @@
   });
   paintView();
 
+  // a typed question's stopwatch starts at Enter (the endpoint), a spoken one's when you stop talking
+  const stoppedTxt = () => (run && run.kind === "typed" ? "after you pressed Enter" : "after you stopped talking");
+
   // ------------------------------------------------------------------ run / question state
   let run = null;       // {modes, kind, running, clientT0, base, q}
   function newQuestion(axStart = 0) {
@@ -92,6 +95,7 @@
     };
   }
   function startRun(kind, modes) {
+    if (kind !== "typed" && typeof typed !== "undefined") typed.open = false;   // a mic press / replay ends a typed question
     run = { rid: ridSeq, modes, kind, running: true, clientT0: performance.now(), base: null, q: newQuestion(), prevQ: null, history: [] };
     paintHistory();
     resetView();
@@ -263,6 +267,7 @@
     if (e.mode === "sys") {
       if (e.t === "ready") {
         if (e.warm !== undefined) warm = !!e.warm;
+        $("#typeForm").hidden = e.typed_input === false;
         if (e.degraded) health = { ...(health || {}), web: e.web, answer: e.answer, degraded: e.degraded, web_backend: e.web_backend,
           ...(e.notices ? { notices: e.notices } : {}), ...(e.ear ? { ear: e.ear } : {}) };
         paintStatus();
@@ -588,7 +593,7 @@
     const tr = $("#transcript");
     tr.innerHTML = "";
     tr.dataset.empty = "1";
-    if (!keepEar) { $("#earState").textContent = run && run.kind === "mic" ? "listening" : "starting…"; $("#earState").className = "ear live"; }
+    if (!keepEar) { $("#earState").textContent = run && run.kind === "mic" ? "listening" : run && run.kind === "typed" ? "reading as you type" : "starting…"; $("#earState").className = "ear live"; }
     renderFrame(null);
     if (window.HSPlan) window.HSPlan.reset();
     if (window.HSConf) window.HSConf.reset();
@@ -603,7 +608,7 @@
       for (const k of ["rq", "res"]) { const n = p.querySelector(`[data-k="${k}"]`); n.innerHTML = ""; n._sig = null; n._h = null; }
       p.querySelector('[data-k="big"]').textContent = "—";
       p.querySelector('[data-k="big"]').className = "big";
-      p.querySelector('[data-k="sub"]').textContent = run && !run.modes.includes(m) ? "not in this run" : "after you stopped talking";
+      p.querySelector('[data-k="sub"]').textContent = run && !run.modes.includes(m) ? "not in this run" : stoppedTxt();
     }
     $("#tlBody").innerHTML = "";
     tlNodes.clear();
@@ -964,13 +969,13 @@
         txt = "heard"; cls = "big heard"; st = "not a question · no search";
       } else if (v != null) {
         txt = fmtS(v); cls = "big final";
-        st = v < 0 ? (res ? "results ready before you finished" : "before you stopped talking") : (res ? "first results after you stopped" : "after you stopped talking");
+        st = v < 0 ? (res ? "results ready before you finished" : run.kind === "typed" ? "before you pressed Enter" : "before you stopped talking") : (res ? "first results after you stopped" : stoppedTxt());
       } else if (q.se[m] != null && q.speechEnd != null) {
         const end = !res && q.firstMs[m] != null ? q.firstMs[m] : serverNow();
         txt = run.running || (!res && q.firstMs[m] != null) ? fmtS(end - q.speechEnd) : "—";
         cls = "big running";
-        st = res ? "first results after you stopped" : "after you stopped talking";
-      } else { txt = run.running ? "…" : "—"; cls = "big"; st = res ? "first results after you stopped" : "after you stopped talking"; }
+        st = res ? "first results after you stopped" : stoppedTxt();
+      } else { txt = run.running ? "…" : "—"; cls = "big"; st = res ? "first results after you stopped" : stoppedTxt(); }
       if (big.textContent !== txt) big.textContent = txt;
       if (big.className !== cls) big.className = cls;
       if (sub.textContent !== st && !sub.textContent.startsWith("not in")) sub.textContent = st;
@@ -1623,6 +1628,12 @@
   // many times a second, which used to toggle the mic on/off/on…). After release the mic keeps streaming briefly
   // so the last word and its pause reach the ear.
   const ptt = { held: false, starting: false, tail: null };
+  addEventListener("keydown", (e) => {
+    const inField = e.target?.closest?.("input, textarea");
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "k" || e.key === "K")) { e.preventDefault(); focusType(); return; }
+    if (!inField && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === "/") { e.preventDefault(); focusType(); return; }
+    if (inField && e.key === "Escape" && e.target.id === "typeBox") e.target.blur();
+  });
   addEventListener("keydown", async (e) => {
     if (e.target?.closest?.("input, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.code === "Space") {
@@ -1659,6 +1670,47 @@
     if (!ptt.held) return;
     ptt.held = false;
     if (mic.on) ptt.tail = setTimeout(() => { ptt.tail = null; stopMic(true, "window blur"); }, 500);
+  });
+
+  // ------------------------------------------------------------------ typed questions (server: {t:"type"})
+  // The text box streams into the same pipeline as speech: finished words go to the Arc Tagger as they are typed (with
+  // keystroke timings), so free lookups fire while you type; Enter is the endpoint. One run per question.
+  const typed = { open: false, rid: null, last: "" };
+  function focusType() {
+    const b = $("#typeBox");
+    if (!b || $("#typeForm").hidden) return;
+    b.focus();
+    b.select();
+  }
+  function typeSend(final) {
+    const text = $("#typeBox").value;
+    if (!typed.open) {
+      if (!text.trim()) return;
+      if (mic.on) stopMic(true, "typing");
+      const modes = modesFor(modeSel);
+      if (!send({ t: "start", typed: true, modes })) return;
+      startRun("typed", modes);
+      document.querySelectorAll(".qlist button.on").forEach((n) => n.classList.remove("on"));
+      Object.assign(typed, { open: true, rid: ridSeq, last: "" });
+    }
+    if (text === typed.last && !final) return;
+    typed.last = text;
+    send({ t: "type", rid: typed.rid, text, final: !!final });
+    if (final) Object.assign(typed, { open: false, last: "" });
+  }
+  $("#typeBox").addEventListener("input", () => typeSend(false));
+  $("#typeForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!$("#typeBox").value.trim()) return;
+    typeSend(true);
+    $("#typeBox").select();                 // the next keystroke starts a new question
+  });
+  // "Mask profanity in the transcript" (default on): display only; masked words never reach the search either way
+  window.HSMaskOn = () => $("#maskToggle").checked;
+  $("#maskToggle").checked = store.get("hs-mask") !== "0";
+  $("#maskToggle").addEventListener("change", () => {
+    store.set("hs-mask", $("#maskToggle").checked ? "1" : "0");
+    if (window.HSHears && window.HSHears.repaint) window.HSHears.repaint();
   });
 
   // ------------------------------------------------------------------ results (runs/ab_latest.json)
