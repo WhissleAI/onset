@@ -38,7 +38,7 @@ from .session import Session
 
 ROOT = config.ROOT
 WEB = ROOT / "web"
-AUDIO = ROOT / "eval" / "audio"
+AUDIO = config.AUDIO_DIR
 app = FastAPI(title="Head Start")
 STATE = {"warm": False}
 

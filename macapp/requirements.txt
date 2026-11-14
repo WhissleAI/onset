@@ -1,0 +1,24 @@
+# The server's runtime dependencies, pinned to the versions the repo is tested with (dev venv, 2026-11-13).
+# Installed by scripts/build_macapp.sh into the bundled python-build-standalone runtime (macapp/app.conf PYTHON_VERSION).
+torch==2.11.0
+transformers==5.19.0
+sentence-transformers==6.3.0
+tokenizers==0.23.3
+safetensors==0.8.0
+huggingface_hub==2.2.0
+accelerate==1.13.0
+torchvision==0.26.0      # EmbeddingGemma2Processor imports the Gemma image processor
+pillow==12.3.0
+numpy==1.26.4
+scipy==1.11.4
+soundfile==0.14.0
+rapidfuzz==3.14.5
+jellyfish==1.0.1
+fastapi==0.123.10
+starlette==0.50.0
+uvicorn==0.38.0
+pydantic==2.12.4
+httpx==0.28.1
+h2==4.2.0
+anthropic==0.84.0
+websockets==15.0.1

@@ -37,8 +37,7 @@ fail() { printf '  [FAIL] %s\n' "$1"; bad=1; }
 echo "Onset demo launcher (port $PORT)"
 echo "Prerequisites"
 if [ -x "$PY" ]; then ok "venv ($PY)"; else fail "no venv at $PY (python -m venv .venv && .venv/bin/pip install -r ...)"; fi
-for f in models/arctag/arctag_int8.onnx models/arctag/tokenizer.json vendor/arctag/libarctag.dylib \
-         index/data/docs.jsonl eval/audio/q01.wav eval/audio/local_05.wav web/index.html; do
+for f in web/index.html; do
   if [ -e "$f" ]; then ok "$f"; else fail "missing $f"; fi
 done
 if [ -x "$PY" ]; then
@@ -48,15 +47,24 @@ import os, sys
 from server import config
 bad = False
 def line(st, msg): print(f"  [{st:^4}] {msg}")
+from server import tagger
+for p in (tagger.MODEL_DIR / "arctag_int8.onnx", tagger.MODEL_DIR / "tokenizer.json", tagger.LIB_PATH,
+          config.INDEX_DIR / "docs.jsonl", config.AUDIO_DIR / "q01.wav", config.AUDIO_DIR / "local_05.wav"):
+    if p.exists(): line("OK", str(p))
+    else: line("FAIL", f"missing {p} (scripts/fetch_models.py status; build-tagger for the dylib)"); bad = True
 arc = config.ARC_DIR / "model.safetensors"
 if arc.exists(): line("OK", f"Arc ear weights ({config.ARC_DIR})")
-else: line("FAIL", f"Arc ear weights missing: {arc}"); bad = True
-try:
+else: line("FAIL", f"Arc ear weights missing: {arc} (scripts/fetch_models.py status)"); bad = True
+from pathlib import Path
+if Path(config.EMBED_MODEL, "config.json").exists():
+    line("OK", f"EmbeddingGemma 2 ({config.EMBED_MODEL})")
+else:
+  try:
     from huggingface_hub import try_to_load_from_cache
     hit = try_to_load_from_cache(config.EMBED_MODEL, "config.json")
     if isinstance(hit, str): line("OK", f"EmbeddingGemma 2 in HF cache ({config.EMBED_MODEL})")
-    else: line("FAIL", f"{config.EMBED_MODEL} not in the HF cache (needs a download: no Wi-Fi at the venue?)"); bad = True
-except Exception as e:
+    else: line("FAIL", f"{config.EMBED_MODEL} not in the HF cache (scripts/fetch_models.py fetch embeddinggemma-2)"); bad = True
+  except Exception as e:
     line("WARN", f"could not check the HF cache: {e}")
 if os.environ.get("ANTHROPIC_API_KEY"): line("OK", "ANTHROPIC_API_KEY set")
 else: line("WARN", "ANTHROPIC_API_KEY missing: answers will be extractive (flagged)")
