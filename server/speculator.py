@@ -787,8 +787,8 @@ class Speculator:
         when the plan includes "web"; a cheap-only plan (card / facts) fires free lookups instead. None = no router:
         the frame's own route decides."""
         plan = getattr(lanes, "plan", None)
-        if plan is None:
-            return None
+        if plan is None or getattr(f, "plain", False):
+            return None                     # Arc-off arm: no router plan (the frame has no read-out to plan on)
         try:
             return plan(f, final=final)
         except Exception:
@@ -1151,7 +1151,7 @@ class Speculator:
         reuse_draft = None
         alt = None
         mp = None
-        if config.PLAN:
+        if config.PLAN and not f.plain:
             try:
                 mp = planner.decompose(f)
             except Exception:
@@ -1168,6 +1168,14 @@ class Speculator:
                     return superseded()
                 qvec = (qvec_task.result()[0] if qvec_task.done() and not qvec_task.cancelled()
                         and qvec_task.exception() is None else None)     # not on the critical path
+            elif self.mode == "plain":
+                # Arc-off arm: one web search of the raw transcript after the endpoint. No router (cards / facts),
+                # no topic / freshness / domain hints, no entity query, no search cache, no local lane.
+                pm: dict = {}
+                await asyncio.gather(self._fire("final-web", q, f, lambda: lanes.web(
+                    q, final=True, ledger=self.ledger, meter=pm), meter=pm).task, return_exceptions=True)
+                qvec = (await qvec_task)[0]
+                m["path"] = "plain-search"
             elif self.mode == "baseline":
                 alt = self._answer_race(q, f)
                 waits = []

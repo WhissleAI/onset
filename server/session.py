@@ -84,8 +84,11 @@ class Session:
         # events from a previous turn's late ones (its answer streaming while the next question is heard)
         self._out = emit
         self.qid = 0
+        if config.ARC_OFF:
+            mode = "plain"
         self.mode = mode
         self.cost_mode = cost_mode               # COST_MODE override for this session (server/cost.py); None = config
+        self.plain = mode == "plain"           # Arc-off arm: no tagger read-out anywhere (frame.plain)
         self.open_mic = open_mic                 # open mic: statements are heard, not answered (open_mic_skip)
         self.tagger = Tagger(domain=domain)
         self.t0 = t0 or time.perf_counter()        # wall time of audio sample 0
@@ -153,7 +156,7 @@ class Session:
         self._tick_synced = False
         self.last_ws: list[dict] = []
         self.eot_last: float | None = None           # latest fused end-of-turn score (read-out)
-        self.dstream = director.Stream() if config.DIRECTOR else None
+        self.dstream = director.Stream() if config.DIRECTOR and not self.plain else None
         self.director_out: dict | None = None
         self.words_changed_at = time.perf_counter()
         self.prefix_ws: list[dict] = []              # a corrected earlier turn, prepended to this one's words
@@ -222,8 +225,8 @@ class Session:
         empty stomach") is the same question: the previous turn's words are prepended, so the
         frame's correction logic sees "Boston, sorry, I mean Denver" and asks about Denver; any answer already given
         to the previous turn is superseded. None = the words so far might start a marker ("I" of "I mean"): wait."""
-        if not ws:
-            return ws
+        if not ws or self.plain:
+            return ws                          # plain: every ear turn is its own question (no repair merging)
         start = ws[0].get("start") or 0.0
         h = self.held
         if h is not None and not h["merged"]:
@@ -300,10 +303,12 @@ class Session:
         changed = False
         revised = k < len(self.words)
         if revised:                                  # revision of words[k:]
-            self.tagger.push(new[k:], from_=k)
+            if not self.plain:
+                self.tagger.push(new[k:], from_=k)
             changed = True
         elif len(new) > len(self.words):
-            self.tagger.push(new[k:])
+            if not self.plain:
+                self.tagger.push(new[k:])
             changed = True
         self.words = new
         self.times = [(w.get("start"), w.get("end")) for w in ws if clean(w["text"])]
@@ -314,8 +319,9 @@ class Session:
             self.words_changed_at = time.perf_counter()
             if self.cc_at is not None and self.cc_at >= k:
                 self.cc_at = None                    # the word it fired on was revised away
-            r = self.tagger.poll()
-            self._apply(r, revised_from=k if revised else None)
+            if not self.plain:
+                r = self.tagger.poll()
+                self._apply(r, revised_from=k if revised else None)
             self._confs(h)
         if ws and self.q_audio_start is None:
             self.q_audio_start = ws[0].get("start") or 0.0
@@ -366,6 +372,8 @@ class Session:
             return self.carry
 
     def _build(self, carry=None):
+        if self.plain:
+            return framemod.plain(self.words)
         f = framemod.build(self.words, self.spans, self.current, self.events, self.prev_intent,
                            local_ok=bool(len(lanes.index())), carry=self._carry(self.words) if carry is None else carry)
         if self.wconf and len(self.wconf) == f.n and any(c is not None for c in getattr(self, "confs", []) or []):
@@ -729,8 +737,9 @@ class Session:
                "levels": list(self.q_levels), "q": self.qid}
         try:
             self._sync_words(ws)
-            self.tagger.endpoint()
-            self._apply(self.tagger.poll())
+            if not self.plain:
+                self.tagger.endpoint()
+                self._apply(self.tagger.poll())
             f = self._build()
             job.update(words=list(self.words), spans=list(self.spans), current=self.current, events=self.events,
                        prev_intent=self.prev_intent)
@@ -756,7 +765,7 @@ class Session:
         ws = self._join(self._fresh(ws or []), final=True)
         if not ws:
             return None
-        if config.REPAIR_HOLD_S > 0 and not self.audio_ended and framemod.unfinished([framemod.norm(clean(w["text"])) for w in ws]):
+        if config.REPAIR_HOLD_S > 0 and not self.audio_ended and not self.plain and framemod.unfinished([framemod.norm(clean(w["text"])) for w in ws]):
             # the turn ended mid-correction ("... in Boston, sorry,") or mid-phrase ("is it bad to take a"): give the
             # rest a moment to arrive as the next turn before answering (it would be answered for Boston / for the
             # fragment). _join merges or releases it.
@@ -798,6 +807,8 @@ class Session:
         if job.get("superseded"):                 # corrected before its turn came (_reopen)
             spec.close()
             return {"mode": self.mode, "question": " ".join(job.get("words") or []), "superseded": True}
+        if self.plain:
+            return await self._answer_plain(job, spec, last_end, q)
         try:
             if job["error"] is not None:
                 raise job["error"]
@@ -867,6 +878,39 @@ class Session:
                 s.seed(self.carry_pool)
                 s.context = self.context
             self._refresh()
+        self.history.append(m)
+        return m
+
+    async def _answer_plain(self, job: dict, spec, last_end: float, q: int) -> dict:
+        """Arc-off arm (mode="plain"): the closed turn's words as they are. Every turn is answered (no open-mic gate,
+        no user-fact acks, no repair merging); no conversation memory: the answer model gets no previous turn (unless
+        PLAIN_CONTEXT=1) and nothing is carried into the next question's frame or pool. Never raises."""
+        m = None
+        try:
+            if job["error"] is not None:
+                raise job["error"]
+            f = framemod.plain(job["words"])
+            spec.context = self.context if config.PLAIN_CONTEXT else ""
+            self.emit({"t": "endpoint", "ms": spec.ms(), "speech_end_ms": round(last_end * 1000),
+                       "frame": f.to_json(), "by": "ear", "q": q})
+            m = await spec.finalize(f, self.t0 + last_end)
+            m["endpoint_by"] = "ear"
+            m["superseded_soft"] = False
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            err = f"{type(e).__name__}: {e}"[:300]
+            self.emit({"t": "answer_error", "error": err, "q": q})
+            m = {"mode": self.mode, "question": " ".join(job.get("words") or [w["text"] for w in job["ws"]]),
+                 "endpoint_by": "ear", "path": "failed", "error": err, "failed": True}
+            self.emit({"t": "metric", **m, "q": q})
+        finally:
+            spec.close()
+        job["metric"] = m
+        if config.PLAIN_CONTEXT and not m.get("failed"):
+            self.context = f"Q: {' '.join(job['words'])}\nA: {(m.get('answer') or '')[:300]}"
+            for s_ in [self.spec] + [j["spec"] for j in self.pending_finals]:
+                s_.context = self.context
         self.history.append(m)
         return m
 

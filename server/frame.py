@@ -165,6 +165,9 @@ class Frame:
     inline: str = ""
     mem_ref: str = ""
     user_used: tuple = ()
+    # Arc-off ("plain voice search", mode="plain" / ARC_OFF=1): a frame built from the words alone, no tagger read-out.
+    # Its query is the raw transcript cleaned of punctuation; no correction handling, carry, redaction, hints, lanes.
+    plain: bool = False
 
     @property
     def n(self):
@@ -223,6 +226,8 @@ class Frame:
 
     def query(self) -> str:
         """Search query: content words in spoken order + an intent hint word when it adds information."""
+        if self.plain:
+            return " ".join(w for w in (norm(x) for x in self.words) if w)
         q = list(self.content)
         hint = INTENT_HINT.get(self.intent, "") if (self.intent_p >= 0.5 and self.n >= 3) else ""
         if hint and not any(h in q for h in hint.split()):
@@ -236,6 +241,8 @@ class Frame:
           - a result question (game / race / score) said with a relative time ("last night", "this weekend",
             "right now") -> topic news + that time_range: results are dated news pages, not encyclopedia articles
         Weather keeps lanes.web_plan's own max_age. Returns {} when nothing applies (plain general search)."""
+        if self.plain:
+            return {}
         h: dict = {}
         toks = set(self.content)
         if self.intent == "discourse.intent.weather_query" and not toks & _WEATHER_W:
@@ -312,6 +319,15 @@ class Frame:
         sc = confidence.slot_confs(self, list(self.wconf))
         return {"wconf": [round(c, 3) for c in self.wconf], "key_conf": round(k, 3), "key_word": j,
                 "slot_conf": [[t, x, round(c, 3)] for (t, x), c in sc.items()]}
+
+
+def plain(words: list[str]) -> Frame:
+    """Arc-off frame ("plain voice search", what a typical voice assistant does): the raw final transcript, lowercased
+    and cleaned of punctuation, IS the query. Nothing from Arc Tagger's read-out: no intent, slots, correction handling,
+    entity carry / memory, PII redaction, freshness / topic hints, router lanes or planner. content = every word (no
+    stopword list either: that is query shaping), only so the speculator's bookkeeping (stale checks) has something."""
+    toks = [t for t in (norm(w) for w in words) if t]
+    return Frame(words=list(words), content=tuple(dict.fromkeys(toks)), route="web", plain=True)
 
 
 def repair_start(toks: list[str]) -> bool | None:
