@@ -1674,3 +1674,86 @@ OFF by default. Nothing is measured live yet: the key in `.env` answers 401 "Inv
   $ per question and failure rate. It is retrieval only, loads no models, and stops itself at `--max-usd 2.5`. It has
   not been run: waiting on a valid key.
 - Tests: `tests/test_telem.py` (9, mocked HTTP).
+
+## ArcState: Arc acoustic state carried across presses (branch feat/arcstate; server/arcstate.py, eval/arcstate_eval.py)
+
+**Problem.** Text memory (server/memory.py) already carried entities from turn to turn. Arc's acoustic side did not: every push-to-talk press built a new ear, a new `ArcMeta` stream (ear.py) and new Sessions, and the tagger reset on every question. Speaker identity, the speaker's usual pace / level / pitch / hesitation, and the names already said all started from nothing on each press.
+
+**What Arc can carry.**
+- arc-v1 (`arc_audio`) streams have no API to import or export hidden state between streams.
+- The engine's `TrackBank` keeps voice centroids, but only inside one stream. It only exists with `diarization="fused" | "voice"`, and the assistant domain uses `"slots"`.
+- arc_transcriber is opt-in and not bundled.
+- So the state is carried at our level. ArcMeta asks Arc Mini for `diarization="voice"` and replaces the engine's `_bank_step` (an instance-level tap: `arcstate.Tap`) to keep the 128-d voice embedding of every speech frame. Arc's own bank step is skipped, because its labels only feed the offline diarization output, which ArcMeta never reads.
+- Measured cost on the same 20 files: 0.1025 s of Arc compute per second of audio with voice + tap, vs 0.1015 without (+1 %).
+
+**ArcState** (one per WebSocket connection = one conversation; `Run` → ear, ArcMeta and both A/B Sessions):
+- **Voice enrollment.**
+  - A press's voice is its speech frames' embeddings. Each is centred on a fixed mean frame (`server/arcstate_voice_mu.json`), normalised and averaged.
+  - It is matched to the known voices by cosine (`ARC_STATE_VOICE_SAME=0.40`). The first voice is "you" (S1). A press below the threshold for every known voice is a new voice (up to 4) and is flagged "another voice".
+  - Centroids are running means. With fewer than 6 speech frames, the press is assumed to be the enrolled user.
+- **Per-voice baselines.** Exponential mean and spread of:
+  - pace (syllables / s, from the ear's word times);
+  - level (dB of the voiced RMS);
+  - pitch (median f0 by autocorrelation, in semitones);
+  - hesitation (fillers + pauses of 0.45 s or more, per word).
+
+  `observe()` runs when a question closes and costs 1.4 ms p50 (3.9 ms p95, pitch included) on a 2.4 s question. The two A/B sessions see the same question; it is observed once (keyed by start time + words).
+- **Trajectory.** The last 6 intents, dialogue acts and Arc utterance emotion / arousal (read from the stream's utterance head every 0.5 s).
+- **Keyterms.** Up to 12 entity names from conversation memory, newest first, sent to Deepgram Flux as `keyterm` on the next press (`ear.flux_url(keyterms=)`). Single lowercase / common words are skipped. Only the count is logged.
+- **Getters.**
+  - `arcstate.relative(sess)`: `{pace_rel, hes_rel, level_rel_db, pitch_rel_st}` for the question being heard. This is the persona seam that feat/persona already calls.
+  - `arcstate.style_hints(sess)`: speaker, relative values, plain notes, recent intents / acts, emotion.
+  - `ArcState.features()`: the director's new `state` group (`director.ARCSTATE_F`). Live records now carry it (`session_record["arcstate"]`). It is not in `GROUP_ORDER`, because the shipped weights were trained without it; a retrain adds it with `groups=GROUP_ORDER + ["state"]`.
+
+**Reset semantics.**
+- **"reset voice"** (memory panel, next to "forget"; shown once a voice is enrolled; message `{"t":"arc_reset"}`): clears the voice, baselines and trajectory, and keeps memory.
+- **"forget"** clears memory *and* Arc state. The Mac app's "Forget Memory…" clicks the same button.
+- **Idle for `ARC_STATE_IDLE_S` (600 s):** the trajectory is dropped, keyterms only come from what is said afterwards, and baseline weight is cut to 2 questions. The enrolled voice stays.
+- **Topic switch:** an answered question that is not a follow-up (no carried / inline / follow-up / memory reference) and names a new subject drops the trajectory and narrows keyterms to the new topic. This uses fix/live's frame fix (no carry on openers) and does not duplicate it.
+- **Persistence:** only with `ARC_STATE_PERSIST=1`, to `<data dir>/arcstate/<sha256(client)[:24]>.json`. It holds voice centroids and baselines, never words. The default is per-session and in memory only, because a voice embedding is biometric.
+
+**Measured.**
+
+*Flux keyterms* (`eval/arcstate_eval.py keyterms --control 20`, real Deepgram Flux, real time):
+- **Set:** 32 follow-ups that re-say a name from an earlier turn (`eval/arcstate/keyterm_set.jsonl`). Names were mostly taken from the 530 mined Flux confusions. Audio is macOS `say` with 7 voices; it is generated and git-ignored.
+
+| arm | names heard exactly | WER | EndOfTurn after speech p50 |
+|---|---|---|---|
+| off | 17/32 | 14.8 % | 1142 ms |
+| **on** (memory names via `arcstate.keyterms`) | **30/32** | **6.0 %** | 1144 ms |
+| unrelated names as keyterms | 17/32 | 15.7 % | 1171 ms |
+
+- **Fixed with keyterms on:** Shiffle → Schiphol, Keukenhoff → Keukenhof, Lake Blade → Lake Bled, Cauchy → Kochi, studio Ghibli → Studio Ghibli, and more.
+- **Still wrong:** kt08 "show Hae Ohtani" (Shohei); kt07 Hozier, where Flux returned no EndOfTurn in either arm.
+- **Control:** 20 plain questions (`eval/questions.jsonl`) with 6 unrelated names as keyterms. No name was inserted. WER was 2.7 % off vs 4.0 % with unrelated names: the whole difference is q07 ("when did the Berlin Wall fall"). Re-running q07 three times per arm gave the odd reading once with unrelated keyterms and never without them: one flaky question, not a measured harm.
+- **Latency:** EndOfTurn p50 is unchanged.
+
+*Voice* (`eval/arcstate_eval.py voice`): 137 eval files, 16 TTS voices, about 20 speech frames per file.
+- **Separation:** same-voice vs other-voice equal-error rate was 14 % uncentred and 10 % centred. The confusions are similar TTS voices of the same gender (kokoro am_michael ↔ say Daniel, Karen ↔ Samantha).
+- **Sequential, as live** (each conversation's presses in order, plus one press by another voice inserted second; centred, threshold 0.40): the same voice was kept as "you" on 34/36 later presses, and the other voice was flagged on 17/21 (at the threshold: 7.0 % same-voice pairs below it, 12.5 % other-voice pairs above it). Re-measured cost: 0.0952 vs 0.0933 s per audio s.
+- **In-sample:** the centring mean (one 128-d vector) was computed on this same audio, so the centred numbers are in-sample.
+- **Honest limit:** this is TTS audio, which varies less within a voice than people do. The voice decision drives only the read-out ("another voice asked this"), which baseline a press updates, and the director / persona features. It never gates search or answers.
+
+**Flags / defaults.**
+- `ARC_STATE=1` (default ON: measured neutral-or-better above, no added latency).
+- `ARC_STATE_VOICE=1`, `ARC_STATE_KEYTERMS=1`, `ARC_STATE_MAX_KEYTERMS=12`, `ARC_STATE_IDLE_S=600`, `ARC_STATE_PERSIST=0`, `ARC_STATE_VOICE_SAME=0.40`, `ARC_STATE_MIN_FRAMES=6`.
+- Replays get a fresh state each time (a demo file is never enrolled as the user's voice).
+
+**Data-dir audit.**
+- Every runtime write must land in `HEADSTART_DATA_DIR`. Memory, Keystone, the search cache and ArcState already did. The knowledge / leads index is read-only.
+- **Fixed:** web cache writes (`WEB_CACHE_RECORD`) went to `<bundle>/runs/web_cache.json`. They now go to `<data dir>/web_cache.json`, and the bundled file is a read-only seed. `/api/health` shows `cache_path` (where it writes) and `cache_seed`.
+- **Test:** `tests/test_datadir.py`.
+- **Still open:** a full `pytest` run on main rewrites the tracked `runs/web_cache.json`. A test records without redirecting the path; it is not fixed here.
+
+**End to end** (own server on :8807 with `HEADSTART_DATA_DIR` set, `EAR=flux`, push-to-talk mic runs over `/ws`). Five presses: conv10 turn 1 and turn 2 (say Samantha), then q02 (kokoro am_michael), then conv10 turn 3, then "reset voice".
+- Turns 1 and 2 were "you" / S1 (cosine 0.50).
+- q02 was "another voice" (S2), plus a topic-switch partial reset (iPhone → capital of Australia).
+- Turn 3 was "you" again (cosine 0.65), with pace ×1.05 and level −1.1 dB against the baseline. Keyterms grew 0 → 1 → 3 → 4 across the presses.
+- "reset voice" sent back 0 voices.
+- Every write landed in the data dir (memory/, keystone/). Nothing went to arcstate/, because persistence is off.
+- **Bug found and fixed:** the level came from the session's own level samples, which start only after words arrive. That read −10 dB on equal-level files; level is now measured from the question's voiced audio.
+- **Unrelated, observed:** two Flux connects did not finish within 3 s when presses were 0.3 s apart. Presses 2 s apart all connected.
+
+**UI shots** (Chromium with a fake mic, hold-Space push-to-talk, 1280x720, light + dark, no console errors, no horizontal scroll): scratchpad `feature_shots/arcstate/`. They show the memory panel's "voice you · learned from N questions" line and the "reset voice" button, which clears the line.
+
+**Tests.** `tests/test_arcstate.py` (13): relative pace / hesitation, A/B dedup, enrollment + other-voice flag, resets (all / topic / idle), keyterm selection, flux_url keyterms, opt-in persistence in the data dir with no words on disk, the tap, pitch, persona / director getters, the make_ear handoff, and the ws `arc_reset` / `forget`. Also `tests/test_datadir.py` (2). `tests/test_mic_runs.py`: its fake `make_ear` now accepts the new keyword arguments. Full suite: 569 passed before that one-line fix (2 failures, both in test_mic_runs, from the fake's signature); those 2 now pass.

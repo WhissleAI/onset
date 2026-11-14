@@ -91,8 +91,11 @@ def _top(xs):
 class ArcMeta:
     """Feed it the ear's audio and words; it calls on_meta(summary) whenever the summary changes."""
 
-    def __init__(self, on_meta, domain: str = "assistant", offset_s: float = 0.0):
+    def __init__(self, on_meta, domain: str = "assistant", offset_s: float = 0.0, state=None):
         self.on_meta = on_meta
+        from . import arcstate
+        self.state = state if (state is not None and arcstate.ENABLED) else None
+        voice = self.state is not None and arcstate.VOICE
         self.v = variant()
         if self.v == "transcriber":
             a = transcriber()
@@ -100,8 +103,26 @@ class ArcMeta:
             from .ear import arc
             a = arc()
         # fallback=None: external mode must not quietly run Arc's builtin decoder as a name fallback
-        self.stream = a.stream(domain=domain, transcript="external", name_source="word", interim_source="deepgram",
-                               partials=False, fallback=None)
+        kw = {"diarization": "voice"} if voice else {}     # ArcState: Arc's voice embedding per frame (arcstate.Tap)
+        try:
+            self.stream = a.stream(domain=domain, transcript="external", name_source="word", interim_source="deepgram",
+                                   partials=False, fallback=None, **kw)
+        except Exception:  # noqa: BLE001 (a model without the voice head: metadata as before, no voice state)
+            if not kw:
+                raise
+            voice = False
+            self.stream = a.stream(domain=domain, transcript="external", name_source="word",
+                                   interim_source="deepgram", partials=False, fallback=None)
+        self.tap = None
+        if voice:
+            try:
+                self.tap = arcstate.Tap(self.stream, offset_s)
+                if not self.tap.ok:
+                    self.tap = None
+                self.state.new_stream()
+            except Exception:  # noqa: BLE001 (state is optional)
+                self.tap = None
+        self.n_feed = 0
         self.offset = float(offset_s)
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="arcmeta")
         self.loop = None
@@ -165,6 +186,11 @@ class ArcMeta:
     def _feed(self, pcm):
         t = time.perf_counter()
         out = self.stream.feed(pcm)
+        if self.tap is not None:
+            self.n_feed += 1
+            self.state.add_frames(self.tap.drain(self.offset))
+            if self.n_feed % 5 == 0:
+                self.state.set_emotion(self.tap.emotion())
         if self.extra is not None:
             self._feed_extra(pcm)
         self.compute_s += time.perf_counter() - t
@@ -195,6 +221,9 @@ class ArcMeta:
 
     def _flush(self):
         out = self.stream.flush()
+        if self.tap is not None:
+            self.state.add_frames(self.tap.drain(self.offset))
+            self.state.set_emotion(self.tap.emotion())
         self._summarize(out, final=True)
 
     def _summarize(self, out: dict, final: bool = False):

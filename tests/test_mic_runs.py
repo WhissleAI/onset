@@ -30,7 +30,7 @@ class FakeEar:
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(appmod.app.router, "on_startup", [])        # no model warm-up in a unit test
-    monkeypatch.setattr(earmod, "make_ear", lambda sinks, domain="assistant", on_event=None: FakeEar(sinks))
+    monkeypatch.setattr(earmod, "make_ear", lambda sinks, domain="assistant", on_event=None, **kw: FakeEar(sinks))
     monkeypatch.setattr(lanes, "_index", lanes.LocalIndex.__new__(lanes.LocalIndex))
     lanes._index.docs = []
     logged = []
