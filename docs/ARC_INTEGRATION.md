@@ -60,6 +60,8 @@ Source: `server/arcmeta.py`.
 | audio act / intent, speaker / role, bio, audio_events | UI (`hears.js`) | — | UI-only |
 | overlap, emotion, arousal, speaker change, interruption, yield, n speakers, level, music, laugh, degradation, dd (x2 stream) | director v2 "arc" feature group only | test_director_v2::test_step_feats2_reads_arc_streams (features only) | default-off (DIRECTOR=on + DIRECTOR_STREAMS=1) |
 | utt_open, rtf, at, model | nothing | — | unused |
+| voice embedding (diarization head, per speech frame; `diarization="voice"`, tapped by `arcstate.Tap`) | ArcState across presses (server/arcstate.py): enrolled voice ("you") vs another voice, per-voice baselines (pace / level / pitch / hesitation) → persona `relative()`, director `state` group (recorded, not in the shipped weights), memory-panel read-out | test_arcstate::test_voice_enrollment_keeps_you_and_flags_another_voice, ::test_tap_keeps_speech_frame_embeddings_on_the_audio_clock | verified (ARC_STATE=1) |
+| utterance emotion / arousal (utt head) | ArcState trajectory → `style_hints()` (persona) | — | read-out only |
 
 ## 3. Arc ear words
 

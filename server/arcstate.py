@@ -40,7 +40,7 @@ import numpy as np
 
 from . import config
 
-ENABLED = os.environ.get("ARC_STATE", "0") == "1"      # default off until measured (PROGRESS.md)
+ENABLED = os.environ.get("ARC_STATE", "1") == "1"      # measured: PROGRESS.md "ArcState"
 VOICE = os.environ.get("ARC_STATE_VOICE", "1") == "1"              # speaker enrollment (Arc voice embedding tap)
 KEYTERMS = os.environ.get("ARC_STATE_KEYTERMS", "1") == "1"        # memory entities -> Flux keyterm prompts
 MAX_KEYTERMS = int(os.environ.get("ARC_STATE_MAX_KEYTERMS", "12"))
@@ -101,6 +101,18 @@ def pitch_st(pcm: np.ndarray | None, sr: int = 16000) -> float | None:
     return round(12 * math.log2(float(np.median(f0)) / 100.0), 2)
 
 
+def _voiced_rms(pcm) -> float | None:
+    """Median RMS of the question's voiced 100 ms frames (the session's own level samples start only once words have
+    arrived, so on a short question they are mostly the quiet tail: measured -10 dB off on equal-level files)."""
+    if pcm is None or len(pcm) < 3200:
+        return None
+    x = np.asarray(pcm, np.float32)
+    fr = x[: len(x) // 1600 * 1600].reshape(-1, 1600)
+    r = np.sqrt((fr * fr).mean(1))
+    v = r[r > max(0.006, 0.25 * float(r.max()))]
+    return float(np.median(v)) if len(v) >= 3 else None
+
+
 def measure(words: list[str], times: list[tuple] | None, levels: list[float] | None, pcm=None) -> dict:
     """How one question was said: pace (syllables / s), level (dB of the voiced RMS), pitch (st), hes (per word)."""
     toks = [_norm(w) for w in words]
@@ -115,8 +127,11 @@ def measure(words: list[str], times: list[tuple] | None, levels: list[float] | N
         m["hes"] = round((sum(1 for t in toks if t in FILLERS) + pauses) / max(1, len(toks)), 3)
     elif toks:
         m["hes"] = round(sum(1 for t in toks if t in FILLERS) / len(toks), 3)
-    if levels:
-        m["level"] = round(20 * math.log10(max(float(np.median(levels)), 1e-5)), 1)
+    lv = _voiced_rms(pcm)
+    if lv is None and levels:
+        lv = float(np.median(levels))
+    if lv is not None:
+        m["level"] = round(20 * math.log10(max(lv, 1e-5)), 1)
     m["pitch"] = pitch_st(pcm)
     return m
 
@@ -447,7 +462,7 @@ class ArcState:
         for e in ents:
             if last_turn(e) < self.topic_from - 1 and len(out) >= 3:
                 continue
-            name = (e.get("name") or e.get("key") or "").strip()
+            name = re.sub(r"['’]s$", "", (e.get("name") or e.get("key") or "").strip())
             if not name or len(name) < 3 or len(name) > 40:
                 continue
             k = name.lower()
