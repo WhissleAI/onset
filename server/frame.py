@@ -696,11 +696,22 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
             if after and before and not all(toks[i] in NOT_REPLACEMENT for i in after):
                 # drop the before-token(s) that the after-phrase repeats around (e.g. "game")
                 rep = {toks[i] for i in after}
-                for i in reversed(before):
-                    if toks[i] in rep:
-                        continue
-                    drop_tok.add(i)
-                    break
+                # the replacement repeats a head word of the before-phrase ("the BOILING point of water, no wait, the
+                # FREEZING point"): the word right before that head is what changed, not the last content word
+                # ("water"; cx11 kept "boiling", dropped "water" and answered 100 C)
+                head = next((k for k, i in enumerate(after) if toks[i] in {toks[j] for j in before}), None)
+                anchor = None
+                if head and toks[after[head - 1]] not in {toks[j] for j in before}:
+                    anchor = next((j for j in before if toks[j] == toks[after[head]]), None)
+                prev = [j for j in before if anchor is not None and j < anchor]
+                if prev and toks[prev[-1]] not in rep:
+                    drop_tok.add(prev[-1])
+                else:
+                    for i in reversed(before):
+                        if toks[i] in rep:
+                            continue
+                        drop_tok.add(i)
+                        break
     if drop_tok:
         # a slot whose words were corrected away goes too ("capital of Canada, actually make that Turkey")
         slot_spans = [s for s in slot_spans if not set(range(s["start"], s["end"])) & drop_tok]

@@ -321,3 +321,17 @@ def test_fixed_name_takes_its_own_kind_for_memory():
     f = fr("who was mari guri", [("entity.mention.work_product", 2, 4)])
     heard.apply(f, heard.propose(f, [0.99, 0.99, 0.5, 0.6], None))
     assert ("person", "marie curie") in f.slots
+
+
+def test_correction_replaces_the_modifier_of_the_repeated_head():
+    """arcvalue cx11, Flux: "what's the boiling point of water no weight the freezing point" ("no wait" heard as "no
+    weight", a cue frame.py already knows): the replacement repeats "point", so "boiling" is what changed, not
+    "water"."""
+    f = fr("what's the boiling point of water no weight the freezing point")
+    assert f.corrected
+    assert "boiling" not in f.content and "freezing" in f.content and "water" in f.content
+    g = fr("what's the score in the lakers game sorry i mean the warriors game", [("entity.mention.team", 5, 6),
+                                                                              ("entity.mention.team", 11, 12)])
+    assert "lakers" not in g.content and "warriors" in g.content
+    h = fr("how tall is mount everest sorry k2")        # no repeated head: the last word before the cue goes
+    assert h.corrected
