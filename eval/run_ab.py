@@ -292,6 +292,7 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         "stale": m.get("stale"), "drafts": m.get("drafts"), "draft_reused": m.get("draft_reused"),
         "draft_match": m.get("draft_match"), "query": m.get("query"), "intent": m.get("intent"),
         "spec_queries": spec_q, "sources": m.get("sources"),
+        "plan": m.get("plan"), "verify": m.get("verify"),          # PLAN / VERIFY (server/planner.py, verify.py)
         "web_paid": m.get("web_paid"), "free_calls": m.get("free_calls"), "tiers": m.get("tiers"),
         # cost meter (server/meter.py): answer-model tokens (used answer + thrown-away drafts / hedges) and est. $
         **{k: m.get(k) for k in ("ans_in", "ans_out", "waste_in", "waste_out", "llm_requests", "tokens_est",

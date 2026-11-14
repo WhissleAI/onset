@@ -292,3 +292,19 @@ MEM_DIR = Path(os.environ.get("MEM_DIR", ROOT / "runs/memory"))
 MEM_CONV_TTL_S = float(os.environ.get("MEM_CONV_TTL_S", "1800"))    # conversation entities survive a reconnect this long
 MEM_USER_TTL_S = float(os.environ.get("MEM_USER_TTL_S", str(30 * 86400)))   # user facts ("I live in Denver")
 MEM_USER_FACTS = os.environ.get("MEM_USER_FACTS", "1") == "1"      # learn + use simple facts the user says
+# ---------------------------------------------------------------------------------------------------- planner + verify
+# server/planner.py: a multi-part spoken question ("which is taller, Everest or K2", "flights to Denver and the weather
+# there", "how old was the founder of Amazon when it was founded") is split into sub-questions while it is spoken; each
+# part is routed and searched on its own (in parallel, as soon as it is stable) and the answer gets the sources grouped
+# by part. Single-part questions never take this path (decompose() -> None: nothing changes).
+PLAN = os.environ.get("PLAN", "1") == "1"
+PLAN_MAX_PARTS = int(os.environ.get("PLAN_MAX_PARTS", "3"))
+PLAN_EXTRA_PAID = int(os.environ.get("PLAN_EXTRA_PAID", "1"))    # paid speculative calls allowed per part beyond the first
+PLAN_WAIT_S = float(os.environ.get("PLAN_WAIT_S", "3.0"))        # endpoint: max wait for the parts' searches
+PLAN_PART_CAP_S = float(os.environ.get("PLAN_PART_CAP_S", "0.5"))  # endpoint: a part's speculative lookup still out
+#                                                                   after this -> a final search races it
+PLAN_K_PART = int(os.environ.get("PLAN_K_PART", "0"))            # sources per part (0 = 3 for 2 parts, 2 for 3)
+# server/verify.py: after the answer, its numbers / years / names are checked against the cited sources (string and
+# number matching, cross-source agreement); a badge shows the result. Runs after the last answer token: never delays it.
+VERIFY = os.environ.get("VERIFY", "1") == "1"
+VERIFY_TOL = float(os.environ.get("VERIFY_TOL", "0.01"))         # relative tolerance for non-year numbers

@@ -185,6 +185,7 @@
     if (window.HSHears && run) { try { window.HSHears.event(e); } catch (err) { console.error("hears", err); } }
     if (window.HSMeter && run) { try { window.HSMeter.event(e, run); } catch (err) { console.error("meter", err); } }
     if (window.HSGraph) { try { window.HSGraph.event(e); } catch (err) { console.error("graph", err); } }
+    if (window.HSPlan && run) { try { window.HSPlan.event(e); } catch (err) { console.error("plan", err); } }
     if (e.mode === "sys") {
       if (e.t === "ready") {
         if (e.warm !== undefined) warm = !!e.warm;
@@ -283,6 +284,7 @@
           q.order.push(key);
         }
         if (e.ids) f.ids = e.ids;
+        if (e.part) f.part = e.part;                  // planner: the sub-question this search is for
         if (e.tier) f.tier = e.tier;
         if (e.reason) f.reason = e.reason;            // router: which tier served this web-lane call (card | facts | web | wait)
         if ((e.state === "done" || e.state === "stale" || e.revived) && e.took != null) { const d = HSResults.specDocs(e); if (d) f.docs = d; }
@@ -511,6 +513,7 @@
     tr.dataset.empty = "1";
     if (!keepEar) { $("#earState").textContent = run && run.kind === "mic" ? "listening" : "starting…"; $("#earState").className = "ear live"; }
     renderFrame(null);
+    if (window.HSPlan) window.HSPlan.reset();
     for (const m of ["headstart", "baseline"]) {
       const p = $("#pane-" + m);
       p.classList.toggle("off", !!run && !run.modes.includes(m));
@@ -1113,6 +1116,8 @@
       laneCls = (tier ? "t-" + tier : f.lane.replace("final-", "")) + (isFinal ? " final" : "");
       labelLane = tier || f.lane.replace("final-", "");
       labelQ = f.query;
+      const pn = f.part && window.HSPlan ? window.HSPlan.partNo(f.mode, f.part) : "";
+      if (pn) labelQ = pn + " · " + f.query;
       state = f.state === "fired" ? "live" : f.state;
       if (f.state === "fired") info = `${Math.round((r.t1 ?? f.t0) - f.t0)} ms…`;
       else if (f.state === "reused") info = "reused at endpoint";
@@ -1187,13 +1192,14 @@
     ["local_19.wav", "In the hearing, how many cues are taught in the training?"],
     ["local_20.wav", "In the broadcast, how many points is Jarrett Allen averaging?"],
   ].map(([file, text]) => ({ file, text, kind: "local" }));
-  const qsets = { web: [], local: [], conv: [] };
+  const qsets = { web: [], local: [], conv: [], multi: [] };
   let qset = store.get("hs-qset") || "web";
   async function loadQuestions() {
     let all = [];
     try { all = await (await fetch("/api/questions", { cache: "no-store" })).json(); } catch { all = []; }
     if (!Array.isArray(all)) all = [];
-    qsets.web = all.filter((q) => q.kind !== "local");
+    qsets.web = all.filter((q) => q.kind !== "local" && !q.parts);
+    qsets.multi = all.filter((q) => Array.isArray(q.parts));          // planner set (eval/multipart)
     qsets.local = all.filter((q) => q.kind === "local");
     if (!qsets.local.length) {
       try {
@@ -1206,7 +1212,7 @@
       qsets.conv = Array.isArray(c) ? c.filter((r) => Array.isArray(r.files) && r.files.length) : [];
     } catch { qsets.conv = []; }
     for (const b of $("#qtabs").querySelectorAll("button")) b.hidden = !(qsets[b.dataset.set] || []).length;
-    $("#qtabs").hidden = !qsets.local.length && !qsets.conv.length;
+    $("#qtabs").hidden = !qsets.local.length && !qsets.conv.length && !qsets.multi.length;
     if (!(qsets[qset] || []).length) qset = "web";
     paintQuestions();
   }

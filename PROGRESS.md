@@ -924,3 +924,93 @@ The full suite passes: 299.
 
 Screenshots (1280x720, light + dark, minimal + details, no console errors, no horizontal scroll at rest):
 scratchpad feature_shots/memory/ (conv07 three-turn "going back to the first one", conv12, conv19 user facts).
+## Plan while you speak + verify (branch feat/plan; server/planner.py, server/verify.py, web/plan.js)
+**Planner (PLAN=1, default ON).** A multi-part spoken question is split into sub-questions while it is spoken; each
+part becomes a synthetic Frame (its own words + the parent's tagged entity spans) and goes through the router on its
+own, so one part can be a free Wikidata fact or weather card while its sibling goes to the web.
+- Rules only, no model call (decompose() p50 0.02-0.04 ms, p99 < 0.6 ms per frame, measured on every frame of the
+  paired runs below): comparisons ("which is taller, Everest or K2", "is X taller than Y", "compare Nvidia and AMD
+  revenue", "Python versus Java, which came out first"), conjunctions ("flights to Denver and the weather there" ->
+  pronoun resolved to Denver; "population of France and Germany"; "... and also ..."; up to PLAN_MAX_PARTS=3), multi-hop
+  ("how old was the founder of Amazon when it was founded" -> who founded amazon | when was {founder} born | when was
+  amazon founded). Input is router.repaired_text (corrections spliced in place); Arc Tagger entity phrases guard
+  "pride and prejudice"-style splits.
+- Speculator hook (on_frame / on_eot -> _plan_step): a CLOSED part (the speaker moved past it: left of "and", the first
+  option before "or") fires at once; the open part after SPEC_SETTLE_MS or a likely end of turn. Whole-sentence
+  speculation and drafts are off for planned frames. A search of the same query is reused, never paid twice (also a
+  whole-sentence search made before the plan formed). Budget: SPEC_PAID_MAX + PLAN_EXTRA_PAID (1) per extra part,
+  WEB_BUDGET, the Tavily ledger; cheap-only part plans are marked no_paid mid-sentence.
+- Corrections re-plan: "who was born first, Mozart or Beethoven, actually make that Bach" -> the Beethoven part's search
+  goes stale, the Bach part fires (test).
+- Multi-hop bridge: the hop part's entity comes from its Wikidata fact value, else from role wording in its top results
+  ("founded by X", "written by X", "CEO X", "X is the capital"), as soon as its docs land (before their embeddings);
+  the bridge part then fires (mid-sentence when possible).
+- Endpoint (both modes, _final_plan): every part searched in parallel (speculative ones reused; a speculative lookup
+  still out after PLAN_PART_CAP_S=0.5 s is raced by a final call), sources ranked per part by lane order (no query
+  embedding on the critical path: ~0.1-0.5 s on this loaded laptop), up to 3 per part (2 for 3 parts); the answer
+  prompt gets a part-aware hint ("(1) how tall is everest: [1], [2]; (2) ...; answer each part with its citation, then
+  say which is taller"); the card one-liner shortcut is off for plan answers. Metric `plan` (parts, fire, tier, paid).
+- Single-part questions: decompose() returns None for every word prefix of the 58 set, the showcase and the local
+  set (960 prefix frames, eval/multipart/plan_textcheck.py), so their path is unchanged by construction.
+- Independent recall / precision check on the director's ~15 k spoken-search texts written by other agents
+  (plan_textcheck.py --corpus): style multi_part split 74/100; false-split rate on the other styles 0.0-1.9 %
+  (plain 0.7 %, filler 0.4 %, correction 0.4 %, followup 0.1 %; late_flip 1.9 %, mostly genuine "X, and Y?" questions).
+
+**Verify (VERIFY=1, default ON).** After the last answer token (ready / done already measured), the answer's numbers
+(with scale: "60.9 billion" = "60,922 million"), years and names are looked up in the cited sources, then in all
+sources: badge "✓ N sources agree" (distinct URLs) / "✓ matches 1 source" / "◐ k of n claims found" /
+"⚠ sources disagree: 1993 vs 1991" / "unverified". A disagreement needs a different year right after the claim's own
+predicate, in a sentence naming the claim's subject, in a source whose title is that subject, and not another year
+the answer states (Harvard 1636 vs Yale 1701 is two facts). Arithmetic on the answer's own years ("30 years old") is
+labelled "computed". ~0.5-2 ms, no network, no model. It checks that the sources say it, not that it is true
+(tooltip says so). Event `verify`, metric `verify`.
+
+**UI.** Plan chips under "What Arc hears" (visible in the minimal demo view): P1 / P2 / P3 with the sub-question, its
+lane (FACTS / CARD / WEB) and status (dashed = waiting, pulsing = searching, green = done, struck = stale after a
+correction); timeline rows of part searches are labelled "P1 · query"; verify badge under each pane's answer; a
+"Multi" replay tab (eval/multipart; audio copied to eval/audio, git-ignored). Screenshots (1280×720, light + dark,
+mid-speech + after, minimal + details; no console errors, no horizontal scroll):
+scratchpad/feature_shots/plan/.
+
+**Eval set.** eval/multipart/questions.jsonl: 26 spoken questions (13 comparisons, 7 conjunctions, 6 multi-hop),
+keyword answers per part, Kokoro voices (eval/multipart/make_audio.py -> eval/audio_multipart/, git-ignored).
+Scorer: eval/multipart/score.py. Paired runner: eval/multipart/ab_toggle.py (each question run with PLAN=1 and PLAN=0
+back to back in one process, order alternating): the laptop's load average was 46-62 during this session (other
+agents + director training), and separate runs minutes apart moved BOTH modes by seconds, planner or not
+(runs/plan/sc_on vs sc_off: baseline p50 4787 vs 3122 ms with no question planned), so only paired numbers are quoted.
+
+Paired A/B, Wikipedia lane, EAR=flux, search cache per run, commit 2d3fb98 (runs/plan/tg_*.json, not committed).
+"paid" = calls that would be Tavily credits; "free" = Wikidata / cards / local leads.
+
+| set | mode | planner | p50 ready | p90 | per-part acc | all parts right | paid/q | free/q |
+|---|---|---|---|---|---|---|---|---|
+| multi-part (26) | Head Start | on | **1889** | **2166** | **47/54 (.870)** | 21/26 | 1.81 | 4.38 |
+| multi-part (26) | Head Start | off | 3343 | 5428 | 46/54 (.852) | 20/26 | 0.85 | 1.88 |
+| multi-part (26) | Baseline | on | 2294 | 3037 | 43/54 (.796) | 18/26 | 1.73 | 3.31 |
+| multi-part (26) | Baseline | off | 2925 | 4354 | 45/54 (.833) | 19/26 | 0.81 | 0.77 |
+Head Start planner on vs off, paired: faster on 19/26, p50 1657 ms saved (sources p50 1106 vs 2544 ms: the parts land
+in parallel, mostly on free lanes). Head Start vs Baseline with the planner on: p50 1889 vs 2294. Cost: ~+1 paid call
+per multi-part question (a part whose Wikidata lookup is slow is hedged to the web) and ~+2.5 free calls.
+Single-part regression (Head Start, paired, no question planned in either arm):
+
+| set | p50 on / off | p90 on / off | paired p50 on faster | accuracy on / off | paid/q on / off |
+|---|---|---|---|---|---|
+| showcase (30) | 1322 / 1288 | 2635 / 2402 | -8 ms (14/30 faster) | 13/15 / 14/15 | 0.87 / 0.93 |
+| 58 set | 1290 / 1390 | 1898 / 2106 | +14 ms (31/58) | 58/58 / 58/58 | 0.28 / 0.40 |
+The one showcase accuracy flip (sc11) took the draft-reuse path in one arm and pool-reuse in the other with the same
+non-answer wording; neither arm planned it. Verdict: no single-part regression -> PLAN defaults ON.
+
+Verify on the paired runs (planner-on arm, before the last two false-alarm fixes): 58 set supported 38 + agree 10,
+partial 7, unverified 3; showcase supported 15 + agree 1, unverified 11 (live / how-to answers without checkable
+numbers), partial 3. On multi-part answers 9/52 were "disagree", nearly all false alarms where the "other" year was
+another fact of the same answer (Harvard 1636 vs Yale 1701, born 1964 vs founded 1994): fixed (own-year, nearest
+predicate, same-subject sentence rules; tests), not re-measured end to end.
+
+Known gaps: ASR spellings break sub-questions ("K2" heard "k two" -> no Wikidata hit); the hop's first Wikidata
+value is used when there are several founders (Microsoft -> Bill Gates or Paul Allen); "compare X and Y" without an
+attribute searches the bare names; per-part keyword accuracy rewards the model's own knowledge as well as sources
+(verify shows which). Tests: tests/test_planner.py (20 cases: decomposition, single-part non-splits, Head Start fires parts
+mid-sentence, baseline after the endpoint, correction re-plan, bridge, reused whole-sentence search, verify);
+tests/test_integrate.py's paid-budget test now allows PLAN_EXTRA_PAID per extra part (its question is two-part).
+After the last verify fixes, a re-shot of mp21 shows "✓ 2 sources agree · 30 computed" (was a false "⚠ 1964 vs 1994");
+one remaining false alarm seen: mp02 baseline "1756 vs 1979" (another page titled Mozart).
