@@ -7,7 +7,8 @@
 (function () {
   "use strict";
   const KEY = "hs-client", OPEN = "hs-mem-open";
-  const W = 300, H = 160;
+  let W = 300, H = 160;            // the small graph is drawn at the panel's own pixel size (no scaled text)
+  const LAB_FONT = 10, LAB_MAX = 18;
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
@@ -40,29 +41,33 @@
     </button>
     <div class="mem-body" id="memBody">
       <div class="mem-head">
-        <b>Memory</b><span class="mem-sub" id="memSub">this conversation</span>
+        <b>Memory</b>
         <span class="mem-sp"></span>
         <button class="mem-btn" id="memVoiceReset" title="Forget how your voice sounds (who is speaking, your usual pace and pitch). What was said stays in memory." hidden>reset voice</button>
         <button class="mem-btn" id="memForget" title="Forget everything remembered for this browser (conversation, your facts and your voice), here and on the server">forget</button>
+        <button class="mem-btn mem-x mem-ico" id="memExpand" title="Open the memory graph full size" aria-label="Open the memory graph full size" aria-haspopup="dialog" hidden><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M7 1h4v4M11 1 7.2 4.8M5 11H1V7M1 11l3.8-3.8"/></svg></button>
         <button class="mem-btn mem-x" id="memClose" title="Collapse" aria-label="Collapse memory panel">–</button>
       </div>
+      <div class="mem-sub" id="memSub">this conversation</div>
       <div class="mem-using" id="memUsing" hidden></div>
       <div class="mem-voice" id="memVoice" hidden></div>
-      <svg class="mem-svg" id="memSvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Knowledge graph of this conversation"></svg>
+      <div class="mem-stage" id="memStage" role="button" tabindex="0" aria-haspopup="dialog" title="Open the memory graph full size"
+        aria-label="Knowledge graph of this conversation. Open it full size"><svg class="mem-svg" id="memSvg" viewBox="0 0 ${W} ${H}" aria-hidden="true"></svg><span class="mem-zoomhint" aria-hidden="true">expand</span></div>
       <div class="mem-empty" id="memEmpty">Ask a question, then a follow-up ("when was it founded?"). The people, places and companies you talk about appear here.</div>
       <div class="mem-foot" id="memFoot"></div>
       <div class="pers" id="pers" hidden>
-        <div class="pers-head"><b>For you</b><span class="pers-sub" id="persSub"></span><span class="mem-sp"></span>
+        <div class="pers-head"><b>For you</b><span class="mem-sp"></span>
           <button class="mem-btn mem-x" id="persExport" title="Download what Onset learned about how you ask (JSON; no audio, no transcripts)">export</button>
           <button class="mem-btn" id="persClear" title="Clear what Onset learned about how you ask, here and on the server">clear</button>
         </div>
+        <div class="pers-sub" id="persSub"></div>
         <div class="pers-body" id="persBody"></div>
       </div>
     </div>`;
   document.body.appendChild(dock);
   const $ = (id) => document.getElementById(id);
   let open = store.get(OPEN) !== "0";
-  function setOpen(v) { open = v; store.set(OPEN, v ? "1" : "0"); paintDock(); }
+  function setOpen(v) { open = v; store.set(OPEN, v ? "1" : "0"); paint(); }
   $("memPill").addEventListener("click", () => setOpen(true));
   $("memClose").addEventListener("click", () => setOpen(false));
   $("memVoiceReset").addEventListener("click", () => {
@@ -186,72 +191,99 @@
     $("memN").textContent = String(n);
   }
 
-  // ------------------------------------------------------------------ layout
-  function layout() {
-    const nodes = graph.nodes.slice();
-    const user = graph.user || [];
-    if (user.length) nodes.push({ id: "__you", label: "you", kind: "you" });
-    const ids = new Set(nodes.map((n) => n.id));
-    const edges = (graph.edges || []).filter((e) => ids.has(e.a) && ids.has(e.b));
-    for (const u of user) {
-      if (u.key === "home") {
-        const k = String(u.v).toLowerCase();
-        if (!ids.has(k)) { nodes.push({ id: k, label: u.v.replace(/\b\w/g, (c) => c.toUpperCase()), kind: "place", user: true }); ids.add(k); }
-        edges.push({ a: "__you", b: k, rel: "lives in", kind: "user" });
-      } else {
-        const k = "__u_" + u.key;
-        nodes.push({ id: k, label: u.v, kind: "fact", user: true });
-        edges.push({ a: "__you", b: k, rel: "", kind: "user" });
-      }
-    }
-    // seed new nodes near a neighbour (stable growth), old ones keep their place
-    for (const n of nodes) {
-      if (pos[n.id]) continue;
-      const nb = edges.find((e) => (e.a === n.id && pos[e.b]) || (e.b === n.id && pos[e.a]));
-      const p = nb ? pos[nb.a === n.id ? nb.b : nb.a] : { x: W / 2, y: H / 2 };
-      const a = Math.random() * Math.PI * 2;
-      pos[n.id] = { x: p.x + Math.cos(a) * 40, y: p.y + Math.sin(a) * 30 };
-    }
-    for (const k of Object.keys(pos)) if (!ids.has(k)) delete pos[k];
-    const P = nodes.map((n) => pos[n.id]);
-    const idx = Object.fromEntries(nodes.map((n, i) => [n.id, i]));
-    for (let it = 0; it < 160; it++) {
-      const t = 1 - it / 160;
-      const F = P.map(() => ({ x: 0, y: 0 }));
-      for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
-        let dx = P[i].x - P[j].x, dy = P[i].y - P[j].y;
-        let d2 = dx * dx + dy * dy;
-        if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
-        const f = 1600 / d2;
-        const d = Math.sqrt(d2);
-        F[i].x += (dx / d) * f; F[i].y += (dy / d) * f;
-        F[j].x -= (dx / d) * f; F[j].y -= (dy / d) * f;
-      }
-      for (const e of edges) {
-        const i = idx[e.a], j = idx[e.b];
-        const dx = P[j].x - P[i].x, dy = P[j].y - P[i].y;
-        const d = Math.sqrt(dx * dx + dy * dy) || 1;
-        const f = (d - 62) * 0.06;
-        F[i].x += (dx / d) * f; F[i].y += (dy / d) * f;
-        F[j].x -= (dx / d) * f; F[j].y -= (dy / d) * f;
-      }
-      for (let i = 0; i < P.length; i++) {
-        F[i].x += (W / 2 - P[i].x) * 0.012; F[i].y += (H / 2 - P[i].y) * 0.02;
-        const m = 6 * t + 0.5;
-        P[i].x += Math.max(-m, Math.min(m, F[i].x));
-        P[i].y += Math.max(-m, Math.min(m, F[i].y));
-        P[i].x = Math.max(34, Math.min(W - 34, P[i].x));
-        P[i].y = Math.max(14, Math.min(H - 16, P[i].y));
-      }
-    }
-    return { nodes, edges };
+  // ------------------------------------------------------------------ layout (web/graphlayout.js)
+  const GL = window.HSGraphLayout;
+  let measureCtx = null;
+  function measure(text, font) {
+    try {
+      if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
+      measureCtx.font = font;
+      return measureCtx.measureText(text).width;
+    } catch { return String(text).length * 6; }
   }
+  const LABEL_FONT = () => `500 ${LAB_FONT}px ${getComputedStyle(document.body).getPropertyValue("--sans") || "sans-serif"}`;
 
   function svgEl(tag, attrs, parent) {
     const n = document.createElementNS(NS, tag);
     for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, String(v));
     if (parent) parent.appendChild(n);
     return n;
+  }
+  function tip(n) {
+    const facts = n.facts ? Object.entries(n.facts).map(([k, v]) => `${k}: ${v}`).join("; ") : "";
+    return [n.label, n.kind, n.qid ? `Wikidata ${n.qid}` : "", n.desc || "", facts, n.turns && n.turns.length ? `turns ${n.turns.join(", ")}` : ""].filter(Boolean).join(" · ");
+  }
+
+  // the small graph: force layout, fit to the panel, then labels only where they fit (top N by priority);
+  // every node keeps its full name as a tooltip, and the full-size view shows them all
+  function paintSmall(svg) {
+    const stage = $("memStage");
+    const w = Math.round(stage.clientWidth || 300);
+    W = Math.max(200, Math.min(420, w));
+    H = Math.round(Math.max(150, Math.min(200, W < 260 ? W * 0.8 : W * 0.58)));
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const { nodes, edges, now } = GL.augment(graph);
+    GL.force(nodes, edges, pos, { iters: 160, len: 56, rep: 1500, aniso: 1.6, gx: 0.012, gy: 0.03 });
+    const f = GL.fit(nodes.map((n) => pos[n.id]), W, H, { l: 14, r: 14, t: 12, b: 22 }, 1.4);
+    const P = Object.fromEntries(nodes.map((n) => [n.id, f.map(pos[n.id])]));
+    const rOf = (n) => (n.id === focus || n.kind === "you" ? 7 : now && (n.turns || []).includes(now) ? 6 : 5);
+    const font = LABEL_FONT();
+    const order = GL.rank(nodes, edges, focus, now);
+    const maxLabels = W < 260 ? 6 : W < 340 ? 8 : 10;
+    const obstacles = nodes.map((n) => ({ id: n.id, x: P[n.id].x - rOf(n) - 1, y: P[n.id].y - rOf(n) - 1, w: 2 * rOf(n) + 2, h: 2 * rOf(n) + 2 }));
+    const texts = {};
+    const items = order.map((n) => {
+      const t = GL.ellipsize(n.label, LAB_MAX);
+      texts[n.id] = t;
+      return { id: n.id, x: P[n.id].x, y: P[n.id].y, r: rOf(n), w: measure(t, font) + 2, h: LAB_FONT + 3 };
+    });
+    // labels may cross other nodes' dots (the halo keeps them legible) but never another label
+    const labels = GL.placeLabels(items, { bounds: { x: 1, y: 1, w: W - 2, h: H - 2 }, max: maxLabels });
+    // relation labels: the focus's edges first, then the current turn's answers; only where they fit
+    const placed = Object.values(labels);
+    const relItems = edges.filter((e) => e.rel && e.kind !== "co")
+      .map((e) => ({ e, s: (focus && (e.a === focus || e.b === focus) ? 100 : 0) + (e.turn === now ? 10 : 0) + (e.kind === "said" ? 2 : 1) }))
+      .sort((a, b) => b.s - a.s).slice(0, 6)
+      .map(({ e }) => {
+        const a = P[e.a], b = P[e.b], t = GL.ellipsize(e.rel, 16);
+        const tw = measure(t, `500 8.5px ${getComputedStyle(document.body).getPropertyValue("--mono") || "monospace"}`) + 2;
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        texts["e:" + e.a + ">" + e.b + ">" + e.rel] = t;
+        return { id: "e:" + e.a + ">" + e.b + ">" + e.rel, x: mx, y: my, w: tw, h: 11,
+                 cands: [{ x: mx - tw / 2, y: my - 12, anchor: "mid" }, { x: mx - tw / 2, y: my + 1, anchor: "mid" }] };
+      });
+    const relLabels = GL.placeLabels(relItems, { bounds: { x: 1, y: 1, w: W - 2, h: H - 2 }, obstacles, placed, max: 3 });
+
+    const gE = svgEl("g", { class: "mem-edges" }, svg);
+    for (const e of edges) {
+      const a = P[e.a], b = P[e.b];
+      const hot = focus && (e.a === focus || e.b === focus);
+      svgEl("line", { x1: a.x.toFixed(1), y1: a.y.toFixed(1), x2: b.x.toFixed(1), y2: b.y.toFixed(1), class: `mem-e k-${e.kind}${hot ? " hot" : ""}` }, gE);
+    }
+    for (const [id, bx] of Object.entries(relLabels)) {
+      const t = svgEl("text", { x: (bx.x + 1).toFixed(1), y: (bx.y + 8.5).toFixed(1), class: "mem-el" }, gE);
+      t.textContent = texts[id];
+    }
+    const gN = svgEl("g", { class: "mem-nodes" }, svg);
+    for (const n of nodes) {
+      const p = P[n.id];
+      const hot = n.id === focus;
+      const cur = now && (n.turns || []).includes(now);
+      const g = svgEl("g", { class: `mem-n k-${n.kind}${hot ? " hot" : ""}${n.user ? " user" : ""}${cur ? " now" : ""}`, transform: `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})` }, gN);
+      if (hot) svgEl("circle", { r: 12, class: "mem-halo" }, g);
+      svgEl("circle", { r: rOf(n), class: "mem-c" }, g);
+      svgEl("title", {}, g).textContent = tip(n);
+    }
+    const gL = svgEl("g", { class: "mem-labels" }, svg);
+    for (const n of nodes) {
+      const bx = labels[n.id];
+      if (!bx) continue;
+      const t = svgEl("text", { x: (bx.x + 1).toFixed(1), y: (bx.y + LAB_FONT - 0.5).toFixed(1), class: `mem-l${n.id === focus ? " hot" : ""}` }, gL);
+      t.textContent = texts[n.id];
+      svgEl("title", {}, t).textContent = tip(n);
+    }
+    const hidden = nodes.length - Object.keys(labels).length;
+    $("memStage").dataset.more = hidden > 0 ? `+${hidden} more` : "";
   }
 
   function paint() {
@@ -261,38 +293,33 @@
     svg.innerHTML = "";
     const empty = !graph.nodes.length && !(graph.user || []).length;
     $("memEmpty").hidden = !empty;
-    svg.style.display = empty ? "none" : "";
+    $("memStage").style.display = empty ? "none" : "";
+    $("memExpand").hidden = empty;
     const turns = (graph.turns || []).length;
     $("memSub").textContent = empty ? (persist ? "kept on this device" : "this conversation")
       : `${graph.nodes.length} entities · ${turns} turn${turns === 1 ? "" : "s"}${persist ? " · kept on this device" : ""}`;
     const foot = $("memFoot");
     foot.innerHTML = (graph.user || []).map((u) => `<span class="mem-fact" title="Said by you; used only as a query word when a question needs it">${esc(u.label)}</span>`).join("");
-    if (empty) return;
-    const { nodes, edges } = layout();
-    const gE = svgEl("g", { class: "mem-edges" }, svg);
-    for (const e of edges) {
-      const a = pos[e.a], b = pos[e.b];
-      const hot = focus && (e.a === focus || e.b === focus);
-      svgEl("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `mem-e k-${e.kind}${hot ? " hot" : ""}` }, gE);
-      if (e.rel && e.kind !== "co") {
-        const t = svgEl("text", { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 3, class: "mem-el", "text-anchor": "middle" }, gE);
-        t.textContent = e.rel.length > 16 ? e.rel.slice(0, 15) + "…" : e.rel;
-      }
-    }
-    const gN = svgEl("g", { class: "mem-nodes" }, svg);
-    for (const n of nodes) {
-      const p = pos[n.id];
-      const hot = n.id === focus;
-      const g = svgEl("g", { class: `mem-n k-${n.kind}${hot ? " hot" : ""}${n.user ? " user" : ""}`, transform: `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})` }, gN);
-      if (hot) svgEl("circle", { r: 12, class: "mem-halo" }, g);
-      svgEl("circle", { r: n.kind === "you" ? 7 : hot ? 7 : 5.5, class: "mem-c" }, g);
-      const t = svgEl("text", { x: 0, y: 17, "text-anchor": "middle", class: "mem-l" }, g);
-      const lab = n.label.length > 20 ? n.label.slice(0, 19) + "…" : n.label;
-      t.textContent = lab;
-      const title = svgEl("title", {}, g);
-      const facts = n.facts ? Object.entries(n.facts).map(([k, v]) => `${k}: ${v}`).join("; ") : "";
-      title.textContent = [n.label, n.kind, n.qid ? `Wikidata ${n.qid}` : "", n.desc || "", facts, n.turns ? `turns ${n.turns.join(", ")}` : ""].filter(Boolean).join(" · ");
-    }
+    if (window.HSGraphBig) window.HSGraphBig.update(graph, focus);
+    if (empty || !open) return;
+    paintSmall(svg);
+  }
+
+  // click (or Enter) on the small graph, or the expand button: the full-size view (web/graphbig.js)
+  function expand(from) { if (window.HSGraphBig && !(graph.nodes.length === 0 && !(graph.user || []).length)) window.HSGraphBig.open(graph, focus, from); }
+  $("memStage").addEventListener("click", (e) => expand(e.currentTarget));
+  $("memStage").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " " || e.code === "Space") { e.preventDefault(); e.stopPropagation(); expand(e.currentTarget); }
+  });
+  $("memStage").addEventListener("keyup", (e) => { if (e.code === "Space") { e.preventDefault(); e.stopPropagation(); } });
+  $("memExpand").addEventListener("click", (e) => expand(e.currentTarget));
+  // the panel's width changes with the window and the details view: redraw at the new size
+  if (window.ResizeObserver) {
+    let lastW = 0;
+    new ResizeObserver(() => {
+      const w = Math.round($("memStage").clientWidth);
+      if (w && Math.abs(w - lastW) > 2) { lastW = w; paint(); }
+    }).observe($("memStage"));
   }
 
   function paintVoice() {

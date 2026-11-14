@@ -111,6 +111,8 @@
       return `<sup class="sc-ref" title="${esc(srcTip(s))}">${i + 1}</sup>`;
     };
     const hero = (d.headline || []).map((h) => `<div class="sc-hero-t"><b>${esc(h.big)}${ref(h.source)}</b><span>${esc(h.label)}</span><small>${esc(h.detail)}</small></div>`).join("");
+    const sets = (d.headline_sets || []).map((x) => `<li title="${esc(srcTip(x.source))}"><b>${esc(x.set)}</b> <span class="sc-n">${esc(String(x.n))} q</span>` +
+      `<span>${esc(x.gain)} sooner</span><span>paid/q ${esc(x.paid)} <i>vs ${esc(x.paid_vs)}</i></span></li>`).join("");
     const cards = (d.problems || []).map((p) => `
       <article class="sc-card" title="${esc(srcTip(p.source))}">
         <div class="sc-pn"><span>${esc(p.n)}</span>${esc(p.problem)}</div>
@@ -118,6 +120,7 @@
         <div class="sc-unit">${esc(p.unit)}</div>
         <div class="sc-vs">${esc(p.vs)}</div>
         <p class="sc-ans">${esc(p.answer)}</p>
+        ${p.lane ? `<div class="sc-lane">${esc(p.lane)}</div>` : ""}
       </article>`).join("");
     const now = d.now || {};
     const nowTxt = [now.cost_mode ? `budget: ${now.cost_mode}` : "", now.web_backend ? `web: ${now.web_backend}` : "", now.keystone ? "Keystone on" : ""].filter(Boolean).join(" · ");
@@ -126,7 +129,11 @@
         <div><h2 id="scTitle">${esc(d.title || "Results")}</h2><p class="sc-sub">${esc(d.subtitle || "")}</p></div>
         ${actions(true)}
       </header>
-      <section class="sc-hero" aria-label="Headline numbers">${hero}</section>
+      <section class="sc-top" aria-label="Headline numbers">
+        ${d.headline_label ? `<h3 class="sc-hl">${esc(d.headline_label)}</h3>` : ""}
+        <div class="sc-hero">${hero}</div>
+        ${sets ? `<ul class="sc-sets" aria-label="By question set">${sets}</ul>` : ""}
+      </section>
       <section class="sc-grid" aria-label="The six problems">${cards}</section>
       <section class="sc-live" aria-label="This session">
         <h3>This session <span>${esc(nowTxt)}</span></h3>
@@ -224,31 +231,59 @@
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = col.ink; ctx.font = `800 54px ${F}`; ctx.fillText(d.title || "Results", P, 116);
     ctx.fillStyle = col.ink2; ctx.font = `500 24px ${F}`; ctx.fillText(d.subtitle || "", P, 156);
-    // headline tiles
+    // headline row: label, three tiles, the per-set strip
+    let y0 = 194;
+    if (d.headline_label) {
+      ctx.fillStyle = col.ink3; ctx.font = `700 17px ${F}`;
+      ctx.fillText(String(d.headline_label).toUpperCase(), P, y0 + 6);
+      y0 += 22;
+    }
     const hs = d.headline || [], gap = 28, hw = (W - 2 * P - gap * (hs.length - 1)) / Math.max(1, hs.length);
     hs.forEach((h, i) => {
-      const x = P + i * (hw + gap), y = 192;
-      ctx.fillStyle = col.card; rrect(ctx, x, y, hw, 150, 18); ctx.fill(); ctx.strokeStyle = col.line; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = col.hs; ctx.font = `800 54px ${F}`; ctx.fillText(h.big, x + 28, y + 70);
-      ctx.fillStyle = col.ink; ctx.font = `600 22px ${F}`; ctx.fillText(h.label, x + 28, y + 104);
-      ctx.fillStyle = col.ink3; ctx.font = `400 18px ${F}`; ctx.fillText(wrap(ctx, h.detail, hw - 56)[0] || "", x + 28, y + 132);
+      const x = P + i * (hw + gap), y = y0;
+      ctx.fillStyle = col.card; rrect(ctx, x, y, hw, 138, 18); ctx.fill(); ctx.strokeStyle = col.line; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = col.hs; ctx.font = `800 52px ${F}`; ctx.fillText(h.big, x + 28, y + 64);
+      ctx.fillStyle = col.ink; ctx.font = `600 22px ${F}`; ctx.fillText(h.label, x + 28, y + 97);
+      ctx.fillStyle = col.ink3; ctx.font = `400 18px ${F}`; ctx.fillText(wrap(ctx, h.detail, hw - 56)[0] || "", x + 28, y + 124);
     });
+    y0 += 138;
+    const ss = d.headline_sets || [];
+    if (ss.length) {
+      let x = P;
+      const y = y0 + 34;
+      ctx.font = `700 18px ${F}`; ctx.fillStyle = col.ink3; ctx.fillText("BY SET", x, y); x += ctx.measureText("BY SET").width + 26;
+      ss.forEach((t) => {
+        const parts = [[`${t.set} (${t.n})`, col.ink, "700"], [`  ${t.gain} sooner · paid/q ${t.paid}`, col.ink2, "500"], [` vs ${t.paid_vs}`, col.ink3, "400"]];
+        for (const [txt, c, w] of parts) { ctx.font = `${w} 19px ${F}`; ctx.fillStyle = c; ctx.fillText(txt, x, y); x += ctx.measureText(txt).width; }
+        x += 40;
+      });
+      y0 += 50;
+    }
     // six problem cards
-    const ps = d.problems || [], cw = (W - 2 * P - gap * 2) / 3, ch = 290;
+    const ps = d.problems || [], cw = (W - 2 * P - gap * 2) / 3, top = y0 + 22, ch = Math.min(290, (H - 88 - top - gap) / 2);
     ps.forEach((p, i) => {
-      const x = P + (i % 3) * (cw + gap), y = 376 + Math.floor(i / 3) * (ch + gap);
+      const x = P + (i % 3) * (cw + gap), y = top + Math.floor(i / 3) * (ch + gap);
       ctx.fillStyle = col.card; rrect(ctx, x, y, cw, ch, 18); ctx.fill(); ctx.strokeStyle = col.line; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = col.ink3; ctx.font = `700 18px ${F}`; ctx.fillText(`${p.n}  ${String(p.problem).toUpperCase()}`, x + 28, y + 44);
-      ctx.fillStyle = col.ink; ctx.font = `800 76px ${F}`; ctx.fillText(p.big, x + 28, y + 128);
-      ctx.fillStyle = col.ink2; ctx.font = `600 22px ${F}`; ctx.fillText(p.unit, x + 28, y + 164);
-      ctx.fillStyle = col.hs; ctx.font = `600 19px ${F}`; ctx.fillText(wrap(ctx, p.vs, cw - 56)[0] || "", x + 28, y + 196);
-      ctx.fillStyle = col.ink2; ctx.font = `400 19px ${F}`;
-      wrap(ctx, p.answer, cw - 56).slice(0, 2).forEach((ln, k) => ctx.fillText(ln, x + 28, y + 236 + k * 26));
+      ctx.fillStyle = col.ink3; ctx.font = `700 18px ${F}`; ctx.fillText(`${p.n}  ${String(p.problem).toUpperCase()}`, x + 28, y + 40);
+      if (p.lane) {
+        ctx.font = `600 15px ${F}`;
+        const lw = ctx.measureText(p.lane).width + 20;
+        ctx.strokeStyle = col.line; ctx.lineWidth = 1.5; rrect(ctx, x + cw - 24 - lw, y + 20, lw, 28, 14); ctx.stroke();
+        ctx.fillStyle = col.ink3; ctx.fillText(p.lane, x + cw - 24 - lw + 10, y + 39);
+      }
+      ctx.fillStyle = col.ink; ctx.font = `800 66px ${F}`; ctx.fillText(p.big, x + 28, y + 108);
+      ctx.fillStyle = col.ink2; ctx.font = `600 22px ${F}`; ctx.fillText(p.unit, x + 28, y + 142);
+      ctx.fillStyle = col.ink3; ctx.font = `600 18px ${F}`;           // the comparison: muted, never the accent
+      const vl = wrap(ctx, p.vs, cw - 56).slice(0, 2);
+      vl.forEach((ln, k) => ctx.fillText(ln, x + 28, y + 172 + k * 23));
+      ctx.fillStyle = col.ink2; ctx.font = `400 18px ${F}`;
+      wrap(ctx, p.answer, cw - 56).slice(0, vl.length > 1 ? 1 : 2).forEach((ln, k) => ctx.fillText(ln, x + 28, y + 206 + (vl.length - 1) * 23 + k * 25));
     });
-    ctx.fillStyle = col.ink3; ctx.font = `400 16px ${F}`;
-    const docs = [...new Set([...hs, ...ps].map((x) => x.source && x.source.doc).filter(Boolean))];
-    ctx.fillText(wrap(ctx, d.lane_note || "", W - 2 * P)[0] || "", P, H - 52);
-    ctx.fillText("Sources: " + docs.join(", ") + " · github.com/WhissleAI/headstart", P, H - 26);
+    ctx.fillStyle = col.ink3;
+    const docs = [...new Set([...hs, ...ss, ...ps].map((x) => x.source && x.source.doc).filter(Boolean))];
+    ctx.font = `400 15px ${F}`;
+    wrap(ctx, d.lane_note || "", W - 2 * P).slice(0, 2).forEach((ln, k) => ctx.fillText(ln, P, H - 62 + k * 20));
+    ctx.fillText("Sources: " + docs.join(", ") + " · github.com/WhissleAI/headstart", P, H - 18);
     return cv;
   }
   async function savePng(btn) {
