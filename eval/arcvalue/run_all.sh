@@ -15,6 +15,7 @@ ab() {  # out args...
   echo "$(date +%T) run_ab -> $out"
   $PY eval/run_ab.py --modes $M --no-latest --wait-lock 7200 --out "$out" "$@" > "${out%.json}.log" 2>&1
   echo "$(date +%T) done $out rc=$?"
+  sleep "${GAP_S:-200}"     # lock released: leave queued agents a turn before taking it again
 }
 steps="${*:-corr fact show multi live noisy conv}"
 for s in $steps; do case $s in
@@ -25,5 +26,5 @@ for s in $steps; do case $s in
   live)  ab $R/live.json --questions eval/arcvalue/livedata.jsonl --audio-dir eval/audio_arcvalue --kinds all
          $PY eval/arcvalue/score_live.py $R/live.json > $R/live_scored.log 2>&1 ;;
   noisy) for snr in 20 10; do ab $R/noisy_snr$snr.json --questions eval/arcvalue/showcase_scored.jsonl --audio-dir eval/audio_arcvalue_noisy/snr$snr --kinds all; done ;;
-  conv)  [ -s $R/conv.json ] && echo "skip conv" || { echo "$(date +%T) run_conv"; MAX_MIN=120 sim/with_lock.sh arcvalue $PY eval/run_conv.py --modes $M --tag arcvalue_tmp > $R/conv.log 2>&1; mv runs/conv_arcvalue_tmp.json $R/conv.json; echo "$(date +%T) done conv"; } ;;
+  conv)  [ -s $R/conv.json ] && echo "skip conv" || { echo "$(date +%T) run_conv"; MAX_MIN=120 sim/with_lock.sh arcvalue $PY eval/run_conv.py --modes $M --tag arcvalue_tmp > $R/conv.log 2>&1; mv runs/conv_arcvalue_tmp.json $R/conv.json; echo "$(date +%T) done conv"; sleep "${GAP_S:-200}"; } ;;
 esac; done
