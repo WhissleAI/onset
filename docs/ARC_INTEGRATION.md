@@ -103,8 +103,13 @@ Arc inputs to `server/confidence.py`:
    - "who founded Microsoft, sorry, I meant Amazon": the memory turn text, the follow-up's previous question (`carry.prev.question`, used for "what about X" swaps) and the next turn's answer-model context used the raw words, Microsoft included.
    - They now use `Frame.kept_text` / `clean_text`.
    - `memory.observe` parses only the kept words for its fallback subject, asked kind and gender.
-3. **`narrow`: "product" vs `work_product`.** Arc emits `work_product`, so the reviews-family branch on the entity type never fired.
-4. **Arc entity type → heard.py.** A misheard span's Arc type (person / place / org) now conditions which name it may become.
+3. **A correction that repeats the head word** (arcvalue cx11).
+   - Flux heard "what's the boiling point of water, no wait, the freezing point" with "no weight" for "no wait". frame.py already lists that near-homophone as a cue, so the correction *was* detected. The bug was what it replaced: with no typed span after the cue, the last content word before the cue ("water") was dropped, "boiling" survived, and both Arc arms answered 100 °C.
+   - Now, when the replacement repeats a head word of the before-phrase ("point"), the word before that head ("boiling") is what changed.
+   - Test: test_loop::test_correction_replaces_the_modifier_of_the_repeated_head.
+   - Other near-homophones of repair cues in frame.CORRECTION / REPAIR_* are "sari", "i met" and "no way". The 530 mined confusion pairs add "sorry" → "surrey" (11×) / "story" (3×) and "meant" → "met" (13×). "surrey" is a real place, so it is left out of the cue list.
+4. **`narrow`: "product" vs `work_product`.** Arc emits `work_product`, so the reviews-family branch on the entity type never fired.
+5. **Arc entity type → heard.py.** A misheard span's Arc type (person / place / org) now conditions which name it may become.
 
 ## Bigger gaps (reported, not fixed here)
 
