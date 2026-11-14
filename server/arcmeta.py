@@ -112,6 +112,13 @@ class ArcMeta:
         self.audio_s = 0.0
         self.pending = 0
         self.lag_drops = 0
+        # director v2 streams (config.DIRECTOR_STREAMS / DIRECTOR_ARC_EAR; off by default)
+        self.extra = ArcExtra() if (config.DIRECTOR_STREAMS or config.DIRECTOR_ARC_EAR) else None
+        self.ear_stream = None
+        if config.DIRECTOR_ARC_EAR and self.v != "transcriber":
+            self.ear_stream = a.stream(domain=domain, transcript="builtin", partials=True)
+        self.aw: list = []
+        self.af: list = []
 
     # ------------------------------------------------------------------ in (from the ear, on the event loop)
     def feed(self, pcm: np.ndarray):
@@ -158,10 +165,33 @@ class ArcMeta:
     def _feed(self, pcm):
         t = time.perf_counter()
         out = self.stream.feed(pcm)
+        if self.extra is not None:
+            self._feed_extra(pcm)
         self.compute_s += time.perf_counter() - t
         self.audio_s += len(pcm) / 16000
         self.pending = max(0, self.pending - 1)
         self._summarize(out)
+
+    def _feed_extra(self, pcm):
+        """Director v2: Arc's unshipped heads + level (and the Arc ear's own words) -> on_meta({"x2_only": ...})."""
+        o = self.offset
+        if config.DIRECTOR_STREAMS:
+            self.extra.step(self.stream, pcm)
+        if self.ear_stream is not None:
+            ob = self.ear_stream.feed(pcm)
+            for fu in ob.get("transcript") or []:
+                self.af.append([fu.get("text", ""), None if fu.get("start") is None else fu["start"] + o,
+                                None if fu.get("end") is None else fu["end"] + o])
+                self.af = self.af[-3:]
+                self.aw = []
+            p = ob.get("transcript_partial")
+            if p is not None:
+                self.aw = [] if p.get("final") else [
+                    (w["text"], None if w.get("start") is None else w["start"] + o,
+                     None if w.get("end") is None else w["end"] + o) for w in (p.get("words") or [])]
+        self._emit({"x2_only": True, "x2": self.extra.state() if config.DIRECTOR_STREAMS else None,
+                    "aw": [list(w) for w in self.aw] if self.ear_stream is not None else None,
+                    "af": list(self.af) if self.ear_stream is not None else None})
 
     def _flush(self):
         out = self.stream.flush()
@@ -209,3 +239,83 @@ class ArcMeta:
     def _emit(self, m):
         if self.loop is not None and not self.closed:
             self.loop.call_soon_threadsafe(self.on_meta, m)
+
+
+# ---------------------------------------------------------------------------------------------- director v2 read-out
+# Arc Mini computes every head on every frame, also the ones the assistant domain doesn't ship (overlap, emotion,
+# arousal, speaker change, statement / backchannel acts): uncalibrated for this domain, but a learned reader can use
+# them. ArcExtra keeps a short ring of those per-frame values + the audio level, and state() is what the search
+# director (server/director.py, DIRECTOR_V2) reads at each Flux update. Training replays it the same way
+# (eval/conf_features.py --v2), so serving and training compute the same numbers.
+X_FRAME = {"speech": "meta.speech", "sil": "scene.silence", "ovl": "meta.overlap", "degr": "meta.degraded_audio",
+           "music": "scene.music", "laugh": "scene.laughter", "noneng": "meta.lang.non_en"}
+X_UTT = {"st": "discourse.act.statement", "q": "discourse.act.question", "op": "discourse.act.opinion_assessment",
+         "cr": "discourse.act.command_request", "bc": "discourse.backchannel", "ans": "discourse.answer",
+         "dd": "discourse.assistant.device_directed", "e_neu": "affect.emotion.neutral",
+         "e_hap": "affect.emotion.happy", "e_ang": "affect.emotion.angry", "e_sad": "affect.emotion.sad",
+         "e_sur": "affect.emotion.surprised", "a_lo": "affect.arousal.low", "a_hi": "affect.arousal.high"}
+X_EV = {"chg": "speaker.change", "intr": "discourse.interruption", "yld": "discourse.turn_yield"}
+X_RING = 10                       # frames (100 ms each) for the "recent max" values
+
+
+class ArcExtra:
+    """Per-frame Arc state for the director. step(stream, pcm) after every stream.feed(pcm) (one 100 ms chunk)."""
+
+    def __init__(self):
+        self.cols = None
+        self.ring: list[dict] = []
+        self.levels: list[float] = []
+        self.utt = None
+        self.nspk = 0
+        self.spk = -1
+        self.spk_turn = None
+
+    def _cols(self, eng):
+        R, tab = eng.R, eng.tab
+        out = {}
+        for grp, tags in (("frame", X_FRAME), ("utt", X_UTT), ("ev_at", X_EV)):
+            cs = R.cols.get(grp) or []
+            for k, tag in tags.items():
+                i = tab.idx.get(tag)
+                out[k] = (grp, cs.index(i)) if i is not None and i in cs else None
+        return out
+
+    def step(self, stream, pcm):
+        eng = getattr(stream, "eng", None)
+        x = np.asarray(pcm, np.float32)
+        self.levels.append(float(10 * np.log10(np.mean(x * x) + 1e-10)) if len(x) else -100.0)
+        if len(self.levels) > 600:
+            self.levels = self.levels[-600:]
+        last = getattr(eng, "last", None)
+        if eng is None or not last:
+            return
+        if self.cols is None:
+            self.cols = self._cols(eng)
+        fr = {}
+        for k, c in self.cols.items():
+            if c is None:
+                continue
+            g, j = c
+            if g != "utt" and g in last:
+                fr[k] = float(last[g][j])
+        self.ring.append(fr)
+        if len(self.ring) > X_RING:
+            self.ring.pop(0)
+        up = getattr(eng, "utt_p", None)
+        if up is not None:
+            self.utt = {k: float(up[c[1]]) for k, c in self.cols.items() if c is not None and c[0] == "utt"}
+        self.nspk = len(getattr(eng, "speakers", {}) or {})
+        self.spk = int(getattr(eng, "last_spk", -1))
+
+    def state(self) -> dict:
+        r = self.ring[-1] if self.ring else {}
+        mx = lambda k: max((f.get(k, 0.0) for f in self.ring), default=0.0)  # noqa: E731
+        lv = self.levels
+        ref = float(np.percentile(lv, 90)) if len(lv) >= 3 else (lv[-1] if lv else -100.0)
+        s = {"speech": r.get("speech"), "sil": r.get("sil"), "ovl": mx("ovl"), "degr": r.get("degr"),
+             "music": mx("music"), "laugh": mx("laugh"), "noneng": r.get("noneng"), "chg": mx("chg"),
+             "intr": mx("intr"), "yld": r.get("yld"), "nspk": self.nspk, "spk": self.spk,
+             "lvl": lv[-1] if lv else None, "lvl_ref": ref, "lvl3": float(np.mean(lv[-3:])) if lv else None}
+        s["utt"] = dict(self.utt) if self.utt else None
+        return {k: (round(v, 3) if isinstance(v, float) else v) for k, v in s.items()} | (
+            {"utt": {k: round(v, 3) for k, v in self.utt.items()}} if self.utt else {})

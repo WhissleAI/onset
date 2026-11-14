@@ -418,6 +418,192 @@ The director endpoints ~95 ms earlier (endpoint lag p50 292 vs 387 ms), but read
 answer TTFT, so the end-to-end difference is within run noise (baselines alone differ 37–73 ms). **Defaults unchanged:
 FLUX_SOFT=fused; the director ships opt-in** (largest offline gains: noisy / reverberant audio, not_search refusals).
 
+## Director v2 (branch director/v2; recipe: PromptingNemo-private headstart-director, recipes/headstart_director, sweep5)
+More data, four more input streams, three more heads. **Defaults unchanged**: FLUX_SOFT=fused, and every v2 hook is
+OFF (DIRECTOR_STREAMS, DIRECTOR_ARC_EAR, DIRECTOR_ADDRESSED, DIRECTOR_ROUTE, DIRECTOR_PII; tests/test_director_v2.py).
+The numbers below come from runs/director_v2/ (copies of the recipe's results/: sweep5/<run>/eval_*.json, eval2.json,
+sweep5_eot_loss.json, sweep4_r1/, pilot4_7905/) and runs/ab_v2_*.json.
+
+**Data.**
+- The 3,526 streamed but never featurized traces: 3,308 featurized with the v2 featurizer (`eval/conf_features.py
+  --v2`); 217 have no Flux EndOfTurn. All are extra voicings of TRAIN texts, so test / val did not change. Train grows
+  7,905 -> 10,853 (after the jitter filter).
+- New, written by Claude Code agents (texts in the recipe's texts/), voiced (voice_extra.py), streamed through real
+  Flux and featurized:
+  - 450 open-mic scenes: 6-10 utterances each, from the owner U, other people P / P2 and a TV / radio / podcast chain
+    (band-limited, roomy, 6-16 dB under). 40 % addressed. Statements, side questions to people, backchannels,
+    thinking aloud, reported speech, TV questions. Includes "i like to eat pancakes". Split by scene: test 86 / val 48.
+  - 1,210 PII / entity questions: places, public people, companies, decoy numbers, and real PII (house numbers,
+    phones, cards, emails, gov ids, birth years, handles). Gold `hide` spans are aligned to Flux's words (TTS reads
+    "415" as "four fifteen", so number runs are collapsed on both sides). Test 271 / val 119.
+  - test_v2 / val_v2: 1,100 fresh questions (none in the old set; the 14 old styles), phase-3 acoustics incl. the
+    test-only conditions -> 760 / 321 usable. The old test's audio was pruned in round 1, so this is the only test
+    that carries the Arc streams.
+  - Caveat: the agents built the PII set, the test_v2 questions and part of the scenes' addressed lines from
+    templates or pools, so phrasings repeat. The addressed metric is also reported on test utterances whose text
+    never occurs in train (below).
+- Flux: 454 audio min for the new data (scenes 191, PII 154, test_v2 109) ≈ **$3.50** at $0.0077/min (billing logs
+  data/flux_*.jsonl.billing.jsonl). A/B ears are not included (below).
+
+**Inputs** (server/director.py GROUPS; one featurizer for training and serving; a missing stream reads `*_ok` = 0,
+and training zeroes the arc / ear streams on 30 % of traces so the model runs without them):
+| stream | features | source |
+|---|---|---|
+| pros (8) | last word duration, phrase-final lengthening, last / max gap, speaking rate, time in turn, pause / median gap | Flux word start / end |
+| tag (39) | PII kinds, profanity, typed number kinds, mention kinds, router.plan lane / vertical / route conf / skip_web / plan changed | tagger spans + server/router.py on the live frame |
+| arc (30) | speech, silence, overlap, degraded audio, music, laughter, non-English, speaker change, interruption, turn yield, #speakers, other speaker, level vs utterance peak; utterance statement / question / opinion / command / backchannel / answer / device-directed, emotion x5, arousal | Arc Mini heads the assistant domain doesn't ship (server/arcmeta.ArcExtra) |
+| ear (9) | Arc ear word count vs Flux, Jaccard, Flux's last word heard by Arc, Arc ahead / behind in time, Arc words after Flux's last, Arc's own endpoint near Flux's last word | a 2nd Arc stream with its own decoder |
+
+**Learning curve** (s model, v1 recipe, same regularisation; val eot BCE; test p50 at a val-matched premature target):
+| train traces | val eot | test p50 @10 / @20 premature per 100 q | file |
+|---|---|---|---|
+| 7,905 | .2497 | 441 / 336 | pilot4_7905/v1in_s0 |
+| 10,853 (+ the 3.3 K) | .2478 / .2473 (2 seeds) | 424 / 336, 420 / 334 | sweep4_r1/v1in_s{0,1} |
+| 11,957 (+ PII + scenes) | .2476 / .2471 | 389 / 334, 413 / 333 | sweep5/v1in_s{0,1} |
+Still flattening: +50 % data buys ~.0025 val BCE and ~20-50 ms at the strict target.
+
+**End of turn, offline** (thresholds on the matching val split only; bootstrap 95 % CIs):
+| set | policy | p50 | mean | p90 | premature /100 q | not_search answered |
+|---|---|---|---|---|---|---|
+| test (1,000) | eager | 291 | 318 | 663 | 60.6 | 100 % |
+| | fused logistic | 295 [290-320] | 366 | 771 | 32.3 | 81 % |
+| | director v1 inputs (v1in_s0 / s1) | 255 [249-279] / 253 | 312 / 307 | 711 / 706 | 32.4 / 34.7 | 75 / 44 % |
+| | **director v2 (v2_s0 / s1)** | 255 [245-279] / 276 | 313 / 330 | 734 / 734 | 33.5 / 30.3 | 44 / 38 % |
+| test_v2 (760, all streams) | eager | 293 | 355 | 738 | 57.9 | 100 % |
+| | fused logistic | 337 [315-381] | 426 | 868 | 34.4 | 70 % |
+| | director v1 inputs | 303 / 293 | 377 / 354 | 785 / 773 | 31.5 / 32.9 | 56 / 51 % |
+| | **director v2** | 293 [259-330] / 294 | 379 / 379 | 815 / 845 | 32.2 / 33.9 | 51 / 40 % |
+| heldout80 | fused logistic | 213 | 272 | 628 | 12.5 | |
+| | director v1 inputs / v2 | 133 / 128 ; 133 / 174 | | | 12.5 ; 12.5 / 8.8 | |
+Pareto (director and logistic each tuned on val for the target), test_v2 p50 @10 / @20 premature per 100 q: logistic
+632 / 534, director v1 inputs 496 / 411 (s0), director v2 526 / 413 (s0). The director's lead over the fused logistic
+holds on the fresh, harder set (most of it in noise / held-out conditions).
+
+Threshold-free (eot BCE over every labelled update, difference vs v1in_s0 with a trace-bootstrap CI;
+sweep5_eot_loss.json):
+| run | test | test_v2 | heldout80 |
+|---|---|---|---|
+| v1 inputs, seed 1 | +.0017 [-.0023, .0049] | -.0050 [-.0101, .0003] | +.0049 [-.0028, .0135] |
+| v1 inputs + v2 heads | +.0043 [.0009, .0075] | -.0014 | +.0106 [.0033, .0184] |
+| v2 inputs, v1 heads | +.0001 | -.0024 | +.0082 [.0005, .0179] |
+| v2 (s0 / s1) | +.0031 / +.0013 | +.0011 / -.0029 | +.0137 / +.0098 |
+| v2 without arc / ear / pros / tag | +.0033 / +.0027 / +.0044 / +.0023 | +.0070 / +.0049 / -.0038 / -.0053 | +.023 / +.014 / +.011 / +.016 |
+- **The new input streams do not improve end of turn.** Every v2 variant is within seed noise (~.005) of the v1 inputs
+  on test and test_v2.
+- The multi-task heads cost a little: +.004 BCE on test, +.01 on the 80 clean originals. The thresholded latency
+  doesn't move beyond the CIs.
+- Fire / draft / keep are unchanged: wasted fires 2.0-2.1 /q at ~90 % coverage, keep AUC .972-.976.
+
+**Addressed / should-respond (open mic)** (test_om: 86 held-out scenes, 716 utterances Flux transcribed, 292
+addressed). The head is read at the last update whose newest word is in the utterance. Each policy's threshold keeps
+>= 95 % of addressed utterances on val. "False responds" = share of the 424 NOT-addressed utterances that would be
+answered:
+| gate | AUC | addressed answered | false responds [95 % CI] |
+|---|---|---|---|
+| always answer (open mic before fix/ambient-strip) | | 100 % | 100 % |
+| **rule gate (session.open_mic_skip, fix/ambient-strip)** | .58 | 97.9 % | **82.5 %** [78-87] |
+| Arc device-directed (arc_for_me) | .55 | 94.5 % | 94.1 % |
+| tagger device_directed act | .81 | 90.4 % | 71.5 % |
+| **director v2 addressed head (v2_s0 / s1)** | **.90 / .89** | 95.2 / 93.8 % | **39.9 %** [35-45] / 46.0 % |
+| director AND rule gate | .90 | 95.9 % | 44.6 % |
+| same, utterances never seen in train (527) | .88 | 93.1 % | 41.1 % |
+| same, Flux decision points only (656) | | 95.6 % | 37.4 % |
+| director, v1 inputs + heads (no new streams) | .84 | 89.7 % | 44.1 % |
+- By kind, answered: statements 17 % (rule 77 %), chit-chat 33 % (76 %), answers to a person 35 % (88 %), self-talk
+  27 % (87 %), backchannels 52 % (96 %). Still hard: side questions to people 58 % (100 %), thinking aloud 57 %,
+  TV / radio questions 67 % (78 %).
+- In scene A-001: "i like to eat pancakes" p .14 (heard), "how many tablespoons in a quarter cup" .99,
+  "you always burn the first one" .05; the threshold is .24.
+- Ablations (AUC): all streams .90; without ear .89, arc .88, pros .88, tag .87; v1 inputs .84. The audio streams
+  help this head, unlike end of turn.
+
+**Route** (card / facts / web / local / none, the router's lane on the FINAL words, called from partial words;
+director argmax vs router.py's rules on the same partial words, `wait` = no call):
+| set | at 50 % / 75 % / 100 % of the words: director | router rules | stays right from (ms before the last word) |
+|---|---|---|---|
+| test (1,000) | 90.6 [88.7-92.5] / 92.9 / 97.7 | 89.9 [88.0-91.9] / 92.2 / 96.3 | 1709 vs 1754 |
+| test_v2 (760) | 80.9 [78.2-83.8] / 86.1 / 90.7 | 80.3 [77.4-83.2] / 85.1 / 90.1 | 1339 vs 1387 |
+| test_pii (271) | 92.6 / 95.2 / 98.9 | 91.5 / 94.8 / 98.2 | 3223 vs 3266 |
+- Equal to the rules within the CI. The head learns the rules' own call (the router plan is one of its inputs:
+  without the tag stream it drops to 71-73 % at 50 %).
+- It never beats the rules early by a margin that would start a free lookup sooner. DIRECTOR_ROUTE (hold / release
+  paid speculation on a confident call) stays off and is not worth an A/B.
+
+**PII-hide** (test_pii: 271 lines, 3,575 Flux words, 1,000 to hide; the head's threshold maximizes F1 on val_pii):
+| policy | precision | recall | F1 [95 % CI] | entity-mention words hidden | words hidden on lines without PII |
+|---|---|---|---|---|---|
+| rule frame._pii_hide | .951 | .645 | .769 [.70-.82] | 1.8 % | 0.18 % |
+| head alone | .857 | .753 | .801 [.76-.84] | 10.1 % | 0.71 % |
+| **head + entity guard (shipped in DIRECTOR_PII)** | .889 | .737 | **.806** [.76-.84] | **0.0 %** | 0.71 % |
+- Per category (head + guard vs rule):
+  - phone .92 vs .76 F1;
+  - birth year .67 vs 0 (Flux spells "nineteen seventy nine", which the rule's 4-digit regex never sees);
+  - card .86 vs .83; gov id .88 vs .86;
+  - email .59 vs .77 (worse: misheard names); handle .33 vs .30.
+- Places, public people and companies on non-PII lines: 0 % / 0 % / 0.4 % hidden.
+- Without the guard the head also hides city / company names that sit next to a number ("oakland california",
+  "starbucks"). With it, a word inside a tagged entity mention without digits is never hidden.
+- **Matches or beats the rule on F1 with zero over-hiding of entity names**, but the CIs overlap. DIRECTOR_PII stays OFF.
+
+**Runtime.**
+- v2 s model: 32,449 params, **57 KB** int8 (server/director/director.npz). numpy-streaming vs torch-parallel parity is
+  exact. int8 vs float max |dp| .010.
+- Per Flux update, step features + v2 streams + router.plan + model: **0.35 ms p50 / 0.43 p90** (model alone 0.17).
+- Live check (run_ab replay, warm Arc): every update carries the Arc extra state and the Arc ear words; the director
+  endpointed (trigger=director).
+- DIRECTOR_ARC_EAR runs a second Arc stream with its decoder: ~2x Arc CPU per session. The ear stream adds the least
+  (above), so the A/B ran without it.
+
+**End to end** (eval/ab_director_v2.sh: EAR=flux, Wikipedia lane, never Tavily; FLUX_SOFT=director with the v2 model
+and DIRECTOR_STREAMS=1 vs FLUX_SOFT=fused; showcase 29 + the 58 set; two reps, order alternated): runs/ab_v2b_*.json, summary runs/ab_v2b_summary.json:
+| set (questions x reps) | policy | HS p50 / p90 / mean | endpoint lag p50 | paired director - fused, median [95 % CI] (mean) | director faster | accuracy | BL p50 per run |
+|---|---|---|---|---|---|---|---|
+| showcase (29 x 2) | fused | 1230 / 2111 / 1285 | 336 | | | 28/30 | 1843, 1708 |
+| | director v2 | **1100** / 1823 / 1175 | **261** | **-58 [-120, +16]** (-110 [-244, +6]) | 35/58 | 29/30 | 2041, 1599 |
+| 58 set (58 x 2) | fused | 1472 / 1906 / 1494 | 429 | | | 115/116 | 2014, 2020 |
+| | director v2 | **1386** / 1891 / 1449 | 460 | **-34 [-102, +13]** (-46 [-129, +50]) | 66/116 | 116/116 | 1930, 1996 |
+- Directionally faster on both sets, but both paired CIs include 0. The baseline alone moves 442 ms between showcase
+  runs (1599-2041) and 6-84 ms on the 58 set: **within run noise**.
+- The first try (runs/ab_v2_showcase_*_r1.json, kept for the record) found a bug that predates v2. FLUX_SOFT=director
+  never passed the end-of-turn score to the speculator, so search efficiency's SPEC_EOT_FIRE release never fired:
+  - 0.83 vs 1.38 speculative fires /q;
+  - sources 792 vs 572 ms;
+  - **ready +265 ms mean** (paired median +240 [116, 392]).
+  Fixed in 14ce3c7: director mode feeds the speculator the same fused score (tests/test_director_v2.py). The v1
+  director A/Bs above in this file ran before search efficiency merged, so they were not affected.
+- Why an earlier endpoint barely moves ready time (showcase r1): the director endpoints ~95 ms earlier (235 vs 328),
+  but under fused 12/29 answers reuse a speculative draft against 3/29 under the director. Endpointing before the draft
+  exists turns a draft reuse into a fresh answer after the endpoint (ready - endpoint 964 vs 691 ms).
+- Variant with DIRECTOR_SPEC=1: the director's fire / draft heads gate speculation (runs/ab_v2spec_*.json, 1 rep,
+  eval/ab_director_v2_spec.sh):
+  - showcase: paired director - fused **+90 [-73, +207]** (12/29 faster).
+  - 58 set: -207 [-370, -139], but that fused run was slow throughout. Its baseline is 230 ms slower than the director
+    run's (2246 vs 2016), and its p90 is 2566 against 1906 in the v2b reps. Run noise, not an effect.
+  - No reliable gain: DIRECTOR_SPEC stays off.
+- Flux for the A/B ears: 93 audio min ≈ $0.71.
+
+**Recommendation.**
+- **Do not make the director the default.** End to end it is directionally faster than fused (-58 / -34 ms paired
+  medians) but within run noise on both sets, as in round 1. Offline it still beats the fused logistic at every
+  premature target, including on the fresh test_v2.
+- FLUX_SOFT=director should be used only with 14ce3c7: without the fix it is ~240 ms slower than fused.
+- **Ship candidate (OFF, opt-in):**
+  1. DIRECTOR_ADDRESSED=1 for open mic. The head halves the rule gate's false responds (82.5 % -> 40 %) at 95 %
+     recall: statements 77 % -> 17 % answered, "i like to eat pancakes" heard. Needs DIRECTOR=on and
+     DIRECTOR_STREAMS=1, since the audio streams carry ~.06 AUC for this head. Next step: a live open-mic check with
+     real people / TV, then on by default for open mic only (push-to-talk never uses the gate).
+  2. DIRECTOR_PII=1 matches / beats frame._pii_hide on F1 (.81 vs .77) and catches spoken years and phone numbers the
+     rule misses, with no over-hiding of names. CIs overlap; keep off until a real-speech PII set confirms it.
+- **Don't ship:** DIRECTOR_ROUTE (no early gain over the rules), DIRECTOR_ARC_EAR (CPU for the weakest stream), and v2
+  inputs for end of turn (no gain; multi-task costs .004-.01 BCE).
+- Data is no longer the bottleneck for end of turn: +50 % data, ~.0025 BCE.
+
+Sizes / cost / disk:
+- Model 57 KB int8.
+- Recipe data/ 2.1 GB (1.9 GB at the start): ds4 135 MB; audio 79 MB after pruning 4,800+ featurized wavs (≥ 790 MB).
+- Flux $3.50 (data) + $0.71 (A/B ears) = $4.21.
+- Free disk swung from 5 to 14 GB with system swap during the run.
+
 ## Search efficiency: search the subject, not the sentence (branch search/spec-efficiency; agent S)
 Problem: Head Start spent ~4.5 paid web calls per question (1.0 for the baseline); most fires repeated the same
 subject with one more word. SPEC_EFF=1 (default; SPEC_EFF=0 = the old per-word policy):

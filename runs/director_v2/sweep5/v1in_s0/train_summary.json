@@ -1,0 +1,36 @@
+{
+ "args": {
+  "data": "data/ds4",
+  "out": "runs/sweep5/v1in_s0",
+  "size": "s",
+  "steps": 3000,
+  "bs": 32,
+  "lr": 0.001,
+  "wd": 0.3,
+  "seed": 0,
+  "threads": 3,
+  "train_frac": 1.0,
+  "train_n": 0,
+  "extra_train": "",
+  "tok_drop": 0.5,
+  "drop": 0.3,
+  "no_tokens": false,
+  "feat_noise": 0.05,
+  "v2": false,
+  "groups": "pros,tag,arc,ear",
+  "heads": "all",
+  "up": "openmic=3",
+  "stream_drop": 0.3
+ },
+ "params": 29191,
+ "F": 54,
+ "groups": [],
+ "n_train_real": 11957,
+ "best_step": 2300,
+ "best_val": {
+  "eot": 0.2476375134367692,
+  "fire": 0.36089762695405164,
+  "draft": 0.2910198020307641,
+  "keep": 0.2012239471379562
+ }
+}

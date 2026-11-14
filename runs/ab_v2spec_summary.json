@@ -1,0 +1,86 @@
+{
+ "q58": {
+  "director": {
+   "n": 58,
+   "p50": 1408,
+   "p90": 1931,
+   "mean": 1477,
+   "endpoint_lag_p50": 525,
+   "accuracy": "58/58",
+   "web_calls_per_q": 1.6,
+   "paid_per_q": 0.45,
+   "baseline_p50_per_run": [
+    2016
+   ]
+  },
+  "fused": {
+   "n": 58,
+   "p50": 1718,
+   "p90": 2566,
+   "mean": 1856,
+   "endpoint_lag_p50": 434,
+   "accuracy": "58/58",
+   "web_calls_per_q": 1.83,
+   "paid_per_q": 0.69,
+   "baseline_p50_per_run": [
+    2246
+   ]
+  },
+  "paired director - fused": {
+   "n_pairs": 58,
+   "median_ms": -207,
+   "median_ci": [
+    -370,
+    -139
+   ],
+   "mean_ms": -380,
+   "mean_ci": [
+    -541,
+    -222
+   ],
+   "director_faster": "41/58"
+  }
+ },
+ "showcase": {
+  "director": {
+   "n": 29,
+   "p50": 1417,
+   "p90": 1844,
+   "mean": 1273,
+   "endpoint_lag_p50": 221,
+   "accuracy": "14/15",
+   "web_calls_per_q": 1.52,
+   "paid_per_q": 0.97,
+   "baseline_p50_per_run": [
+    2021
+   ]
+  },
+  "fused": {
+   "n": 29,
+   "p50": 1237,
+   "p90": 1798,
+   "mean": 1225,
+   "endpoint_lag_p50": 396,
+   "accuracy": "13/15",
+   "web_calls_per_q": 1.52,
+   "paid_per_q": 0.97,
+   "baseline_p50_per_run": [
+    1767
+   ]
+  },
+  "paired director - fused": {
+   "n_pairs": 29,
+   "median_ms": 90,
+   "median_ci": [
+    -73,
+    207
+   ],
+   "mean_ms": 48,
+   "mean_ci": [
+    -191,
+    248
+   ],
+   "director_faster": "12/29"
+  }
+ }
+}

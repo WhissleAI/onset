@@ -617,6 +617,13 @@ class Speculator:
         Corrections are never held (q27, sc27: the replacement is the final meaning)."""
         if plan is None:
             return False
+        d = getattr(f, "director", None)
+        if config.DIRECTOR and config.DIRECTOR_ROUTE and d and "route" in d and not (f.dropped or f.cue):
+            # the route head calls the final lane before the rules can: a cheap lane (card / facts / local) or "not a
+            # request" -> hold the paid call; the web -> release it now (no waiting for the lane to show itself)
+            k = int(max(range(len(d["route"])), key=lambda i: d["route"][i]))
+            if d["route"][k] >= config.DIRECTOR_ROUTE_THR:
+                return director.ROUTES[k] != "web"
         weak = plan.lane == "web" and plan.conf < config.ROUTER_SPEC_HOLD_CONF
         # the generic "stable factoid" plan (any wh- question: local leads first, paid web as their fallback) is the
         # router's no-signal default while a question starts ("what's a hundred US dollars" -> currency card two

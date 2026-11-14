@@ -1,0 +1,87 @@
+{
+ "run": "runs/sweep4/v2_s0",
+ "route_test": {
+  "director": {
+   "acc_at_50pct_words": 90.4,
+   "acc_at_50pct_ci": [
+    88.4475,
+    92.4
+   ],
+   "acc_at_75pct_words": 93.4,
+   "acc_at_75pct_ci": [
+    91.8475,
+    94.9
+   ],
+   "acc_at_100pct_words": 97.5,
+   "acc_at_100pct_ci": [
+    96.5,
+    98.4
+   ],
+   "stays_right_lead_ms_p50": 1746.0,
+   "never_right_pct": 1.5
+  },
+  "router rules": {
+   "acc_at_50pct_words": 89.9,
+   "acc_at_50pct_ci": [
+    88.0,
+    91.9
+   ],
+   "acc_at_75pct_words": 92.2,
+   "acc_at_75pct_ci": [
+    90.4475,
+    93.9
+   ],
+   "acc_at_100pct_words": 96.3,
+   "acc_at_100pct_ci": [
+    95.0,
+    97.4
+   ],
+   "stays_right_lead_ms_p50": 1754.0,
+   "never_right_pct": 2.7
+  },
+  "n_by_route": {
+   "card": 25,
+   "facts": 268,
+   "web": 691,
+   "local": 0,
+   "none": 16
+  },
+  "director_confusion_final": [
+   [
+    24,
+    1,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    268,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    691,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    1,
+    13,
+    0,
+    2
+   ]
+  ]
+ }
+}
