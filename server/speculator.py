@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, confidence, config, director, embed, lanes, meter, narrow, rerank, searchcache
+from . import answer, confidence, config, director, embed, lanes, meter, narrow, planner, rerank, searchcache, verify
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
@@ -56,6 +56,7 @@ class Fire:
     n_words: int = 0
     meter: dict = field(default_factory=dict)   # web lane: backend, depth, topic, credits, cached, fallback
     key: object = None         # web lanes: searchcache.QKey of the frame it searched (SPEC_EFF policy + cache)
+    part: str | None = None    # PLAN: the sub-question (planner part text) this search is for
 
 
 @dataclass
@@ -80,6 +81,15 @@ def _non_answer(text: str) -> bool:
     first = re.split(r"(?<=[.!?])\s", text.strip(), maxsplit=1)[0]
     about_sources = re.search(r"\b(sources?|results?|provided|information|passages?|these)\b", first, re.I)
     return bool(about_sources and _NON_ANSWER.search(first))
+
+
+def PlanStream(*a, **kw):
+    """PLAN: a multi-part answer is never a single card's one-liner ("weather in Paris and in London" has two): the
+    answer stream (answer.Stream, looked up at call time) with its card shortcut off."""
+    cls = answer.Stream
+    if hasattr(cls, "_card_answer"):
+        cls = type("PlanStream", (cls,), {"_card_answer": lambda self: False})
+    return cls(*a, **kw)
 
 
 class Speculator:
@@ -132,6 +142,13 @@ class Speculator:
         self.meter_used = None                   # meter: the stream that answered (last finalize)
         self.meter_metric: dict | None = None
         self.usage_sent = False
+        # PLAN (server/planner.py): the multi-part plan of the current words, the search of each part (by part text),
+        # when each part's text was first seen (stability), and the entity each multi-hop part found
+        self.mplan: planner.MPlan | None = None
+        self.part_fire: dict[str, Fire] = {}
+        self.part_since: dict[str, float] = {}
+        self.bridge: dict[str, str | None] = {}
+        self.plan_sig = None
 
     # ------------------------------------------------------------------ helpers
     def ms(self, t=None):
@@ -140,15 +157,15 @@ class Speculator:
     def _ev(self, **kw):
         self.emit({"t": "spec", **kw})
 
-    def _fire(self, lane: str, query: str, f: Frame | None, coro_fn, meter: dict | None = None):
+    def _fire(self, lane: str, query: str, f: Frame | None, coro_fn, meter: dict | None = None, part: str | None = None):
         fire = Fire(id=f"f{next(_ids)}", lane=lane, query=query, frame_sig=f.sig if f else (),
                     content=f.content if f else (), t_fire=time.perf_counter(), n_words=f.n if f else 0,
                     meter=meter if meter is not None else {},
-                    key=searchcache.qkey(f) if f is not None and lane in ("web", "final-web") else None)
+                    key=searchcache.qkey(f) if f is not None and lane in ("web", "final-web") else None, part=part)
         self.fires.append(fire)
         self.fired_queries[(lane.replace("final-", ""), query)] = fire
         self._ev(id=fire.id, lane=lane, query=query, state="fired", ms=self.ms(fire.t_fire), word=fire.n_words,
-                 **({"key": fire.key.text()} if fire.key is not None else {}))
+                 **({"key": fire.key.text()} if fire.key is not None else {}), **({"part": part} if part else {}))
 
         async def run():
             try:
@@ -175,6 +192,8 @@ class Speculator:
                 if (config.SPEC_EFF and lane == "web" and self.mode == "headstart" and not self.closed
                         and self.last_frame is not None and self.skip_why.get(self.last_frame.query()) == "hold"):
                     self._spec_web(self.last_frame)        # a "hold" waiting for these results can decide now
+                if fire.part is not None:
+                    self._part_landed(fire)            # PLAN: a hop part's entity unlocks its bridge part
                 if (config.DRAFT_ON_LAND and self.mode == "headstart" and not self.closed and not self.draft_busy
                         and lane in ("web", "local") and self.last_frame is not None
                         and self.last_frame.query() == query and self._conf_ok(self.last_frame)):
@@ -191,11 +210,15 @@ class Speculator:
                 self.web_used = max(0, self.web_used - 1)
                 self._ev(id=fire.id, lane=lane, query=query, state="skipped", ms=self.ms(fire.t_done),
                          reason=str(e)[:120], **self._meter_ev(fire))
+                if fire.part is not None:
+                    self._part_landed(fire)
             except Exception as e:
                 fire.state = "error"
                 fire.t_done = time.perf_counter()
                 self._ev(id=fire.id, lane=lane, query=query, state="error", ms=self.ms(fire.t_done),
                          error=f"{type(e).__name__}: {e}"[:200], **self._meter_ev(fire))
+                if fire.part is not None:
+                    self._part_landed(fire)
             return fire
 
         fire.task = asyncio.create_task(run())
@@ -437,6 +460,8 @@ class Speculator:
         self._mark_stale(f)
         if f.jailbreak:
             return              # Arc flags a prompt-injection attempt: spend no speculative searches / drafts on it
+        if self._plan_step(f, now):
+            return              # PLAN: a multi-part question: its parts are searched instead of the whole sentence
         need = 1 if f.slots else config.STABLE_UPDATES        # typed spans are confident: fire on first sight
         dthr = self._director_thr(f)
         if dthr is not None:
@@ -468,6 +493,222 @@ class Speculator:
             self._fire("local", q, f, lambda q=q: lanes.local_text(q))
         if (now - self.sig_since) * 1000 >= config.DRAFT_STABLE_MS and not self.draft_busy and self._conf_ok(f):
             self._maybe_draft(f)
+
+    # ------------------------------------------------------------------ PLAN: multi-part questions (server/planner.py)
+    def _plan_step(self, f: Frame | None, now: float | None = None) -> bool:
+        """A multi-part question: keep the plan in step with the words and fire each part once it is stable (closed
+        parts at once, the open one after SPEC_SETTLE_MS or a likely end of turn). True = the plan handled this frame
+        (no whole-sentence speculation, no drafts). Single-part questions: planner.decompose -> None, False."""
+        if not config.PLAN or f is None or self.mode != "headstart" or self.closed:
+            return False
+        try:
+            mp = planner.decompose(f)
+        except Exception:
+            mp = None
+        now = now or time.perf_counter()
+        self._plan_set(mp, now)
+        if mp is None:
+            return False
+        for part in mp.parts:
+            text = self._part_text(part)
+            if text is None:
+                continue                                  # a bridge part waiting for its hop's entity
+            since = self.part_since.setdefault(text, now)
+            settled = (part.closed or (now - since) * 1000 >= config.SPEC_SETTLE_MS
+                       or (self.eot_p is not None and self.eot_p >= config.SPEC_EOT_FIRE))
+            if settled:
+                self._part_fire(part, text, f, final=False)
+        self._plan_emit()
+        return True
+
+    def _plan_set(self, mp, now: float):
+        """A new / changed plan: searches of parts the plan no longer has go stale (a correction re-plans)."""
+        sig = mp.sig if mp is not None else None
+        if sig == self.plan_sig:
+            if mp is not None:
+                self.mplan = mp
+            return
+        old = self.mplan
+        self.mplan, self.plan_sig = mp, sig
+        keep = set()
+        if mp is not None:
+            for p in mp.parts:
+                t = self._part_text(p)
+                if t:
+                    keep.add(t)
+        for text, fire in list(self.part_fire.items()):
+            if text not in keep and fire.state in ("fired", "done"):
+                was = fire.state
+                fire.state = "stale"
+                self._ev(id=fire.id, lane=fire.lane, query=fire.query, state="stale", ms=self.ms(), cancelled=False,
+                         part=text, replanned=was)
+        if old is not None or mp is not None:
+            self._plan_emit(force=True)
+
+    def _part_text(self, part) -> str | None:
+        if not part.needs:
+            return part.text
+        hop = self.mplan.part(part.needs) if self.mplan is not None else None
+        if hop is None:
+            return part.fallback
+        if hop.text not in self.bridge:
+            return None
+        return part.resolve(self.bridge[hop.text])
+
+    def _plan_cap(self) -> int:
+        n = len(self.mplan.parts) if self.mplan is not None else 1
+        return config.SPEC_PAID_MAX + config.PLAN_EXTRA_PAID * max(0, n - 1)
+
+    def _part_fire(self, part, text: str, f: Frame, final: bool) -> Fire | None:
+        """One search for one part (speculative or final), through the router like any web-lane call."""
+        cur = self.part_fire.get(text)
+        if cur is not None and (cur.state in ("fired", "done") or (final and cur.lane == "final-web")):
+            return cur
+        pf = planner.part_frame(text, f, "person" if part.needs else "")
+        q = pf.query()
+        if not q:
+            return None
+        same = next((x for x in reversed(self.fires) if x.lane in ("web", "final-web") and x.query == q
+                     and (x.state in ("fired", "done") or (x.state == "stale" and (x.docs or not x.task.done())))),
+                    None)
+        if same is not None:
+            # the same search already ran: an earlier whole-sentence search of exactly this part, or this part under
+            # a wording the plan has since refined ("mozart or" -> "mozart"): reuse it, don't pay twice
+            if same.state == "stale":
+                same.state = "done" if same.task is None or same.task.done() else "fired"
+                self._ev(id=same.id, lane=same.lane, query=same.query, state=same.state, ms=self.ms(), revived=True)
+            same.part = text
+            self.part_fire[text] = same
+            return same
+        plan = self._plan(pf, final)
+        cheap = plan is not None and plan.cheap_only
+        if not final:
+            if not cheap and (self._paid() >= self._plan_cap() or self.web_used >= config.WEB_BUDGET + len(
+                    self.mplan.parts if self.mplan else ())):
+                if self.skip_why.get(q) != "plan-budget":
+                    self._skip(pf, "plan-budget", None)
+                return None
+            if not cheap and not self._web_affordable():
+                return None
+        self.web_used += 1
+        go, meter = self._web(q, pf, final=final)
+        if cheap and not final:
+            meter["no_paid"] = True                       # a free lookup mid-sentence never falls back to paid
+        fire = self._fire("final-web" if final else "web", q, pf, go, meter, part=text)
+        self.part_fire[text] = fire
+        return fire
+
+    def _part_landed(self, fire: Fire):
+        """A part's search finished: a hop part's entity (a Wikidata fact value) unlocks its bridge part."""
+        mp = self.mplan
+        if mp is None:
+            return
+        for p in mp.parts:
+            if p.kind == "hop" and p.text == fire.part and p.text not in self.bridge and fire.state == "done":
+                self.bridge[p.text] = planner.bridge_of(fire.docs)
+        if self.mode == "headstart" and not self.closed and self.last_frame is not None:
+            self._plan_step(self.last_frame)
+        else:
+            self._plan_emit()
+
+    def _plan_emit(self, force: bool = False, final: bool = False):
+        mp = self.mplan
+        parts = []
+        if mp is not None:
+            for p in mp.parts:
+                t = self._part_text(p)
+                fire = self.part_fire.get(t) if t else None
+                parts.append({"id": p.id, "text": t or p.text.replace("{B}", "…"), "kind": p.kind, "closed": p.closed,
+                              "state": fire.state if fire else ("waiting" if t else "needs " + p.needs),
+                              "fire": fire.id if fire else None,
+                              "tier": (fire.meter.get("tier") or fire.meter.get("route")) if fire else None,
+                              "n": len(fire.docs) if fire else 0})
+        ev = {"kind": mp.kind, "why": mp.why, "parts": parts} if mp is not None else {"kind": None, "parts": []}
+        sig = repr(ev)
+        if not force and not final and sig == getattr(self, "_plan_ev_sig", None):
+            return
+        self._plan_ev_sig = sig
+        self.emit({"t": "plan", "ms": self.ms(), "final": final, **ev})
+
+    def _planned(self, f: Frame) -> bool:
+        return config.PLAN and self.mode == "headstart" and self.mplan is not None and planner.decompose(f) is not None
+
+    async def _final_plan(self, f: Frame, mp, m: dict, live) -> list | None:
+        """Endpoint of a multi-part question (both modes): every part searched (speculative searches reused, missing
+        parts fired now, in parallel; a bridge part after its hop), then the sources ranked per part. Returns
+        [(doc, score, part index)] or None when superseded."""
+        self.mplan = mp
+        self.plan_sig = mp.sig
+        self.final_q.add(f.query())
+        texts = [p.text if not p.needs else p.fallback for p in mp.parts]
+        qv_task = asyncio.create_task(embed.arun(embed.encode_queries, texts + [f.resolved_text]))
+        deadline = time.perf_counter() + config.PLAN_WAIT_S
+        over = []
+
+        def ensure(part, text):
+            fire = self.part_fire.get(text)
+            if fire is None or fire.state in ("stale", "error", "cancelled") or (fire.state == "skipped"):
+                if fire is not None and fire.lane == "final-web":
+                    return fire
+                if self._paid() >= self._plan_cap():
+                    over.append(part.id)
+                self.part_fire.pop(text, None)
+                fire = self._part_fire(part, text, f, final=True)
+            return fire
+
+        async def run_part(part):
+            if part.needs:
+                hop = mp.part(part.needs)
+                hf = ensure(hop, hop.text) if hop is not None else None
+                if hf is not None and hf.task is not None and not hf.task.done():
+                    await asyncio.wait([hf.task], timeout=max(0.0, deadline - time.perf_counter()))
+                if hop is not None and hop.text not in self.bridge:
+                    self.bridge[hop.text] = planner.bridge_of(hf.docs) if hf is not None and hf.state == "done" else None
+            text = self._part_text(part) or part.fallback
+            fire = ensure(part, text)
+            if fire is not None and fire.task is not None and not fire.task.done():
+                await asyncio.wait([fire.task], timeout=max(0.0, deadline - time.perf_counter()))
+            if fire is not None and fire.state == "done" and not fire.docs and fire.lane != "final-web":
+                self.part_fire.pop(text, None)            # an empty speculative lookup: one final search
+                fire = self._part_fire(part, text, f, final=True)
+                if fire is not None and fire.task is not None:
+                    await asyncio.wait([fire.task], timeout=max(0.0, deadline - time.perf_counter()))
+            return text, fire
+
+        res = await asyncio.gather(*[run_part(p) for p in mp.parts], return_exceptions=True)
+        if not live():
+            qv_task.cancel()
+            return None
+        qvs = (await qv_task)
+        if over:
+            m["budget_override"] = "plan-part"
+        k = config.PLAN_K_PART or (3 if len(mp.parts) <= 2 else 2)
+        out, seen, info = [], set(), []
+        for i, (part, r) in enumerate(zip(mp.parts, res)):
+            text, fire = r if not isinstance(r, BaseException) else (texts[i], None)
+            docs = [d for d in (fire.docs if fire is not None else []) if d.id in self.vecs]
+            qv = qvs[i] if self._part_text(part) == texts[i] else (
+                await embed.arun(embed.encode_queries, [text]))[0]
+            sc = sorted(((d, float(self.vecs[d.id] @ qv)) for d in docs),
+                        key=lambda x: (-(1 if (x[0].meta.get("strong") or x[0].meta.get("card")) else 0), -x[1]))
+            n = 0
+            for d, s_ in sc:
+                if d.id in seen or n >= k:
+                    continue
+                seen.add(d.id)
+                out.append((d, s_, i))
+                n += 1
+            info.append({"id": part.id, "text": text, "kind": part.kind, "fire": fire.id if fire else None,
+                         "state": fire.state if fire else None, "tier": fire.meter.get("tier") if fire else None,
+                         "paid": (fire.meter.get("paid", 1) if fire and fire.state == "done" else 0), "n": n})
+        if len(out) < 2:                                  # a part came back empty: the whole question's best docs too
+            for d, s_ in self.rank(qvs[-1], 3):
+                if d.id not in seen:
+                    seen.add(d.id)
+                    out.append((d, s_, -1))
+        m["plan"] = {"kind": mp.kind, "why": mp.why, "parts": info}
+        self._plan_emit(final=True)
+        return out
 
     # ------------------------------------------------------------------ web fire policy
     @staticmethod
@@ -575,6 +816,8 @@ class Speculator:
         self.eot_p, self.eot_src = p, src
         if (config.SPEC_EFF and self.mode == "headstart" and not self.closed and self.last_frame is not None
                 and p >= config.SPEC_EOT_FIRE):
+            if self._plan_step(self.last_frame):
+                return
             self._spec_web(self.last_frame)
 
     def _spec_web(self, f: Frame):
@@ -582,6 +825,8 @@ class Speculator:
         q = f.query()
         if not q or f.route not in ("web", "both") or ("web", q) in self.fired_queries or q in self.final_q:
             return
+        if self._planned(f):
+            return                      # PLAN: the parts are searched, not the whole sentence
         plan = self._plan(f)
         if plan is not None and "web" not in plan:
             if plan.cheap_only:
@@ -686,6 +931,8 @@ class Speculator:
     def _mark_stale(self, f: Frame):
         cur = set(f.content)
         for fire in self.fires:
+            if fire.part is not None:
+                continue                            # PLAN: a part's search goes stale when the plan drops the part
             if fire.state == "stale" and fire.content and set(fire.content) <= cur and fire.docs:
                 fire.state = "done"                 # the speaker came back to it (ASR flip-flop)
                 self._ev(id=fire.id, lane=fire.lane, query=fire.query, state="done", ms=self.ms(), revived=True)
@@ -807,8 +1054,24 @@ class Speculator:
         qvec_task = asyncio.create_task(embed.arun(embed.encode_queries, [qtext]))
         reuse_draft = None
         alt = None
+        mp = None
+        if config.PLAN:
+            try:
+                mp = planner.decompose(f)
+            except Exception:
+                mp = None
+            if mp is not None and not mp.complete:
+                mp = None
+        plan_ranked = None
         try:
-            if self.mode == "baseline":
+            if mp is not None:
+                # PLAN: a multi-part question: every part searched (in parallel), sources grouped by part
+                m["path"] = "plan"
+                plan_ranked = await self._final_plan(f, mp, m, live)
+                if plan_ranked is None or not live():
+                    return superseded()
+                qvec = (await qvec_task)[0]
+            elif self.mode == "baseline":
                 alt = self._answer_race(q, f)
                 waits = []
                 if f.route in ("web", "both"):
@@ -911,8 +1174,8 @@ class Speculator:
         if not live():
             return superseded()
         self.last_qvec = qvec
-        ranked = self._rank_for(f, qvec, 5)
-        if fplan is not None and fplan.lane == "card":
+        ranked = self._rank_for(f, qvec, 5) if plan_ranked is None else [(d, sc) for d, sc, _ in plan_ranked]
+        if fplan is not None and fplan.lane == "card" and plan_ranked is None:
             ranked = self._card_first(ranked, qtext, qvec)
         if config.CACHE_SEM:
             c = searchcache.cache()
@@ -930,7 +1193,13 @@ class Speculator:
                 m["cover"] = reuse_draft.cover
         else:
             docs = [d for d, _ in ranked]
-            st = answer.Stream(qtext, docs, tag="final", context=self.context, hint=f.answer_hint())
+            if plan_ranked is not None:
+                groups = [(self._part_text(p) or p.fallback, [j + 1 for j, (_, _, pi) in enumerate(plan_ranked) if pi == i])
+                          for i, p in enumerate(mp.parts)]
+                hint = planner.answer_hint(mp, groups, qtext) + (" " + f.answer_hint() if f.answer_hint() else "")
+                st = PlanStream(qtext, docs, tag="final", context=self.context, hint=hint)
+            else:
+                st = answer.Stream(qtext, docs, tag="final", context=self.context, hint=f.answer_hint())
             self.streams.append(st)
             if alt is not None:
                 st = answer.Race(st, alt)
@@ -960,6 +1229,15 @@ class Speculator:
         t_done = time.perf_counter()
         if st.error:
             emit({"t": "answer_error", "error": st.error})
+        if config.VERIFY and docs and st.text() and not st.error:
+            # VERIFY: after the last token (ready / done times are already taken): the answer's numbers / years /
+            # names against the cited sources, ~1 ms, no network
+            try:
+                v = verify.check(st.text(), docs, qtext)
+                m["verify"] = {k: v[k] for k in ("status", "label", "n_claims", "found", "ms")}
+                emit({"t": "verify", "ms": self.ms(), **v})
+            except Exception as e:
+                m["verify"] = {"status": "error", "error": f"{type(e).__name__}: {e}"[:120]}
         spec = [x for x in self.fires if not x.lane.startswith("final")]
         used_spec = [x for x in spec if x.used]
         if spec:

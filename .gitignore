@@ -9,3 +9,4 @@ vendor/arctag/*.dylib
 index/data/
 eval/audio/*.wav
 film/clips/
+eval/audio_multipart/
