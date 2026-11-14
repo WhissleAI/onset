@@ -396,6 +396,6 @@ LOOP_LEADS_PENALTY = float(os.environ.get("LOOP_LEADS_PENALTY", "0.05"))  # the 
 # -> one targeted lookup AFTER the answer (free Wikidata, then the local leads index; the paid web only with
 # VERIFY_RESEARCH_PAID=1, only on a "sources disagree" badge, at most one call, within the question's paid budget, and
 # counted in its paid calls). Never delays the first answer token.
-VERIFY_RESEARCH = os.environ.get("VERIFY_RESEARCH", "0") == "1"
+VERIFY_RESEARCH = os.environ.get("VERIFY_RESEARCH", "1") == "1"         # ON: after the answer, free lanes only
 VERIFY_RESEARCH_PAID = os.environ.get("VERIFY_RESEARCH_PAID", "0") == "1"
 VERIFY_RESEARCH_TIMEOUT_S = float(os.environ.get("VERIFY_RESEARCH_TIMEOUT_S", "3.0"))

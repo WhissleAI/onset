@@ -426,11 +426,11 @@ class Session:
                     continue
                 said = " ".join(toks[aa:bb])
                 k = heard.pkey(said)
-                for old_said, name in self.loop_fixed:
+                for old_said, name, kind in self.loop_fixed:
                     if len(k) >= 3 and heard.pkey(old_said) == k == heard.pkey(name) and \
                             heard.letters(said) != heard.letters(name.lower()):
                         t = next((tt for ma, mb, tt in ments if ma <= aa and bb <= mb), "")
-                        return [heard.Fix(aa, bb, said, name, 1.0, "heard-earlier", t)]
+                        return [heard.Fix(aa, bb, said, name, 1.0, "heard-earlier", t, 0.0, kind)]
         return out
 
     def _loop_fix(self, f):
@@ -441,7 +441,7 @@ class Session:
                 return
             heard.apply(f, fixes)
             for fx in fixes:
-                k = (fx.said, fx.name)
+                k = (fx.said, fx.name, fx.ckind)
                 if k not in self.loop_fixed:
                     self.loop_fixed.add(k)
                     self.emit({"t": "heard_fix", "ms": self.spec.ms(), **fx.to_json()})

@@ -311,6 +311,7 @@ class Fix:
     src: str
     kind: str = ""          # Arc's entity type for the span, if any
     runner: float = 0.0     # best other candidate's score
+    ckind: str = ""         # the candidate's own kind (person / place / org), when its source knows it
 
     def to_json(self) -> dict:
         return {"said": self.said, "as": self.name, "src": self.src, "score": round(self.score, 3),
@@ -454,7 +455,7 @@ def propose(f, wconf, pool: Pool | None = None, use_leads: bool = True) -> list[
         runner = ranked[1][0] if len(ranked) > 1 else 0.0
         thr = config.LOOP_FIX_MIN + (0.0 if have else 0.04)
         if best >= thr and best - runner >= config.LOOP_FIX_MARGIN:
-            found.append(Fix(a, b, said, c.name, best, c.src, t, runner))
+            found.append(Fix(a, b, said, c.name, best, c.src, t, runner, c.kind))
     found.sort(key=lambda x: -x.score)
     out, used = [], set()
     for fx in found:
@@ -492,7 +493,10 @@ def apply(f, fixes: list[Fix]):
         hit = [s for s in slots if s[1] and (s[1] in said or said in s[1])]
         for s in hit:
             slots.discard(s)
-        slots.add((hit[0][0] if hit else (fx.kind or "thing"), nn))
+        # the name's own kind wins over the misheard span's type ("mari guri" typed as a thing; Marie Curie is a
+        # person, so memory resolves "she" / "her" to her)
+        own = {"person": "person", "place": "place", "org": "organization"}.get(fx.ckind, "")
+        slots.add((own or (hit[0][0] if hit else (fx.kind or "thing")), nn))
         phrases = [nn if (p in said or said in p) else p for p in phrases]
         if nn not in phrases:
             phrases.append(nn)

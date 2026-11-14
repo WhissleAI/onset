@@ -313,3 +313,11 @@ def test_truncated_or_extended_word_is_not_a_mishearing():
     pool.add("Penicillium", "answer")
     f = fr("who discovered penicillin", [("entity.mention.work_product", 2, 3)])
     assert heard.propose(f, [0.99, 0.99, 0.5], pool, use_leads=False) == []
+
+
+def test_fixed_name_takes_its_own_kind_for_memory():
+    """Arc typed the misheard span as a thing; the leads index knows Marie Curie is a person: the slot (and so
+    memory's kind) becomes person."""
+    f = fr("who was mari guri", [("entity.mention.work_product", 2, 4)])
+    heard.apply(f, heard.propose(f, [0.99, 0.99, 0.5, 0.6], None))
+    assert ("person", "marie curie") in f.slots
