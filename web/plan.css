@@ -31,3 +31,5 @@
 
 /* four replay tabs (Facts / Local / Conversation / Multi) fit the sidebar */
 .qtabs button { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 3px; padding-right: 3px; }
+.corrected-note { margin-top: 6px; padding: 6px 8px; border-left: 3px solid var(--draft); font-size: 12.5px; color: var(--ink-2); }
+.vb.recheck { margin-left: 4px; }

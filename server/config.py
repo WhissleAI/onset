@@ -375,3 +375,22 @@ COST_CACHE_READ_MULT = float(os.environ.get("COST_CACHE_READ_MULT", "0.1"))
 # ARC_OFF=1 makes every Session plain (e.g. the live demo); eval/run_ab.py / run_conv.py use --modes ...,plain.
 ARC_OFF = os.environ.get("ARC_OFF", "0") == "1"
 PLAIN_CONTEXT = os.environ.get("PLAIN_CONTEXT", "0") == "1"   # plain arm: give the answer model the previous Q + A
+# ---------------------------------------------------------------------------------------------------- loop (heard)
+# server/heard.py: retrieval-in-the-loop speech understanding. A low-confidence span or an Arc entity mention that no
+# known name spells is re-scored (phonetic key + letters, Arc type) against the names the session already holds
+# (speculative results, memory, Wikidata labels looked up, the local leads index); a confident match rewrites the frame
+# ("mari guri" -> Marie Curie) and re-keys the search. A word with fused confidence >= LOOP_KEEP_CONF is never changed.
+LOOP_ASR_FIX = os.environ.get("LOOP_ASR_FIX", "0") == "1"
+LOOP_KEEP_CONF = float(os.environ.get("LOOP_KEEP_CONF", "0.9"))      # never override a word at / above this
+LOOP_SUSPECT_CONF = float(os.environ.get("LOOP_SUSPECT_CONF", "0.7"))  # a word below this makes its span suspect
+LOOP_LOW_CONF = float(os.environ.get("LOOP_LOW_CONF", "0.5"))       # outside an Arc mention, the leads index needs this
+LOOP_FIX_MIN = float(os.environ.get("LOOP_FIX_MIN", "0.84"))        # match score to rewrite
+LOOP_FIX_MARGIN = float(os.environ.get("LOOP_FIX_MARGIN", "0.05"))  # over the runner-up candidate
+LOOP_ANSWER_FIX = os.environ.get("LOOP_ANSWER_FIX", "1") == "1"     # memory: the answer's names re-resolve the question's
+LOOP_LEADS_PENALTY = float(os.environ.get("LOOP_LEADS_PENALTY", "0.05"))  # the offline index is big: stricter
+# server/recheck.py: verify-triggered re-search. A "disagree" / "unverified" / partial badge on the answer's key claim
+# -> one targeted lookup AFTER the answer (free Wikidata, then the local leads index; the paid web only with
+# VERIFY_RESEARCH_PAID=1, counted in the question's paid calls). Never delays the first answer token.
+VERIFY_RESEARCH = os.environ.get("VERIFY_RESEARCH", "0") == "1"
+VERIFY_RESEARCH_PAID = os.environ.get("VERIFY_RESEARCH_PAID", "0") == "1"
+VERIFY_RESEARCH_TIMEOUT_S = float(os.environ.get("VERIFY_RESEARCH_TIMEOUT_S", "3.0"))

@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, confidence, config, cost, director, embed, lanes, meter, narrow, planner, rerank, searchcache, verify
+from . import answer, confidence, config, cost, director, embed, lanes, meter, narrow, planner, recheck, rerank, searchcache, verify
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
@@ -125,6 +125,7 @@ class Speculator:
         self.last_audio_at = 0.0
         self.draft_busy = False
         self.closed = False
+        self.bg: list = []                     # after-answer work (VERIFY_RESEARCH re-check); never awaited by finalize
         self.answer_stream = None
         self.last_qvec: np.ndarray | None = None
         self.used_ids: list[str] = []
@@ -1139,7 +1140,8 @@ class Speculator:
         self.closed = close
         m = {"mode": self.mode, "question": f.text, "query": f.query(), "intent": f.intent, "endpoint_by": by,
              "endpoint_lag_ms": round((t_end - t_speech_end) * 1000), "web_hints": f.web_hints(),
-             "redacted": list(f.redacted), "jailbreak": f.jailbreak}
+             "redacted": list(f.redacted), "jailbreak": f.jailbreak,
+             **({"heard": list(f.resolved)} if f.resolved else {})}      # LOOP_ASR_FIX rewrites (heard.py)
 
         def superseded():
             m["superseded"] = True
@@ -1344,6 +1346,7 @@ class Speculator:
         t_done = time.perf_counter()
         if st.error:
             emit({"t": "answer_error", "error": st.error})
+        v = None
         if config.VERIFY and docs and st.text() and not st.error:
             # VERIFY: after the last token (ready / done times are already taken): the answer's numbers / years /
             # names against the cited sources, ~1 ms, no network
@@ -1387,7 +1390,33 @@ class Speculator:
         self.meter_used, self.meter_metric = st, m
         m.update(meter.fields(self.streams, st, m))     # answer-model tokens (used + wasted) and est. $
         emit({"t": "metric", **{k: v for k, v in m.items() if k != "answer"}})
+        if v is not None and recheck.needs(v):
+            # VERIFY_RESEARCH: after the metric (ready / done are taken): one targeted re-check of the key claim
+            t = asyncio.create_task(self._recheck(st.text(), docs, qtext, v, m))
+            self.bg.append(t)
         return m
+
+    async def _recheck(self, text: str, docs: list, qtext: str, v: dict, m: dict):
+        """Verify-triggered re-search (server/recheck.py): updates the metric in place and emits a "recheck" event
+        (the verify badge becomes "re-checked ✓" / "corrected"). The paid lane only within this question's budget."""
+        paid_ok = config.VERIFY_RESEARCH_PAID and self._paid() < self.prof.final_max
+
+        async def web(q):
+            meter_ = {}
+            res = await lanes.web(q, intent="", text=qtext, final=True, ledger=self.ledger, meter=meter_)
+            return list(res)
+        try:
+            r = await recheck.run(text, docs, qtext, v, web=web, paid_ok=paid_ok)
+        except Exception as e:
+            r = {"status": "error", "error": f"{type(e).__name__}: {e}"[:120]}
+        m["recheck"] = {k: r.get(k) for k in ("status", "label", "claim", "lanes", "paid", "ms", "source", "value")}
+        if r.get("patched"):
+            m["answer_patched"] = r["patched"]
+        if r.get("paid"):
+            m["paid_calls"] = (m.get("paid_calls") or 0) + r["paid"]
+            m["recheck_paid"] = r["paid"]
+        self.emit({"t": "recheck", "ms": self.ms(), **r})
+        return r
 
     async def _final_eff(self, f: Frame, q: str, qvec, qvec_task, m: dict):
         """SPEC_EFF endpoint without a search for the final query itself: answer from the pool when it covers the

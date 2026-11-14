@@ -111,6 +111,11 @@ _WHEN_DAY = re.compile(r"\b(today|tonight|right now|now|this morning|this aftern
                        r"24 hours|twenty four hours|at the moment)\b")
 _WHEN_WEEK = re.compile(r"\b(yesterday|last night|weekend|this week|past week|last week|sunday|saturday|monday|"
                         r"tuesday|wednesday|thursday|friday|recent|recently|latest|lately|few days|past few days)\b")
+# only from an Arc typed date / duration span (entity.number.date ...): "this year", "last month", "past few weeks" are
+# too common as plain words ("the year of the dragon") to set freshness on their own
+_WHEN_MONTH = re.compile(r"\b(this month|last month|past month|past few weeks|last few weeks|few weeks ago|"
+                         r"couple of weeks|past thirty days|last thirty days)\b")
+_WHEN_YEAR = re.compile(r"\b(this year|past year|last twelve months|past twelve months|so far this year)\b")
 # results of games / races / matches are news (dated pages), not encyclopedia pages
 _RESULTS = {"game", "match", "score", "scores", "won", "win", "winner", "race", "prix", "beat", "lost", "playoff",
             "playoffs", "final", "finals", "result", "results", "standings", "fight", "tournament"}
@@ -154,6 +159,7 @@ class Frame:
     jailbreak: bool = False          # safety.jailbreak.attempt on the spoken question
     when: str = ""                   # "day" | "week" | "" : relative time the question is about
     when_text: str = ""              # the words that said it ("last night", "right now")
+    when_typed: bool = False         # `when` came from an Arc typed time span (entity.number.date / duration / time)
     ent_types: tuple = ()            # entity mention types in spoken order (person, organization, place, team, ...)
     num_types: tuple = ()            # typed number spans (date, money, percent, duration, ...)
     wconf: tuple = ()                # fused per-word confidence (server/confidence.py), when the ear gives word conf
@@ -168,6 +174,11 @@ class Frame:
     # Arc-off ("plain voice search", mode="plain" / ARC_OFF=1): a frame built from the words alone, no tagger read-out.
     # Its query is the raw transcript cleaned of punctuation; no correction handling, carry, redaction, hints, lanes.
     plain: bool = False
+    # retrieval-in-the-loop (server/heard.py, LOOP_ASR_FIX): misheard spans the session's known names re-resolved
+    # ({"said": "mari guri", "as": "Marie Curie", "src": "leads", "score": .9, "a": 2, "b": 4}); words[a] holds the
+    # name, words[a+1:b] are "" so token indices stay aligned
+    resolved: tuple = ()
+    sconf: tuple = ()                # per-word "is it right": min(ear confidence, fused), heard.suspect_conf
 
     @property
     def n(self):
@@ -175,7 +186,7 @@ class Frame:
 
     @property
     def text(self):
-        return " ".join(self.words)
+        return " ".join(w for w in self.words if w)
 
     @property
     def sig(self):
@@ -194,7 +205,7 @@ class Frame:
             return self.text
         out, masked = [], False
         for i, w in enumerate(self.words):
-            if i in self.dropped:
+            if i in self.dropped or not w:
                 continue
             if i in self.redact_tok:
                 if not masked:
@@ -204,6 +215,12 @@ class Frame:
             masked = False
             out.append(w)
         return " ".join(out)
+
+    @property
+    def kept_text(self) -> str:
+        """The words that still mean something after the turn: no corrected-away entity or cue, no personal data
+        (what conversation memory keeps: "who founded Microsoft, sorry, Amazon" -> "who founded Amazon")."""
+        return " ".join(w for i, w in enumerate(self.words) if w and i not in self.dropped and i not in self.redact_tok)
 
     @property
     def resolved_text(self) -> str:
@@ -264,6 +281,12 @@ class Frame:
                 and self.intent != "discourse.intent.weather_query":
             h["topic"] = "news"
             h["time_range"] = self.when
+        elif self.when in ("week", "month", "year") and self.when_typed and \
+                self.intent != "discourse.intent.weather_query":
+            # Arc typed a past window ("what did Apple announce yesterday", "flu cases this month"): keep the general
+            # topic, restrict to that window (Tavily time_range works on every topic). Not "today / now": "when does
+            # the Louvre close today" wants the evergreen hours page, not today's news
+            h["time_range"] = self.when
         if h:
             h["why"] = self.when_text or ""
         return h
@@ -274,6 +297,8 @@ class Frame:
         fresh = ""
         if h.get("topic") and h.get("topic") != "general":
             fresh = h["topic"] + (f" · past {h['time_range']}" if h.get("time_range") else "")
+        elif h.get("time_range"):
+            fresh = f"past {h['time_range']}"
         elif self.intent == "discourse.intent.weather_query" and not h.get("weather_off"):
             fresh = "weather · last 6 h"
         return {"acts": list(self.acts), "directed": None if self.directed is None else round(self.directed, 2),
@@ -302,7 +327,8 @@ class Frame:
                 "command_complete": self.command_complete, "readout": self.readout(),
                 # per-token read-out for the annotated transcript (indices into words)
                 "content_idx": list(self.content_idx), "dropped": sorted(self.dropped), "cue": sorted(self.cue),
-                "redact": sorted(self.redact_tok), **self._mem_json(), **self._conf_json()}
+                "redact": sorted(self.redact_tok), **self._mem_json(), **self._conf_json(),
+                **({"heard": list(self.resolved)} if self.resolved else {})}
 
     def _mem_json(self) -> dict:
         if not (self.inline or self.mem_ref or self.user_used):
@@ -685,16 +711,21 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
     f.num_types = tuple(dict.fromkeys(s["type"].split(".")[-1] for s in slot_spans
                                       if s["type"].startswith("entity.number")))
     low_kept = " ".join(t for i, t in enumerate(toks) if t and i not in drop_tok)
-    time_spans = [norm(s["text"]) for s in slot_spans
+    # each typed time span with the two words before it: Arc often tags just "month" of "this month"
+    time_spans = [" ".join(t for t in toks[max(0, s["start"] - 2):s["end"]] if t) for s in slot_spans
                   if s["type"] in ("entity.number.date", "entity.number.duration", "entity.number.time_of_day")]
-    for src in time_spans + [low_kept]:
-        m = _WHEN_DAY.search(src)
-        if m:
-            f.when, f.when_text = "day", m.group(0)
-            break
-        m = _WHEN_WEEK.search(src)
-        if m:
-            f.when, f.when_text = "week", m.group(0)
+    for k, src in enumerate(time_spans + [low_kept]):
+        typed = k < len(time_spans)
+        hit = None
+        for rx, val in ((_WHEN_DAY, "day"), (_WHEN_WEEK, "week")) + \
+                (((_WHEN_MONTH, "month"), (_WHEN_YEAR, "year")) if typed else ()):
+            m = rx.search(src)
+            if m:
+                hit = (val, m.group(0))
+                break
+        if hit:
+            f.when, f.when_text = hit
+            f.when_typed = typed
             break
     f.phrases = tuple(_phrases(f.words, toks, slot_spans, cut, drop_tok | redact_tok))
     f.convert = conversion(f.words, drop_tok | redact_tok)

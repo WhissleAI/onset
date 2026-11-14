@@ -16,7 +16,7 @@ import time
 import numpy as np
 
 from . import frame as framemod
-from . import config, confidence, director, lanes
+from . import config, confidence, director, heard, lanes
 from . import memory as memmod
 from .speculator import Speculator
 from .tagger import Tagger
@@ -107,6 +107,7 @@ class Session:
         self.carry: dict = {}                # {"person": [...], "thing": [...]} from the last question + answer
         self.context = ""                    # last question + answer text, for the answer model
         self.ans_tagger = Tagger(domain="talk")
+        self.bg_tasks: list = []
         self.mem = memmod.Memory()           # entity memory across turns + user facts (server/memory.py)
         self.prewarm_task: asyncio.Task | None = None
         self.carry_pool: dict = {}           # its documents + vectors, seeded into the next speculator
@@ -145,6 +146,7 @@ class Session:
         if self.carry_pool:
             self.spec.seed(self.carry_pool)
         self.spec.context = self.context
+        self.spec.bg = self.bg_tasks                 # after-answer re-checks of every question (VERIFY_RESEARCH)
         self.soft = None
         self.final_task = None
         self.eager_wait: dict | None = None          # FLUX_SOFT=eager+arc: an eager end-of-turn waiting for Arc's cc
@@ -163,6 +165,8 @@ class Session:
         self.repair_checked = False                  # this utterance was already checked for being a correction
         self.held_note = False                       # a "spec_hold" (unresolved pronoun) was announced
         self.mem_used: str | None = None             # the entity memory resolved this question's reference to
+        self.loop_pool = heard.Pool()                # names this question may have meant (LOOP_ASR_FIX, heard.py)
+        self.loop_fixed: set = set()                 # (said, as) already announced
 
     def emit(self, e: dict):
         """Emit an event of the question being heard now (unless it names its own question)."""
@@ -380,7 +384,41 @@ class Session:
             f.wconf = tuple(self.wconf)                # only when the ear gives word confidences (Flux / nova)
         if config.DIRECTOR_PII:
             director.apply_pii(f, self.director_out)
+        ear = list(getattr(self, "confs", []) or [])
+        if len(ear) == f.n:
+            f.sconf = tuple(heard.suspect_conf(ear, self.wconf if len(self.wconf) == f.n else None))
+        if config.LOOP_ASR_FIX:
+            self._loop_fix(f)
         return f
+
+    def _loop_candidates(self) -> heard.Pool:
+        """The names this question may have meant: speculative results so far, conversation memory, Wikidata labels
+        already looked up (the local leads index is added inside heard.propose)."""
+        pool = self.loop_pool
+        try:
+            pool.add_docs(list(self.spec.pool.values()))
+            for k, e in list(getattr(self.mem, "ents", {}).items())[-40:]:
+                pool.add(memmod._title(e.get("name") or k), "memory", heard.TYPE_KIND.get(e.get("kind", ""), ""))
+            for lab in heard.facts_labels()[-60:]:
+                pool.add(lab, "facts")
+        except Exception:
+            pass
+        return pool
+
+    def _loop_fix(self, f):
+        """Retrieval in the loop: re-resolve misheard names against what the session already knows (heard.py)."""
+        try:
+            fixes = heard.propose(f, list(f.sconf), self._loop_candidates())
+            if not fixes:
+                return
+            heard.apply(f, fixes)
+            for fx in fixes:
+                k = (fx.said, fx.name)
+                if k not in self.loop_fixed:
+                    self.loop_fixed.add(k)
+                    self.emit({"t": "heard_fix", "ms": self.spec.ms(), **fx.to_json()})
+        except Exception as e:                       # never break the words path
+            self.emit({"t": "error", "where": "heard", "error": f"{type(e).__name__}: {e}"[:300]})
 
     def on_partial(self, ws: list[dict], now: float | None = None):
         """Never raises: a bad partial is reported as an error event and the ear keeps going."""
@@ -979,13 +1017,24 @@ class Session:
                     thing.append(item)
         except Exception:
             pass
+        if config.LOOP_ASR_FIX and config.LOOP_ANSWER_FIX and ans_spans:
+            f2 = self._answer_fix(f, ans_spans)
+            if f2 is not f:
+                old = {(t, x) for t, x in f.slots} - set(f2.slots)
+                person = [p for p in person if p not in old]
+                thing = [p for p in thing if p not in old]
+                for t, x in set(f2.slots) - set(f.slots):
+                    if t not in framemod.NUMBER_TYPES:
+                        (person if t == "person" else thing).insert(0, (t, x))
+                f = f2
         q_ents = [txt for t, txt in f.slots if t not in framemod.NUMBER_TYPES]
         if person or thing:
             self.carry = {"person": person, "thing": thing}
         # for elliptical follow-ups ("and when?", "what about Nvidia?"): the previous question's meaning
         self.carry = {**(self.carry or {}), "prev": {"content": list(f.content), "entities": q_ents,
-                                                     "intent": f.intent, "question": f.text, "inline": f.inline}}
-        self.context = f"Q: {f.text}\nA: {(m.get('answer') or '')[:300]}"
+                                                     "intent": f.intent, "question": f.kept_text, "inline": f.inline}}
+        # the corrected-away subject must not reach the next turn's prompt or its follow-up swap (ARC_INTEGRATION.md)
+        self.context = f"Q: {f.clean_text}\nA: {(m.get('answer') or '')[:300]}"
         if not config.MEM_V2:
             return
         try:
@@ -1003,6 +1052,26 @@ class Session:
                 self.prewarm_task = asyncio.create_task(self._prewarm())
         except Exception as e:
             self.emit({"t": "error", "where": "memory", "error": f"{type(e).__name__}: {e}"[:300]})
+
+    def _answer_fix(self, f, ans_spans):
+        """The loop after the answer: the answer's names re-resolve the question's misheard ones ("who was mari guri"
+        answered "Marie Curie was ...": memory keeps Marie Curie, so "where was she born" finds her). Returns a fixed
+        copy of the frame, or f itself."""
+        try:
+            pool = heard.Pool()
+            for t, txt in ans_spans:
+                pool.add(memmod._title(txt), "answer", heard.TYPE_KIND.get(t, ""))
+            fixes = heard.propose(f, list(f.sconf), pool, use_leads=False)
+            if not fixes:
+                return f
+            import copy
+            f2 = heard.apply(copy.copy(f), fixes)
+            for fx in fixes:
+                self.emit({"t": "heard_fix", "ms": self.spec.ms(), "after_answer": True, **fx.to_json()})
+            return f2
+        except Exception as e:
+            self.emit({"t": "error", "where": "heard", "error": f"{type(e).__name__}: {e}"[:300]})
+            return f
 
     async def _prewarm(self):
         t = time.perf_counter()
