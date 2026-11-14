@@ -1,0 +1,146 @@
+{
+ "note": "Showcase scenarios for the GitHub Pages demo (site/). Every clip is Kokoro TTS (Apache-2.0 voices): eval sets or scripts/pages/make_audio.py. No user recordings.",
+ "scenarios": [
+  {
+   "id": "facts",
+   "title": "A plain fact",
+   "tag": "Facts",
+   "file": "q17.wav",
+   "text": "Netflix, who started that company",
+   "blurb": "The topic comes first, the question last. Free lookups start on the topic word."
+  },
+  {
+   "id": "live",
+   "title": "Live data",
+   "tag": "Live data",
+   "file": "sc_01.wav",
+   "text": "what's the weather gonna be like in Chicago tomorrow",
+   "blurb": "Weather is a free live card, not a paid web search."
+  },
+  {
+   "id": "followup",
+   "title": "Follow-up chain",
+   "tag": "Memory",
+   "files": [
+    "demo_pres_1.wav",
+    "demo_pres_2.wav"
+   ],
+   "turns": [
+    "who is the president of usa",
+    "you know, the old one"
+   ],
+   "blurb": "\"The old one\" only makes sense with the first answer in memory."
+  },
+  {
+   "id": "switch",
+   "title": "Topic switch",
+   "tag": "Memory",
+   "files": [
+    "demo_switch_1.wav",
+    "demo_switch_2.wav"
+   ],
+   "turns": [
+    "what's the capital of France",
+    "okay, good restaurants in San Jose"
+   ],
+   "blurb": "A new topic drops the old context instead of searching \"Paris restaurants\"."
+  },
+  {
+   "id": "correction",
+   "title": "Self-correction",
+   "tag": "Correction",
+   "file": "q27.wav",
+   "text": "what's the capital of Canada, actually make that Turkey",
+   "blurb": "The Canada search is cancelled the moment the speaker corrects."
+  },
+  {
+   "id": "multi",
+   "title": "Two questions in one",
+   "tag": "Multi-part",
+   "file": "mp_16.wav",
+   "text": "who founded Nvidia and when was it founded",
+   "blurb": "The planner splits it into two lookups and answers both."
+  },
+  {
+   "id": "typed",
+   "title": "Search while you type",
+   "tag": "Typed",
+   "typed": true,
+   "text": "who directed the movie Inception",
+   "char_ms": 110,
+   "enter_ms": 500,
+   "blurb": "Typed questions go through the same pipeline: lookups start on finished words, Enter is the endpoint."
+  },
+  {
+   "id": "openmic",
+   "title": "Open mic chatter",
+   "tag": "Open mic",
+   "files": [
+    "demo_mic_1.wav",
+    "demo_mic_2.wav"
+   ],
+   "open": true,
+   "turns": [
+    "honey, did you remember to feed the dog",
+    "how long should I roast a whole chicken"
+   ],
+   "blurb": "A remark to someone in the room is heard, not searched. Only the question to Onset is answered."
+  },
+  {
+   "id": "sitebrain",
+   "title": "Ask the Tavily docs",
+   "tag": "Site brain",
+   "file": "tav01.wav",
+   "text": "how many credits does an advanced search cost on Tavily",
+   "blurb": "Answered from the Tavily docs read once into the local index: zero paid calls."
+  },
+  {
+   "id": "race",
+   "title": "Race vs Baseline",
+   "tag": "Race",
+   "file": "q25.wav",
+   "text": "okay so my kid asked me this, and I didn't know, why is the sky blue",
+   "blurb": "Same ear, same search, same answer model. Only when the search starts differs."
+  },
+  {
+   "id": "live2",
+   "title": "Price right now",
+   "tag": "Live data",
+   "file": "sc_06.wav",
+   "text": "how much is one Bitcoin worth right now in US dollars",
+   "blurb": "A live price, labelled with when it was fetched."
+  }
+ ],
+ "tts": [
+  [
+   "demo_pres_1",
+   "who is the president of usa",
+   "am_michael"
+  ],
+  [
+   "demo_pres_2",
+   "you know, the old one",
+   "am_michael"
+  ],
+  [
+   "demo_switch_1",
+   "what's the capital of France",
+   "af_heart"
+  ],
+  [
+   "demo_switch_2",
+   "okay, good restaurants in San Jose",
+   "af_heart"
+  ],
+  [
+   "demo_mic_1",
+   "honey, did you remember to feed the dog",
+   "af_bella"
+  ],
+  [
+   "demo_mic_2",
+   "how long should I roast a whole chicken",
+   "af_bella"
+  ]
+ ]
+}
