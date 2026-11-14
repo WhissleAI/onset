@@ -195,3 +195,27 @@ def test_meter_splits_cache_tokens_by_answer_and_waste():
     t = meter.tokens([used, draft], used)
     assert (t["ans_in"], t["ans_cache_read"], t["waste_in"]) == (800, 700, 1700)
     assert (t["waste_cache_read"], t["waste_cache_write"]) == (700, 700)
+
+
+def test_parity_waits_for_a_slow_free_fact_lookup_instead_of_paying(monkeypatch):
+    """A free speculative fact lookup still out at the endpoint: speed hedges it with an immediate final call (whose
+    web leg is paid), parity waits for it (the baseline's own lookup is free too)."""
+    monkeypatch.setattr(config, "ROUTER_FACTS_HEDGE_MS", 50)
+
+    async def go(mode):
+        sp = speculator.Speculator(lambda e: None, "headstart", cost_mode=mode)
+        f = F("who founded the company Nvidia", slots=[("organization", "nvidia")], phrases=["nvidia"])
+
+        async def slow():
+            await asyncio.sleep(0.25)
+            return await ts.fake_web(f.query())
+        fire = sp._fire("web", f.query(), f, slow, {"no_paid": True})
+        m = {}
+        await sp._wait_or_hedge([fire], f, f.query(), m)
+        finals = [x for x in sp.fires if x.lane == "final-web"]
+        sp.close()
+        return finals, fire, m
+    finals, fire, m = asyncio.run(go("parity"))
+    assert not finals and fire.state == "done" and "hedge" not in (m.get("path") or "")
+    finals, fire, m = asyncio.run(go("speed"))
+    assert len(finals) == 1 and "+hedge" in m["path"]

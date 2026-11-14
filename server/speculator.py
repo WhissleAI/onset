@@ -1420,7 +1420,7 @@ class Speculator:
         tasks = [x.task for x in fires if x.task and not x.task.done()]
         if not tasks:
             return
-        hedge = config.ROUTER_FACTS_HEDGE_MS
+        hedge = config.ROUTER_FACTS_HEDGE_MS if self.prof.final_eot is None else config.COST_PARITY_FACTS_HEDGE_MS
         if hedge is None or hedge < 0:
             await asyncio.wait(tasks, timeout=config.PENDING_CAP_S)
             return
