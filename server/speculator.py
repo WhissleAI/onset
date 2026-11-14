@@ -1399,7 +1399,10 @@ class Speculator:
     async def _recheck(self, text: str, docs: list, qtext: str, v: dict, m: dict):
         """Verify-triggered re-search (server/recheck.py): updates the metric in place and emits a "recheck" event
         (the verify badge becomes "re-checked ✓" / "corrected"). The paid lane only within this question's budget."""
-        paid_ok = config.VERIFY_RESEARCH_PAID and self._paid() < self.prof.final_max
+        # the paid web lane: only for "sources disagree", one call at most, within this question's budget (parity: the
+        # endpoint's spare call); free lanes (Wikidata, local leads) always go first
+        paid_ok = (config.VERIFY_RESEARCH_PAID and v.get("status") == "disagree"
+                   and self._paid() < self.prof.final_max)
 
         async def web(q):
             meter_ = {}

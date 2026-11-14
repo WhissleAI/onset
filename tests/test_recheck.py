@@ -139,3 +139,35 @@ def test_targeted_lookup_is_the_claims_own_fact(monkeypatch):
     r = asyncio.run(recheck.run(ans, [], q, v))
     assert seen == [("born_date", "jane austen")]
     assert r["status"] == "corrected" and r["value"] == "1775"
+
+
+def test_paid_recheck_only_on_disagree_within_parity_budget(monkeypatch):
+    """Parity: free lanes first; the one paid call only for "sources disagree" and only while the question's paid
+    budget has room."""
+    monkeypatch.setattr(config, "VERIFY_RESEARCH_PAID", True)
+    _facts(monkeypatch, [])
+    _leads(monkeypatch, [])
+    calls = []
+
+    async def fake_web(q, **kw):
+        calls.append(q)
+        return [D("Nvidia", "Nvidia was founded in 1991 in a Denny's.")]
+    monkeypatch.setattr(lanes, "web", fake_web)
+
+    async def go(v, paid_before):
+        sp = speculator.Speculator(lambda e: None, "headstart", cost_mode="parity")
+        sp._paid = lambda: paid_before
+        m = {"paid_calls": paid_before}
+        await sp._recheck(ANS, [SRC[0]], Q, v, m)
+        sp.close()
+        return m
+    unver = {"status": "unverified", "claims": [{"kind": "year", "text": "1991", "cites": [1], "pred": ["founded"]}]}
+    m = asyncio.run(go(unver, 1))
+    assert not calls and m["recheck"]["paid"] == 0                     # not a disagreement: free lanes only
+    dis = {"status": "disagree", "claims": [{"kind": "year", "text": "1991", "cites": [1], "pred": ["founded"],
+                                             "conflict": {"source": 1, "value": "1993"}}]}
+    m = asyncio.run(go(dis, 1))
+    assert len(calls) == 1 and m["recheck"]["paid"] == 1 and m["paid_calls"] == 2   # counted
+    calls.clear()
+    m = asyncio.run(go(dis, 2))                                         # parity budget (1 + 1) already spent
+    assert not calls and m["recheck"]["paid"] == 0
