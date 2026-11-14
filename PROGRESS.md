@@ -1129,3 +1129,8 @@ system prompt, meter prices cache hits / writes and splits them by answer / wast
 COST_MODE=speed for the older speculation tests. Full suite 350 passed (rebased on main 9d06c14).
 Tools: eval/run_ab.py rows carry cost_mode + cache tokens, summaries mean_usd_llm / mean_usd_web, traces keep the
 end-of-turn score (COST_TRACE_EOT=1 emits it per update, eval only).
+Re-check with Keystone on (rebased on main 947eda0, INDEX=1 default; showcase, one paired run, a204e85, load ~50 so
+absolute times are inflated): HS p50 2841 / BL 3392 (paired gain 551 ms), accuracy 13/15 both, paid 0.79 vs 0.83/q,
+$ 0.0065 vs 0.0068/q, answer-model $ 0.89x, waste 468 tok/q, one answer with 2 paid calls (sc26). Keystone's facts
+tier answered sc24 / sc25 free in parity where the baseline paid. Full suite 375: 374 + test_integrate's
+unsure_plan_holds_paid_speculation (timing; passes alone and in test_integrate.py x2 at load 46).
