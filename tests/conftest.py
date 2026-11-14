@@ -27,6 +27,9 @@ def _isolate_fallback_state(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "INDEX", False)
     monkeypatch.setattr(config, "INDEX_PERSIST", False)
     monkeypatch.setattr(config, "INDEX_SHARED", False)
+    # the speculation tests were written against the "speed" budget (SPEC_PAID_MAX, DRAFT_BUDGET, settle-time fires);
+    # tests/test_cost.py covers COST_MODE=parity (the default) explicitly
+    monkeypatch.setattr(config, "COST_MODE", "speed")
     lanes.set_web_cache(None)
     lanes.reset_web_status()
     answer.reset_status()

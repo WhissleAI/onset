@@ -344,7 +344,9 @@ VOI_THETA = float(os.environ["VOI_THETA"]) if os.environ.get("VOI_THETA") else N
 #            reused at the endpoint; one more only if the endpoint's words aren't covered by it (a real meaning
 #            change: correction, new subject); at most COST_PARITY_DRAFTS drafts, only on a final meaning.
 # A browser session can pick its own mode ("cost" in the start / replay message; the meter's toggle).
-COST_MODE = os.environ.get("COST_MODE", "speed").strip().lower()
+# Default parity (measured, PROGRESS.md "Cost parity": paid calls <= the baseline's on the showcase and the 58 set,
+# >= 80 % of the speed gain kept). COST_MODE=speed restores the earlier policy.
+COST_MODE = os.environ.get("COST_MODE", "parity").strip().lower()
 COST_PARITY_PAID_MAX = int(os.environ.get("COST_PARITY_PAID_MAX", "1"))       # speculative paid calls per question
 COST_PARITY_FINAL_EXTRA = int(os.environ.get("COST_PARITY_FINAL_EXTRA", "1"))  # + calls the endpoint may add (miss)
 COST_PARITY_EOT = float(os.environ.get("COST_PARITY_EOT", "0.3"))             # "meaning is final" (fused score)
