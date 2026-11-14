@@ -79,12 +79,13 @@ def clean(w: str) -> str:
 
 class Session:
     def __init__(self, emit, mode: str = "headstart", domain: str = "assistant", t0: float | None = None,
-                 open_mic: bool = False):
+                 open_mic: bool = False, cost_mode: str | None = None):
         # every event carries "q": the id of the question (utterance) it belongs to, so a client can tell this turn's
         # events from a previous turn's late ones (its answer streaming while the next question is heard)
         self._out = emit
         self.qid = 0
         self.mode = mode
+        self.cost_mode = cost_mode               # COST_MODE override for this session (server/cost.py); None = config
         self.open_mic = open_mic                 # open mic: statements are heard, not answered (open_mic_skip)
         self.tagger = Tagger(domain=domain)
         self.t0 = t0 or time.perf_counter()        # wall time of audio sample 0
@@ -137,7 +138,7 @@ class Session:
         self.audio: list[np.ndarray] = []
         self.q_audio_start: float | None = None      # audio time (s) of the first word of this question
         self.q_levels: list[float] = []              # voiced RMS while this question's words were arriving
-        self.spec = Speculator(self._q_emit(self.qid), self.mode, self.t0, ledger=self.ledger)
+        self.spec = Speculator(self._q_emit(self.qid), self.mode, self.t0, ledger=self.ledger, cost_mode=self.cost_mode)
         if self.carry_pool:
             self.spec.seed(self.carry_pool)
         self.spec.context = self.context
@@ -277,7 +278,7 @@ class Session:
                     self.mem.restore(mem[3])
                     self.emit_memory(why="correction")
                 self.spec.close()
-                self.spec = Speculator(self._q_emit(self.qid), self.mode, self.t0, ledger=self.ledger)
+                self.spec = Speculator(self._q_emit(self.qid), self.mode, self.t0, ledger=self.ledger, cost_mode=self.cost_mode)
                 if self.carry_pool:
                     self.spec.seed(self.carry_pool)
                 self.spec.context = self.context

@@ -5,8 +5,10 @@
    server/meter.py) and the "usage" event the speculator sends when the question closes (the final token tally: drafts
    still streaming when the metric went out, a superseded soft answer). Every number here is measured; $ is an estimate
    (list prices in server/config.py METER_*) and says so. A mode that did not run is left out, never imputed.
-   Bar   hero ("0.52 s faster · 5.0× cheaper", session averages over questions both modes answered) · this question's
-         HS / BL row · session totals · details.
+   Bar   hero, the absolute difference first (session averages over questions both modes answered): "same paid calls ·
+         0.52 s sooner" when Onset made no more paid calls than plain search, else "0.52 s faster · +$0.0020 per
+         question"; the ratio ("1.3× the cost") stays in the line under it · cost-mode toggle (speed | parity, applies
+         from the next run: server/cost.py) · this question's HS / BL row (waste always shown) · session totals · details.
    More  per-question table, price notes. HSMeter.evalSummary(raw) renders the same terms for an eval A/B file. */
 (() => {
   "use strict";
@@ -19,6 +21,15 @@
   const rows = [];                // one per question (app.js question object), across runs of this page
   const orphan = { headstart: { in: 0, out: 0, usd: 0 }, baseline: { in: 0, out: 0, usd: 0 } };   // superseded questions
   let prices = null, open = false, root = null, lastRow = null;
+  // speculation budget for the next run (server/cost.py): the viewer's pick, else the server default (/api/meter)
+  const COST = { speed: "Speed", parity: "Parity" };
+  const COST_TIP = {
+    speed: "Speed: up to 2 paid searches per question while you speak, drafts on partial questions",
+    parity: "Parity: one paid search per question, sent when the question is complete and reused for the answer; free lanes (cards, facts, local index) while you speak",
+  };
+  let costPick = null;
+  try { costPick = localStorage.getItem("onset.cost"); } catch { costPick = null; }
+  if (!COST[costPick]) costPick = null;
 
   // ------------------------------------------------------------------ formatting
   const fmtS = (ms) => (ms == null || !isFinite(ms) ? "—" : (ms < 0 ? "−" : "") + (Math.abs(ms) / 1000).toFixed(Math.abs(ms) < 9950 ? 2 : 1) + " s");
@@ -32,6 +43,13 @@
     return "<$0.0001";
   }
   const x = (r) => (r >= 9.95 ? r.toFixed(0) : r.toFixed(1)) + "×";
+  // signed $ difference per question, absolute (the headline number): "+$0.0020", "−$0.0001", "±$0"
+  function fmtDelta(v) {
+    if (v == null || !isFinite(v)) return "—";
+    const a = Math.abs(v);
+    if (a < 0.00005) return "±$0.0000";
+    return (v > 0 ? "+" : "−") + (a >= 0.01 ? "$" + a.toFixed(3) : "$" + a.toFixed(4));
+  }
 
   // ------------------------------------------------------------------ data
   function rowFor(q, run) {
@@ -113,6 +131,11 @@
       const b = ev.target.closest("button");
       if (!b) return;
       if (b.classList.contains("mt-more")) { open = !open; render(); }
+      else if (b.dataset.cost) {
+        costPick = b.dataset.cost;
+        try { localStorage.setItem("onset.cost", costPick); } catch { /* private window: this page only */ }
+        render();
+      }
       else if (b.classList.contains("mt-reset")) { rows.length = 0; for (const m of MODES) orphan[m] = { in: 0, out: 0, usd: 0 }; lastRow = null; render(); }
     });
     return root;
@@ -137,22 +160,37 @@
       `<td class="mt-tok">${tok}</td><td class="mt-usd">${fmtUsd(m.usd)}</td>`;
   }
 
+  function costNow() { return costPick || (prices && COST[prices.cost_mode] ? prices.cost_mode : "speed"); }
+  function toggle() {
+    const cur = costNow();
+    return `<div class="mt-mode" role="group" aria-label="Onset search budget (next run)"><label>budget</label><span>` +
+      Object.keys(COST).map((k) => `<button type="button" data-cost="${k}" aria-pressed="${k === cur}" title="${esc(COST_TIP[k])} (applies from the next run)">${COST[k]}</button>`).join("") +
+      `</span></div>`;
+  }
+
   function render() {
     const el = ensureRoot();
     const { T, P } = totals();
     const modes = MODES.filter((m) => T[m]);
     if (!rows.length || !modes.length) {
-      el.innerHTML = `<div class="mt-bar"><div class="mt-hero"><b class="mt-idle">Cost meter</b><small>time, paid calls, model tokens and est. $ per question</small></div></div>`;
+      el.innerHTML = `<div class="mt-bar mt-empty"><div class="mt-hero"><b class="mt-idle">Cost meter</b><small>time, paid calls, model tokens and est. $ per question</small></div>${toggle()}</div>`;
       el.classList.remove("open");
       return;
     }
-    // hero: session averages over paired questions; single mode: what was measured
+    // hero: session averages over paired questions, the absolute difference first; single mode: what was measured
     let hero, heroSub;
     if (P.n) {
       const avg = P.saved / P.n;
       const tp = Math.abs(avg) < 50 ? "same speed" : `${fmtS(Math.abs(avg))} ${avg >= 0 ? "faster" : "slower"}`;
-      hero = `${tp} · ${costPhrase(P.hsUsd, P.blUsd)}`;
-      heroSub = `Onset vs plain search · avg of ${P.n} question${P.n > 1 ? "s" : ""} · $ est.`;
+      const dUsd = (P.hsUsd - P.blUsd) / P.n;
+      const hsModes = [...new Set(rows.map((r) => r.m.headstart && r.m.headstart.cost_mode).filter(Boolean))];
+      const tag = hsModes.length === 1 ? ` (${COST[hsModes[0]] || hsModes[0]})` : hsModes.length > 1 ? " (mixed budgets)" : "";
+      if (P.hsPaid <= P.blPaid && Math.abs(avg) >= 50 && avg > 0) {
+        hero = `${P.hsPaid === P.blPaid ? "same paid calls" : "fewer paid calls"} · ${fmtS(avg)} sooner`;
+      } else {
+        hero = `${tp} · ${fmtDelta(dUsd)} per question`;
+      }
+      heroSub = `Onset${tag} vs plain search · ${fmtDelta(dUsd)}/q · ${costPhrase(P.hsUsd, P.blUsd)} · avg of ${P.n} q · $ est.`;
     } else {
       const m = modes[0], t = T[m];
       hero = `${fmtUsd(t.usd / t.n)} per question`;
@@ -180,6 +218,7 @@
       <div class="mt-hero"><b>${esc(hero)}</b><small>${esc(heroSub)}</small></div>
       ${thisQ}
       <div class="mt-sess"><label>session</label><div>${s1}</div><div>${s2}</div></div>
+      ${toggle()}
       <button class="mt-more" aria-expanded="${open}">${open ? "less" : "details"}</button>
     </div>`;
     if (open) html += detail(T, P, modes);
@@ -213,7 +252,9 @@
     }).join("");
     const p = prices;
     const priceTxt = p ? `Prices (est.): Tavily ${fmtUsd(p.credit_usd)}/credit × ${p.credits_per_call} credit per basic search; ` +
-      (p.in_usd_mtok != null ? `${esc(p.model)} $${p.in_usd_mtok} in / $${p.out_usd_mtok} out per M tokens${p.verified ? "" : " (configured, not verified)"}` : `${esc(p.model)}: no verified price, tokens not priced`) : "";
+      (p.in_usd_mtok != null ? `${esc(p.model)} $${p.in_usd_mtok} in / $${p.out_usd_mtok} out per M tokens${p.verified ? "" : " (configured, not verified)"}` +
+        (p.prompt_cache ? `; its fixed instructions are prompt-cached (cache hits ${p.cache_read_mult}×, writes ${p.cache_write_mult}× the input price)` : "")
+        : `${esc(p.model)}: no verified price, tokens not priced`) : "";
     const orph = MODES.filter((m) => orphan[m].in).map((m) => `${SHORT[m]} ${fmtTok(orphan[m].in)} tokens on questions replaced by a correction`).join(" · ");
     return `<div class="mt-detail">
       <div class="mt-tot">${tot}</div>
@@ -243,7 +284,9 @@
       const cr = mean(g.map((r) => (r.credits ? r.credits : (r.paid_calls ?? r.web_paid ?? r.web_calls ?? 0) * p.credits_per_call)));
       const tin = hasTok ? mean(g.map((r) => (r.ans_in || 0) + (r.waste_in || 0))) : null;
       const tout = hasTok ? mean(g.map((r) => (r.ans_out || 0) + (r.waste_out || 0))) : null;
-      const llm = hasTok && p.in_usd_mtok != null ? (tin * p.in_usd_mtok + tout * p.out_usd_mtok) / 1e6 : null;
+      // the run's own priced tokens (prompt-cache hits / writes at their rates) when recorded, else list price
+      const llm = g.some((r) => r.usd_llm != null) ? mean(g.map((r) => r.usd_llm || 0))
+        : hasTok && p.in_usd_mtok != null ? (tin * p.in_usd_mtok + tout * p.out_usd_mtok) / 1e6 : null;
       S[m] = { n: g.length, paid, free: mean(g.map((r) => r.free_calls || 0)),
         wasted: mean(g.map((r) => Math.max(0, (r.spec_fires || 0) - (r.spec_used || 0)))),
         tin, tout, waste: hasTok ? mean(g.map((r) => r.waste_in || 0)) : null,
@@ -264,6 +307,7 @@
       const a = S.headstart, b = S.baseline;
       const bits = [];
       if (a.ready != null && b.ready != null) bits.push(`p50 ${fmtS(b.ready - a.ready)} ${b.ready >= a.ready ? "faster" : "slower"}`);
+      bits.push(`${fmtDelta(a.usd - b.usd)} per question`);
       bits.push(costPhrase(a.usd, b.usd));
       bits.push(callsPhrase(+a.paid.toFixed(2), +b.paid.toFixed(2)).replace(/(\d+\.\d{3,})/g, (s) => (+s).toFixed(2)));
       h += `<p class="res-note">Onset vs plain search: <b>${esc(bits.join(" · "))}</b></p>`;
@@ -279,6 +323,7 @@
     try { prices = (await (await fetch("/api/meter", { cache: "no-store" })).json()) || null; } catch { prices = null; }
   }
   window.HSMeter = {
+    costMode() { return costPick; },          // the viewer's pick (null: the server's COST_MODE)
     start(run) { ensureRoot(); render(); },
     metric(q, mode, e, run) {
       if (!MODES.includes(mode)) return;

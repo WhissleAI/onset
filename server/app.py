@@ -36,6 +36,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import answer, config, embed, ear, lanes
+from . import cost as costmod
 from . import memory as memmod
 from .session import Session
 
@@ -146,7 +147,7 @@ async def results():
 async def meter_prices():
     """Prices behind the cost meter's est. $ (server/config.py METER_*)."""
     from . import meter
-    return JSONResponse(meter.prices())
+    return JSONResponse({**meter.prices(), "cost_mode": costmod.profile().name, "cost_modes": list(costmod.MODES)})
 
 
 @app.post("/api/cache/clear")
@@ -180,12 +181,12 @@ _run_ids = itertools.count(1)
 class Run:
     """One run: an ear feeding one Session per mode, and a sender task draining their events to the socket."""
 
-    def __init__(self, ws: WebSocket, modes, domain):
+    def __init__(self, ws: WebSocket, modes, domain, cost_mode: str | None = None):
         self.id = next(_run_ids)
         self.ws = ws
         self.q: asyncio.Queue = asyncio.Queue()
         t0 = time.perf_counter()
-        self.sessions = [Session(self._emitter(m), mode=m, domain=domain, t0=t0) for m in modes]
+        self.sessions = [Session(self._emitter(m), mode=m, domain=domain, t0=t0, cost_mode=cost_mode) for m in modes]
         self.ear = ear.make_ear(self.sessions, domain=domain, on_event=self._emitter("ear"))
         self.sender = asyncio.create_task(self._send())
         self.clock_set = False           # mic runs: the clock starts at the first audio frame, not at "start"
@@ -395,7 +396,7 @@ async def ws_endpoint(ws: WebSocket):
                         await send({"t": "error", "mode": "sys", "error": f"no such file {p.name}"})
                         continue
                 modes = data.get("modes") or ["headstart", "baseline"]
-                run = Run(ws, modes, data.get("domain", "assistant"))
+                run = Run(ws, modes, data.get("domain", "assistant"), cost_mode=costmod.valid(data.get("cost")))
                 run.kind = "mic" if t == "start" else "replay"
                 rlog(f"run {run.id} start {run.kind}" + (f" {p.name}" if t == "replay" else
                      (" open-mic" if data.get("open") else " push-to-talk")) + f" modes={','.join(modes)} ear={ear.describe().get('ear')}")

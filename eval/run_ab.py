@@ -300,12 +300,13 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         "web_paid": m.get("web_paid"), "free_calls": m.get("free_calls"), "tiers": m.get("tiers"),
         # cost meter (server/meter.py): answer-model tokens (used answer + thrown-away drafts / hedges) and est. $
         **{k: m.get(k) for k in ("ans_in", "ans_out", "waste_in", "waste_out", "llm_requests", "tokens_est",
-                                 "usd", "usd_web", "usd_llm", "usd_llm_waste", "wasted_fires")},
+                                 "usd", "usd_web", "usd_llm", "usd_llm_waste", "wasted_fires", "cost_mode",
+                                 "ans_cache_read", "ans_cache_write", "waste_cache_read", "waste_cache_write")},
         "answer_tier": answer_tier, "route_plan": m.get("route"), "route_conf": m.get("route_conf"), "answer_src": (adoc or {}).get("source"), "routes": routes,
         "route_why": next((e.get("route_why") for e in reversed(events) if e.get("t") == "spec" and e.get("route_why")),
                           None),
         # compact timeline (ms since first audio sample) of fires/drafts and the endpoint, for debugging paths
-        "trace": [{k: e.get(k) for k in ("t", "id", "lane", "state", "ms", "took", "n", "query", "by")
+        "trace": [{k: e.get(k) for k in ("t", "id", "lane", "state", "ms", "took", "n", "query", "by", "p", "eot")
                    if e.get(k) is not None} for e in events if e.get("t") in ("spec", "endpoint", "extended", "sources")]
                  + ([{"t": "first_token", "ms": round((first_tok - t0) * 1000)}] if first_tok else []),
         "arc_heard": " | ".join(e.get("text", "") for e in finals),
@@ -364,7 +365,9 @@ def summarize(rows: list[dict]) -> dict:
             **({"mean_tokens_in": round(statistics.mean([(r.get("ans_in") or 0) + (r.get("waste_in") or 0) for r in rs])),
                 "mean_tokens_out": round(statistics.mean([(r.get("ans_out") or 0) + (r.get("waste_out") or 0) for r in rs])),
                 "mean_waste_in": round(statistics.mean([r.get("waste_in") or 0 for r in rs])),
-                "mean_usd": round(statistics.mean([r.get("usd") or 0 for r in rs]), 6)}
+                "mean_usd": round(statistics.mean([r.get("usd") or 0 for r in rs]), 6),
+                "mean_usd_llm": round(statistics.mean([r.get("usd_llm") or 0 for r in rs]), 7),
+                "mean_usd_web": round(statistics.mean([r.get("usd_web") or 0 for r in rs]), 6)}
                if rs and any(r.get("ans_in") is not None for r in rs) else {}),
             "answer_by": dict(Counter(str(r.get("answer_by")) for r in rs)),
             "by_lane": {k: {"n": len(g), "p50_ready_ms": pct([r["ready_ms"] for r in g], 50),

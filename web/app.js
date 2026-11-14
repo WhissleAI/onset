@@ -167,6 +167,11 @@
   }
   function send(obj) {
     if (!ws || ws.readyState !== 1) { toast("Not connected to the server yet", true); return false; }
+    // cost mode (web/meter.js toggle: speed | parity) rides on every run start; the server applies it per session
+    if (obj && (obj.t === "start" || obj.t === "replay") && window.HSMeter && window.HSMeter.costMode) {
+      const c = window.HSMeter.costMode();
+      if (c) obj = { ...obj, cost: c };
+    }
     ws.send(typeof obj === "string" || obj instanceof ArrayBuffer ? obj : JSON.stringify(obj));
     return true;
   }

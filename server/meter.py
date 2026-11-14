@@ -17,6 +17,8 @@ def prices() -> dict:
         pin, pout = float(config.METER_ANSWER_IN_USD_MTOK), float(config.METER_ANSWER_OUT_USD_MTOK)
     return {"model": config.ANSWER_MODEL, "in_usd_mtok": pin, "out_usd_mtok": pout,
             "verified": bool(listed) and not over, "configured": over,
+            "cache_read_mult": config.COST_CACHE_READ_MULT, "cache_write_mult": config.COST_CACHE_WRITE_MULT,
+            "prompt_cache": config.COST_CACHE,
             "credit_usd": config.METER_TAVILY_CREDIT_USD, "credits_per_call": config.METER_CREDITS_PER_CALL,
             "web_backend": config.WEB_BACKEND}
 
@@ -33,7 +35,7 @@ def tokens(streams, used) -> dict:
     """Token split over this question's streams. used = the stream that answered (or None)."""
     used_s = getattr(used, "primary", used) if used is not None else None
     t = {"ans_in": 0, "ans_out": 0, "waste_in": 0, "waste_out": 0, "llm_requests": 0, "waste_streams": 0,
-         "tokens_est": False}
+         "tokens_est": False, "ans_cache_read": 0, "ans_cache_write": 0, "waste_cache_read": 0, "waste_cache_write": 0}
     seen = set()
     for st in streams:
         st = getattr(st, "primary", st)
@@ -48,9 +50,14 @@ def tokens(streams, used) -> dict:
             t["ans_out"] += u["win_out"]
             t["waste_in"] += u["in"] - u["win_in"]        # the hedge loser's request
             t["waste_out"] += u["out"] - u["win_out"]
+            for k in ("cache_read", "cache_write"):
+                t["ans_" + k] += u.get("win_" + k, 0)
+                t["waste_" + k] += u.get(k, 0) - u.get("win_" + k, 0)
         else:
             t["waste_in"] += u["in"]
             t["waste_out"] += u["out"]
+            for k in ("cache_read", "cache_write"):
+                t["waste_" + k] += u.get(k, 0)
             if u["in"] or u["out"]:
                 t["waste_streams"] += 1
     return t
@@ -58,17 +65,21 @@ def tokens(streams, used) -> dict:
 
 def cost(paid_calls: float, tok: dict, credits: float | None = None, p: dict | None = None) -> dict:
     """Estimated $ for one question. Web: the actual Tavily credits when the backend reported them (credits > 0), else
-    paid calls x credits per call. Tokens: (answer + waste) x the model's price; None if the price is unknown."""
+    paid calls x credits per call. Tokens: (answer + waste) x the model's price, prompt-cache hits / writes at their
+    multipliers (config.COST_CACHE_*); None if the price is unknown."""
     p = p or prices()
     cr = credits if credits else paid_calls * p["credits_per_call"]
     web = cr * p["credit_usd"]
-    n_in = tok.get("ans_in", 0) + tok.get("waste_in", 0)
-    n_out = tok.get("ans_out", 0) + tok.get("waste_out", 0)
     if p["in_usd_mtok"] is None:
         llm = waste = None
     else:
-        llm = (n_in * p["in_usd_mtok"] + n_out * p["out_usd_mtok"]) / 1e6
-        waste = (tok.get("waste_in", 0) * p["in_usd_mtok"] + tok.get("waste_out", 0) * p["out_usd_mtok"]) / 1e6
+        def side(s):          # input tokens priced by kind: cache hits 0.1x, cache writes 1.25x, the rest 1x
+            hit, wr = tok.get(s + "_cache_read", 0), tok.get(s + "_cache_write", 0)
+            n = tok.get(s + "_in", 0)
+            return ((n - hit - wr) + hit * p.get("cache_read_mult", 0.1) + wr * p.get("cache_write_mult", 1.25)) \
+                * p["in_usd_mtok"] + tok.get(s + "_out", 0) * p["out_usd_mtok"]
+        waste = side("waste") / 1e6
+        llm = side("ans") / 1e6 + waste
     return {"usd_web": round(web, 6), "usd_llm": None if llm is None else round(llm, 7),
             "usd_llm_waste": None if waste is None else round(waste, 7),
             "usd": round(web + (llm or 0.0), 6), "usd_est": True, "price_verified": p["verified"]}

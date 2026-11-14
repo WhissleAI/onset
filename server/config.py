@@ -337,3 +337,33 @@ INDEX_SHARED = os.environ.get("INDEX_SHARED", "1") == "1"          # cross-user 
 KEYSTONE_SHARED = Path(os.environ.get("KEYSTONE_SHARED", DATA_DIR / "keystone" / "shared.sqlite"))
 VOI = os.environ.get("VOI", "1") == "1"                            # calibrated gate (else the hand gate)
 VOI_THETA = float(os.environ["VOI_THETA"]) if os.environ.get("VOI_THETA") else None   # override the fitted theta
+# ---------------------------------------------------------------------------------------------------- cost parity
+# server/cost.py: COST_MODE picks the speculation budget per question (PROGRESS.md "Cost parity").
+#   speed  = the policy above (SPEC_PAID_MAX paid calls, DRAFT_BUDGET drafts, settle-time release)
+#   parity = one paid web call per question, fired when the meaning is final (end-of-turn score >= COST_PARITY_EOT),
+#            reused at the endpoint; one more only if the endpoint's words aren't covered by it (a real meaning
+#            change: correction, new subject); at most COST_PARITY_DRAFTS drafts, only on a final meaning.
+# A browser session can pick its own mode ("cost" in the start / replay message; the meter's toggle).
+# Default parity (measured, PROGRESS.md "Cost parity": paid calls <= the baseline's on the showcase and the 58 set,
+# >= 80 % of the speed gain kept). COST_MODE=speed restores the earlier policy.
+COST_MODE = os.environ.get("COST_MODE", "parity").strip().lower()
+COST_PARITY_PAID_MAX = int(os.environ.get("COST_PARITY_PAID_MAX", "1"))       # speculative paid calls per question
+COST_PARITY_FINAL_EXTRA = int(os.environ.get("COST_PARITY_FINAL_EXTRA", "1"))  # + calls the endpoint may add (miss)
+COST_PARITY_EOT = float(os.environ.get("COST_PARITY_EOT", "0.3"))             # "meaning is final" (fused score)
+# parity: a free speculative fact lookup still out at the endpoint is waited for (up to PENDING_CAP_S) instead of
+# hedged with an immediate paid web call (ROUTER_FACTS_HEDGE_MS): on the 58 set that hedge was 11 of the 12 paid
+# calls parity made beyond the baseline's. <0 = no hedge.
+COST_PARITY_FACTS_HEDGE_MS = float(os.environ.get("COST_PARITY_FACTS_HEDGE_MS", "-1"))
+COST_PARITY_DRAFTS = int(os.environ.get("COST_PARITY_DRAFTS", "1"))
+COST_PARITY_DRAFT_EOT = float(os.environ.get("COST_PARITY_DRAFT_EOT", "0.6"))
+COST_TRACE_EOT = os.environ.get("COST_TRACE_EOT", "0") == "1"   # eval: emit every end-of-turn score (spec_eot events)
+# Both modes: no draft for a meaning an answer (soft or final) is already being generated for (it was pure waste:
+# the draft started after the soft endpoint's own answer and was never read).
+COST_DRAFT_DEDUP = os.environ.get("COST_DRAFT_DEDUP", "1") == "1"
+# Anthropic prompt caching of the answer model's fixed system prompt (727 tokens on claude-haiku-5-5, counted with
+# /v1/messages/count_tokens; the minimum cacheable prefix for Haiku 5.5 is 512 tokens). Prices from
+# https://platform.claude.com/docs/en/build-with-claude/prompt-caching (checked 2026-11-13), Haiku 5.5, prompts up
+# to 100K: base input $0.10/MTok, 5-minute cache write $0.125 (1.25x), cache hit $0.01 (0.1x).
+COST_CACHE = os.environ.get("COST_CACHE", "1") == "1"
+COST_CACHE_WRITE_MULT = float(os.environ.get("COST_CACHE_WRITE_MULT", "1.25"))
+COST_CACHE_READ_MULT = float(os.environ.get("COST_CACHE_READ_MULT", "0.1"))

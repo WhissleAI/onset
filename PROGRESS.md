@@ -1044,3 +1044,93 @@ as fallbacks. Local answers are labelled "local index hit · 0 paid · Onset ind
 - Flags INDEX (default 1), INDEX_SERVE, INDEX_PERSIST, INDEX_SAVE_S, INDEX_SHARED (1), KEYSTONE_SHARED, GRAPH_KEY,
   GRAPH_ACT, VOI, VOI_THETA (fitted 0.95), KEYSTONE_DIR (data dir). Tests: tests/test_keystone.py (25). Pipeline:
   eval/keystone/run_all.sh; A/B: eval/keystone/ab_index.sh.
+
+## Cost parity (branch feat/cost; server/cost.py, COST_MODE)
+Tavily judges "faster and cheaper". Before this branch Onset paid for more searches than plain search: showcase 0.97
+paid calls/q vs 0.74, 58 set 0.59 vs 0.28, and 1.7-2.0x the baseline's answer-model $. Goal: no more paid calls than
+the baseline, answer-model $ <= 1.1x, >= 70 % of the speed gain kept.
+
+**Where the extra cost came from** (traces of the main-branch runs):
+- A first paid search on a prefix ("kansas city chiefs win game"), then a second when the speaker added the date or
+  the subject ("... sunday", "when's best time year" -> "... iceland northern lights"): 7-8 of 29 showcase questions.
+- The facts hedge at the endpoint (`_wait_or_hedge`, hedge_ms=0): a free speculative Wikidata lookup still out after
+  350 ms is raced with a final call whose web leg is paid at once. On the 58 set this was 11 of the 12 paid calls
+  beyond the baseline's (the baseline's own lookup is free; the router's 350 ms hedge rarely fires there).
+- Answer-model waste: a draft fired for the meaning a soft endpoint was already answering (pure duplicate: sc03-05,
+  sc10, sc14, sc19, sc22, sc30), up to 6 drafts per question on Wikipedia (DRAFT_BUDGET=6), hedge losers.
+- A meter bug hid part of the baseline's waste: a hedge loser was counted only once its cancellation landed, and the
+  baseline closes its question right after the answer, so its losers usually went uncounted. Fixed (answer.Stream
+  marks the loser at the end of the answer); the "base" arm below still has the bug, so its model-$ ratio flatters
+  the baseline slightly.
+
+**What changed:**
+- `COST_MODE=parity` (server/cost.py; config COST_*), now the default; `COST_MODE=speed` = the previous policy.
+  - One paid web call per question, sent when the meaning is final: end-of-turn score >= COST_PARITY_EOT 0.3 (the
+    fused score, fed in director mode too; Arc ear: the tagger gate; no score at all: SPEC_LAST_SETTLE_MS of stable
+    words). Mid-sentence, only free lanes run (cards, Wikidata facts, local index, search cache). Plan parts
+    (multi-part questions) follow the same rule.
+  - That call is the endpoint's search (speculative-hit / pool reuse). The endpoint adds one call
+    (COST_PARITY_FINAL_EXTRA=1) only when the pool doesn't cover the final words: a real meaning change (correction,
+    new subject, ASR revision). Measured: 3 of 58 showcase answers and 0 of 116 58-set answers made 2 paid calls.
+  - A free fact lookup still out at the endpoint is waited for (PENDING_CAP_S) instead of hedged with a paid call
+    (COST_PARITY_FACTS_HEDGE_MS=-1).
+  - At most one draft (COST_PARITY_DRAFTS), only when the end-of-turn score is >= 0.6 (COST_PARITY_DRAFT_EOT; at 0.3
+    "how do I take a screenshot on a mac" was drafted before "... just part of the screen").
+- Both modes: no draft for a meaning an answer is already streaming for (COST_DRAFT_DEDUP); Anthropic prompt caching
+  of the answer model's system prompt (COST_CACHE): 727 tokens (count_tokens), above Haiku 5.5's 512-token minimum;
+  cache hits $0.01/MTok vs $0.10 base, 5-minute writes $0.125 (platform.claude.com prompt-caching page, 2026-11-13).
+  Verified live: the second request reads 728 tokens from the cache. The meter prices hits / writes at those rates.
+- Meter (web/meter.js): the hero leads with the absolute difference, "same paid calls · 0.40 s sooner" when Onset
+  made no more paid calls than plain search, else "0.23 s faster · +$0.0027 per question"; the ratio ("1.3x the cost")
+  stays in the line under it; waste stays in every row. A Speed | Parity toggle (sent as `cost` with each run; the
+  server applies it per session: Session(cost_mode=...)) and the price notes name the prompt cache.
+- Tavily (docs.tavily.com, checked 2026-11-13): search_depth ultra-fast / fast / basic = 1 credit, advanced = 2.
+  Onset already uses fast (finance: basic, fast is refused), the cheapest. include_answer has no credit cost listed
+  (cost is by depth), but the probe measured +760 ms per call, and the existing TAVILY_ANSWER race is a second,
+  parallel call (+1 credit). Not used: on the same call it would delay the sources by ~0.76 s; it saves at most the
+  model's share (~$0.0002 of ~$0.008 per question). Parity's framing is the same call answered sooner.
+
+**A/B** (Wikipedia lane, EAR=flux, FLUX_SOFT=director, DIRECTOR=on = the demo .env; search cache per run; "paid" =
+calls that would be Tavily credits; $ est.: $0.008/credit + Haiku 5.5 tokens). base = main a3a76fb (separate
+worktree); speed / parity = this branch. Alternating arm order, runs/.run_ab.lock per replay. The machine was shared
+(load 5-58; another agent's A/Bs interleaved), so p50 is the mean of per-run p50s and "gain" is paired within each
+run (BL p50 - HS p50). Raw files: scratchpad cost/*.json (not committed).
+
+| set | arm | runs | HS p50 / p90 | BL p50 / p90 | gain ms | HS acc | BL acc | HS paid/q | BL paid/q | HS $/q | BL $/q | model $/q x1e6 HS / BL | HS waste tok/q | answers with 2 paid |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| showcase (29) | base | 2 | 1220 / 1960 | 1834 / 2642 | 614 | 25/30 | 25/30 | 0.97 | 0.74 | 0.0081 | 0.0061 | 396 / 203 (1.95x)* | 2054 | 14/58 |
+| showcase | speed | 2 | 1172 / 1830 | 1892 / 2554 | 720 | 28/30 | 27/30 | 0.98 | 0.72 | 0.0081 | 0.0060 | 243 / 170 (1.43x)** | 1134** | 16/58 |
+| showcase | **parity** | 2 | 1725 / 3267 | 2335 / 3770 | **610** | 27/30 | 28/30 | **0.78** | **0.78** | **0.0064** | 0.0064 | 189 / 174 (**1.08x**) | 596 | 3/58 |
+| 58 set | base | 2 | 1613 / 2542 | 2165 / 2956 | 552 | 113/116 | 115/116 | 0.59 | 0.28 | 0.0050 | 0.0025 | 320 / 187 (1.71x)* | 1352 | 6/116 |
+| 58 set | speed | 2 | 1480 / 2080 | 2009 / 2760 | 530 | 115/116 | 116/116 | 0.50 | 0.21 | 0.0043 | 0.0018 | 272 / 134 (2.03x)** | 1561** | 6/116 |
+| 58 set | **parity** | 2 | 1402 / 2048 | 1885 / 2708 | **483** | 116/116 | 115/116 | **0.14** | **0.22** | **0.0013** | 0.0019 | 154 / 139 (**1.11x**) | 461 | 0/116 |
+
+p90 = pooled over both runs, except speed (mean of the two runs' p90). \* the base arm has the hedge-loser meter bug (the baseline's waste undercounted). \** speed: one of its two runs predates
+the meter fix, so model $ / waste are from one run; latency, accuracy and paid calls from both. The parity showcase r1
+ran under load 26+ (both modes ~0.6 s slower than r2: HS 2015 / BL 2729 p50); its gain is paired within the run.
+
+Verdict vs the goal:
+- Paid calls: parity <= baseline on both sets (showcase 0.78 = 0.78; 58 set 0.14 vs 0.22: the baseline's own
+  router hedge pays on slow Wikidata lookups, parity waits for the free one). Meaning-change second calls: 3 of 58
+  showcase answers (sc26 "butter" -> "buttermilk pancakes" in both runs, sc11 ASR revision "yolk sauce" -> "yolk
+  soft"), none on the 58 set.
+- Answer-model $: 1.08x (showcase) and 1.11x (58 set) the baseline's, from 1.95x / 1.71x. Half of what is left is
+  hedge losers (HEDGE_MS duplicates on a slow API window, both modes hedge alike); the rest is a superseded soft
+  answer or a draft whose speaker kept talking. Total $ per question: parity <= baseline on both sets.
+- Speed: paired gain 610 ms vs base 614 (showcase, 99 %) and 483 vs 552 (58 set, 87 %). Accuracy unchanged.
+- So COST_MODE defaults to parity. The 58-set model $ is 0.01 over the 1.1x line in both runs; say so if asked.
+  COST_MODE=speed (or the meter's Speed toggle) brings back the earlier budget (~0.2 s more gain on the showcase in
+  some runs, 1.3-2.3x the paid calls).
+
+Tests: tests/test_cost.py (13: presets, parity holds the paid call until the meaning is final / speed fires on settle,
+end-to-end parity <= baseline, meaning change gets one more call, multi-part within the plan cap, correction, no draft
+for a meaning being answered, parity drafts only a final meaning, parity waits for a slow free fact lookup, cached
+system prompt, meter prices cache hits / writes and splits them by answer / waste). tests/conftest.py pins
+COST_MODE=speed for the older speculation tests. Full suite 350 passed (rebased on main 9d06c14).
+Tools: eval/run_ab.py rows carry cost_mode + cache tokens, summaries mean_usd_llm / mean_usd_web, traces keep the
+end-of-turn score (COST_TRACE_EOT=1 emits it per update, eval only).
+Re-check with Keystone on (rebased on main 947eda0, INDEX=1 default; showcase, one paired run, a204e85, load ~50 so
+absolute times are inflated): HS p50 2841 / BL 3392 (paired gain 551 ms), accuracy 13/15 both, paid 0.79 vs 0.83/q,
+$ 0.0065 vs 0.0068/q, answer-model $ 0.89x, waste 468 tok/q, one answer with 2 paid calls (sc26). Keystone's facts
+tier answered sc24 / sc25 free in parity where the baseline paid. Full suite 375: 374 + test_integrate's
+unsure_plan_holds_paid_speculation (timing; passes alone and in test_integrate.py x2 at load 46).

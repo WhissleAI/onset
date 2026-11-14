@@ -249,9 +249,32 @@ async def probe(timeout: float = 8.0) -> dict:
     return {**health(), "probe_ms": round((time.perf_counter() - t) * 1000)}
 
 
+def system_param():
+    """The fixed system prompt, marked for Anthropic prompt caching (COST_CACHE): 727 tokens, above Haiku 5.5's 512-token
+    minimum, identical on every request (drafts, soft and final answers, both modes), so after the first request of a
+    5-minute window it is read from the cache at 0.1x the input price."""
+    if not config.COST_CACHE:
+        return SYSTEM
+    return [{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}]
+
+
+def cache_usage(part: dict) -> tuple:
+    """(cache read, cache write) input tokens of one request (0, 0 when unknown); both are part of request_usage's in."""
+    try:
+        snap = part["s"].current_message_snapshot if part.get("s") is not None else None
+    except Exception:
+        snap = None
+    usage = getattr(snap, "usage", None)
+    if usage is None:
+        return 0, 0
+    return (int(getattr(usage, "cache_read_input_tokens", None) or 0),
+            int(getattr(usage, "cache_creation_input_tokens", None) or 0))
+
+
 def request_usage(part: dict) -> tuple:
     """(input tokens, output tokens, estimated?) of one answer-model request; (None, 0, False) if it never reached the
-    API (failed to connect). Exact when the API's usage arrived; else estimated at 4 characters per token."""
+    API (failed to connect). Exact when the API's usage arrived; else estimated at 4 characters per token. Input
+    includes cached tokens (cache_usage splits them out for pricing)."""
     snap = None
     try:
         snap = part["s"].current_message_snapshot if part.get("s") is not None else None
@@ -332,7 +355,7 @@ class Stream:
         part = {"req": i, "s": None, "chars": 0, "prompt_chars": len(SYSTEM) + len(prompt), "cancelled": False}
         self.usage_parts.append(part)          # meter: every request counts, the winner's and a hedge loser's
         try:
-            async with client().messages.stream(model=config.ANSWER_MODEL, max_tokens=160, system=SYSTEM,
+            async with client().messages.stream(model=config.ANSWER_MODEL, max_tokens=160, system=system_param(),
                                                 **model_opts(config.ANSWER_MODEL),
                                                 messages=[{"role": "user", "content": prompt}]) as s:
                 part["s"] = s
@@ -422,9 +445,15 @@ class Stream:
                 self._finish(err)
         finally:
             won_w.cancel()
-            for t in tasks:
+            for i, t in enumerate(tasks):
                 if not t.done():
                     t.cancel()
+                    for p in self.usage_parts:
+                        if p["req"] == i and p["s"] is None:
+                            # meter: a request on the wire that loses (hedge) may be billed: count it now, not when
+                            # its cancellation lands (a question closed right after its answer missed it: the
+                            # baseline's hedge losers went uncounted)
+                            p["cancelled"] = True
             self._finish()
 
     def _card_answer(self) -> bool:
@@ -493,9 +522,16 @@ class Stream:
             u["in"] += n_in
             u["out"] += n_out
             u["est"] = u["est"] or est
+            cr, cw = cache_usage(p)
+            if cr or cw:                         # prompt caching (COST_CACHE): the in tokens read / written cached
+                u["cache_read"] = u.get("cache_read", 0) + cr
+                u["cache_write"] = u.get("cache_write", 0) + cw
             if p["req"] == self.winner:
                 u["win_in"] += n_in
                 u["win_out"] += n_out
+                if cr or cw:
+                    u["win_cache_read"] = u.get("win_cache_read", 0) + cr
+                    u["win_cache_write"] = u.get("win_cache_write", 0) + cw
         return u
 
     def cancel(self):

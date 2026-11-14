@@ -10,7 +10,7 @@ body.has-meter .side { max-height: calc(100vh - 134px); }
   font-size: 12px; color: var(--ink-2);
 }
 .mt-bar {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 16px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 16px;
   padding: 6px 16px; min-height: 56px; max-width: 1600px; margin: 0 auto;
 }
 .mt-hero { display: flex; flex-direction: column; min-width: 0; }
@@ -40,6 +40,14 @@ body.has-meter .side { max-height: calc(100vh - 134px); }
 .mt-sess b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .mt-sep { margin: 0 5px; color: var(--ink-3); }
 
+.mt-bar.mt-empty { grid-template-columns: minmax(0, 1fr) auto; }
+.mt-mode { display: flex; flex-direction: column; align-items: flex-start; }
+.mt-mode label { line-height: 1.2; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.mt-mode span { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card-2); }
+.mt-mode button { border: 0; background: transparent; padding: 3px 9px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.mt-mode button + button { border-left: 1px solid var(--line); }
+.mt-mode button[aria-pressed="true"] { background: var(--hs); color: var(--card); }
+.mt-mode button:hover:not([aria-pressed="true"]) { color: var(--ink); }
 .mt-more { border: 1px solid var(--line); background: var(--card-2); border-radius: 8px; padding: 5px 11px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
 .mt-more:hover { color: var(--ink); border-color: var(--ink-3); }
 
@@ -66,12 +74,22 @@ body.has-meter .side { max-height: calc(100vh - 134px); }
 
 /* narrower screens: hero + session + button; the per-question row lives in details */
 @media (max-width: 1100px) {
-  .mt-bar { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .mt-bar { grid-template-columns: minmax(0, 1fr) auto auto auto; }
   .mt-q { display: none; }
 }
 @media (max-width: 700px) {
   body.has-meter { padding-bottom: 60px; }
-  .mt-bar { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 6px 16px; }
+  .mt-bar { grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; padding: 6px 16px; }
   .mt-sess { display: none; }
+  .mt-mode label { display: none; }
   .mt-hero b { font-size: 16px; white-space: normal; }
+}
+/* 1100-1400 px: the budget toggle shares the bar; tighter cells so the per-question row and the session never overlap */
+@media (max-width: 1400px) and (min-width: 1101px) {
+  .mt-bar { gap: 10px; }
+  .mt-q th, .mt-q td { padding-left: 4px; padding-right: 4px; }
+  .mt-q th:first-child { max-width: 150px; }
+  .mt-mode label { display: none; }
+  .mt-sess { max-width: 230px; }
+  .mt-sess div { overflow: hidden; text-overflow: ellipsis; }
 }

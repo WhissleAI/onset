@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, confidence, config, director, embed, lanes, meter, narrow, planner, rerank, searchcache, verify
+from . import answer, confidence, config, cost, director, embed, lanes, meter, narrow, planner, rerank, searchcache, verify
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
@@ -96,8 +96,12 @@ def PlanStream(*a, **kw):
 
 
 class Speculator:
-    def __init__(self, emit, mode: str = "headstart", t0: float | None = None, ledger: lanes.Ledger | None = None):
+    def __init__(self, emit, mode: str = "headstart", t0: float | None = None, ledger: lanes.Ledger | None = None,
+                 cost_mode: str | None = None):
         self.emit = emit
+        self.prof = cost.profile(cost_mode)       # COST_MODE: speculation budget (server/cost.py)
+        self.answering: set = set()               # meanings a finalize (soft or final) is answering: no drafts
+        self.eot_seen = False                     # the ear gives an end-of-turn score (Flux / tagger gate)
         self.ledger = ledger if ledger is not None else lanes.Ledger()   # Tavily credits + cache (per session)
         self.budget_noted = False
         self.answer_meter: dict = {}
@@ -204,7 +208,7 @@ class Speculator:
                     self._spec_web(self.last_frame)        # a "hold" waiting for these results can decide now
                 if fire.part is not None:
                     self._plan_emit()
-                if (config.DRAFT_ON_LAND and self.mode == "headstart" and not self.closed and not self.draft_busy
+                if ((config.DRAFT_ON_LAND or self.prof.final_eot is not None) and self.mode == "headstart" and not self.closed and not self.draft_busy
                         and lane in ("web", "local") and self.last_frame is not None
                         and self.last_frame.query() == query and self._conf_ok(self.last_frame)):
                     self._maybe_draft(self.last_frame)     # draft now, not at the next ear update
@@ -532,6 +536,8 @@ class Speculator:
             since = self.part_since.setdefault(text, now)
             settled = (part.closed or (now - since) * 1000 >= config.SPEC_SETTLE_MS
                        or (self.eot_p is not None and self.eot_p >= config.SPEC_EOT_FIRE))
+            if self.prof.final_eot is not None:
+                settled = self._meaning_final(f, now)    # parity: the parts are searched once the question is final
             if settled:
                 self._part_fire(part, text, f, final=False)
         self._plan_emit()
@@ -573,7 +579,7 @@ class Speculator:
 
     def _plan_cap(self) -> int:
         n = len(self.mplan.parts) if self.mplan is not None else 1
-        return config.SPEC_PAID_MAX + config.PLAN_EXTRA_PAID * max(0, n - 1)
+        return self.prof.paid_max + config.PLAN_EXTRA_PAID * max(0, n - 1)
 
     def _part_fire(self, part, text: str, f: Frame, final: bool) -> Fire | None:
         """One search for one part (speculative or final), through the router like any web-lane call."""
@@ -856,6 +862,8 @@ class Speculator:
           - SPEC_LAST_SETTLE_MS for the budget's LAST call, and for a first call with no entity and few words
             ("speed light", "when's best"): it must go to the final meaning (the endpoint searches it anyway);
           - at once when the fused end-of-turn score says the turn is probably over (SPEC_EOT_FIRE; Flux ear)."""
+        if self.prof.final_eot is not None:
+            return self._meaning_final(f)
         if self.last_sig != f.sig:
             return config.SPEC_SETTLE_MS <= 0
         if self.eot_p is not None and self.eot_p >= config.SPEC_EOT_FIRE and (self.eot_src == "fused" or (
@@ -867,17 +875,33 @@ class Speculator:
         if config.SPEC_TAIL_SETTLE_MS > need and k.subject and f.content and \
                 searchcache.stem(f.content[-1]) in k.subject:
             need = config.SPEC_TAIL_SETTLE_MS       # the entity is the last thing said: it may still be growing
-        if config.SPEC_PAID_MAX > 1 and self._paid() >= config.SPEC_PAID_MAX - 1:
+        if self.prof.paid_max > 1 and self._paid() >= self.prof.paid_max - 1:
             need = max(need, config.SPEC_LAST_SETTLE_MS)
         elif not k.subject and len([w for w in k.terms if w not in narrow.GENERIC]) < config.SPEC_NOSUBJ_MIN:
             need = max(need, config.SPEC_LAST_SETTLE_MS)
         return ((now or time.perf_counter()) - self.sig_since) * 1000 >= need
+
+    def _meaning_final(self, f: Frame, now: float | None = None, thr: float | None = None) -> bool:
+        """COST_MODE=parity: are these the question's final words? The end-of-turn score of exactly these words >=
+        COST_PARITY_EOT (drafts: COST_PARITY_DRAFT_EOT); an ear without a turn score: the words held
+        SPEC_LAST_SETTLE_MS."""
+        if self.last_sig != f.sig:
+            return False
+        if self.eot_seen:
+            return self.eot_p is not None and self.eot_p >= (self.prof.final_eot if thr is None else thr)
+        return ((now or time.perf_counter()) - self.sig_since) * 1000 >= config.SPEC_LAST_SETTLE_MS
 
     def on_eot(self, p: float, src: str = "fused"):
         """Session: the end-of-turn score of the current words (Flux ear, FLUX_SOFT=fused: every update; other ears:
         1.0 when the tagger's semantic-endpoint gate is open, src="gate"). A high one lets a meaning that was waiting
         to settle spend its call now, a tick or two before the soft endpoint."""
         self.eot_p, self.eot_src = p, src
+        self.eot_seen = True
+        if config.COST_TRACE_EOT and self.last_frame is not None:
+            self._ev(id="eot", lane="eot", query=self.last_frame.query(), state="eot", ms=self.ms(), p=round(p, 3))
+        if (self.prof.draft_eot is not None and self.mode == "headstart" and not self.closed and not self.draft_busy
+                and self.last_frame is not None and p >= self.prof.draft_eot and self._conf_ok(self.last_frame)):
+            self._maybe_draft(self.last_frame)      # parity: drafts start once the meaning is final
         if (config.SPEC_EFF and self.mode == "headstart" and not self.closed and self.last_frame is not None
                 and p >= config.SPEC_EOT_FIRE):
             if self._plan_step(self.last_frame):
@@ -909,7 +933,7 @@ class Speculator:
         if why == "fire":
             if not self._settled(f, searchcache.qkey(f)):
                 return
-            if self._paid() >= config.SPEC_PAID_MAX or self.web_used >= config.WEB_BUDGET:
+            if self._paid() >= self.prof.paid_max or self.web_used >= config.WEB_BUDGET:
                 self._skip(f, "budget", None)
                 return
             if self._route_hold(f, plan):
@@ -1028,11 +1052,15 @@ class Speculator:
         when the meaning holds is not)."""
         if any(d.meaning_sig == f.meaning_sig for d in self.drafts) or f.meaning_sig in self.uncovered:
             return
+        if config.COST_DRAFT_DEDUP and f.meaning_sig in self.answering:
+            return                                  # an answer for this meaning is already being generated
+        if self.prof.draft_eot is not None and not self._meaning_final(f, thr=self.prof.draft_eot):
+            return                                  # parity: draft only the final meaning (the draft is the answer)
         live = [d for d in self.drafts if not d.stream.done and d.meaning_sig != f.meaning_sig]
         for d in live:
             d.stream.cancel()
             self._ev(id=d.id, lane="draft", query=d.question, state="stale", ms=self.ms(), cancelled=True)
-        if len(self.drafts) >= config.DRAFT_BUDGET:
+        if len(self.drafts) >= self.prof.draft_budget:
             return
         q = f.query()
         mine = [x for x in self.fires if x.query == q and x.lane in ("web", "local")]
@@ -1098,6 +1126,7 @@ class Speculator:
                 self.emit(e)
 
         self._mark_stale(f)                       # the final words can still revise away earlier searches
+        self.answering.add(f.meaning_sig)
         if self.answer_stream is not None:
             self.answer_stream.cancel()           # superseded soft answer
             self.answer_stream = None
@@ -1229,7 +1258,7 @@ class Speculator:
                             and (fplan is None or "web" in fplan)):
                         # every search so far came back empty: search the final question (over the budget if it
                         # must be: the calls that were spent bought nothing to answer from)
-                        if self._paid() >= config.SPEC_PAID_MAX:
+                        if self._paid() >= self.prof.final_max:
                             m["budget_override"] = "empty-pool"
                         m["path"] = (m.get("path") or "") + "+empty-retry"
                         await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True)).task,
@@ -1323,6 +1352,7 @@ class Speculator:
             "done_ms": round((t_done - t_speech_end) * 1000),
             "web_calls": sum(1 for x in self.fires if x.lane in ("web", "final-web")),
             "paid_calls": self._paid(),
+            "cost_mode": self.prof.name,
             "web_skipped": dict(self.skips),
             "search_cached": sum(1 for x in self.fires if x.meter.get("semcache")),
             "search_cached_as_of": min((x.meter["as_of"] for x in self.fires if x.meter.get("semcache")), default=None),
@@ -1369,7 +1399,7 @@ class Speculator:
         if cov.ok and (related or cov.sim >= config.SPEC_COVER_SIM_ANY):
             m["path"] = "pool-reuse"
             return None
-        if self._paid() >= config.SPEC_PAID_MAX:
+        if self._paid() >= self.prof.final_max:
             if self.rank(qvec, 1):
                 m["path"] = "budget-pool"        # hard cap: answer from what was fetched
                 return None
@@ -1390,7 +1420,7 @@ class Speculator:
         tasks = [x.task for x in fires if x.task and not x.task.done()]
         if not tasks:
             return
-        hedge = config.ROUTER_FACTS_HEDGE_MS
+        hedge = config.ROUTER_FACTS_HEDGE_MS if self.prof.final_eot is None else config.COST_PARITY_FACTS_HEDGE_MS
         if hedge is None or hedge < 0:
             await asyncio.wait(tasks, timeout=config.PENDING_CAP_S)
             return
