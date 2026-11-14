@@ -1228,26 +1228,48 @@ LOOP_KEEP_EXACT=1 (opt-in) lets an all-sure Arc mention change, but only to a co
 
 **Live (paired, parity, WEB_BACKEND=wikipedia, VERIFY_RESEARCH=1 both arms):**
 
-| candidates | fixes | right | wrong name | changed a correctly heard name | precision | recall (all misheard names) | recall (name in index + reachable) |
+| set | arm | p50 ready | p90 | accuracy | paid / q | answer + web $ / q | rewrites in the final frame |
 |---|---|---|---|---|---|---|---|
-| leads index | 4 | 3 | 1 | 0 | 0.75 | 3 / 1,676 (0.2 %) | 3 / 58 |
-| speculative results only | 2 | 0 | 2 | 0 | 0 | 0 | 0 |
-| results + leads (default sources) | 6 | 3 | 3 | **0** | 0.50 | 3 / 1,676 | 3 / 58 |
-| + LOOP_KEEP_EXACT (opt-in) | 8 | 3 | 4 | 1 | 0.38 | 3 / 1,676 | 3 / 58 |
+| showcase (30 pairs) | on | 2532 | 4056 | 0.933 | 0.80 | 0.00658 | 0 |
+| | off | 2702 | 3775 | 0.867 | 0.77 | 0.00630 | — |
+| multi-part (26 pairs) | on | 1636 | 2561 | 0.846 | 1.04 | 0.00854 | 0 |
+| | off | 1530 | 2014 | 0.885 | 0.73 | 0.00606 | — |
+| arcvalue corrections (33 pairs; false-correction check) | on | 2563 | — | 0.97 | 0.70 | — | 0 |
+| | off | 2469 | — | 0.97 | 0.73 | — | — |
 
-Examples:
-- Right: "rush hashanah" → Rosh Hashanah, "aaron rogers" → Aaron Rodgers, "la pas" → La Paz.
-- Wrong name: "b c" → BBC (said "BECE"), "don ewing" → John Ewing (said "Don Mueang").
-- "america" → Americas (said something else). The plural-only rule added after this run now blocks it; not re-run._LIVE
+- **No rewrites on any of the three sets:** their names are heard right.
+- **The showcase / multi-part differences are run order, not the feature.**
+  - The runs are paired with alternating order and Keystone on in-process, so whichever arm runs a question first pays for the cold store.
+  - Multi-part first runs pay 1.15 / 1.23 per question, second runs 0.31 / 0.85.
+  - The showcase accuracy split is answer variance (sc11: both arms queried "long boil egg yolk soft").
+- **Corrections set (paired p50 delta −18 ms):** 0 rewrites, so no false correction on 33 self-corrections; accuracy is equal.
+- **cx11** ("boiling point … no weight … freezing point") is right in both arms. The cue was detected already. The frame fix in this branch makes "boiling", not "water", the corrected word (see docs/ARC_INTEGRATION.md).
+
+Conversations (21, 34 scored turns, headstart, parity; one run per arm, unpaired, so absolute times move with machine load):
+
+| arm | p50 ready | p90 | correct | paid / q | rewrites seen (live heard_fix events) |
+|---|---|---|---|---|---|
+| LOOP_ASR_FIX off | 1616 | 2633 | 32 / 34 | 0.14 | — |
+| on (before the sticky fix) | 1462 | 2162 | 31 / 34 | 0.06 | conv07 "amt" → AMD (Keystone). conv21 "mari guerre" / "mari gure" → Marie Curie (leads, mid-speech); "mari guri" → Marie Curie (after the answer) |
+| on (sticky fix) | 1501 | 1874 | 32 / 34 | 0.08 | same + "mari guri" → Marie Curie ("heard-earlier") |
+| on + LOOP_KEEP_EXACT | 1387 | 2188 | 31 / 34 | 0.08 | conv21 as above. **False:** conv11 "penicillin" → Penicillium (answer; the shared-prefix rule now blocks it) |
+
+- **Per-turn accuracy differences are answer variance, in conversations with no rewrite.** Examples: conv08 turn 3 (Germany), and conv21 turn 1 in the KEEP_EXACT run, which answered about the manga "Love Tyrant" in that run only.
+- **conv21 turn 3 is wrong in every arm** ("where was she born" → Pierre).
+  - The loop works: the name is re-resolved mid-speech, kept when Flux settles on "mari guri", and re-resolved after the answer.
+  - Two other things still lose it. First, the soft endpoint answered the "mari guri" frame before the sticky fix. Second, memory resolved "her husband" to the answer's "Nobel Prize" (a thing), because the fixed slot kept Arc's non-person type.
+  - Fix after the runs: the slot now takes the name's own kind ("Marie Curie" → person). Not re-run.
+- **conv15 "one other move deremy"** is a whole-phrase mishearing (not a name), so out of scope.
 
 Default: **LOOP_ASR_FIX=0**.
 - Offline it never changed a correctly heard name, but it fixed only 3 of 1,676 misheard names.
 - Live it fired only in two conversations, with no accuracy gain yet.
-- The multi-part A/B is inconclusive: it is order-confounded, with 0 fixes and +0.31 paid / q in the on arm.
+- The multi-part A/B is inconclusive: it is order-confounded, with 0 rewrites and +0.31 paid / q in the on arm.
+- The corrections check found 0 rewrites, so 0 false corrections.
 - The rule was "default on only with no p50 / accuracy / cost regression", and this A/B cannot show that.
 - LOOP_KEEP_EXACT=0.
 
-### Phase 2: verify-triggered re-search (VERIFY_RESEARCH, default OFF)
+### Phase 2: verify-triggered re-search (VERIFY_RESEARCH, default ON, free lanes only)
 `server/recheck.py`:
 - **Trigger:** after the metric (it never delays the first token). A "disagree" / "unverified" / "partial" badge gets one targeted lookup on its key claim: the disputed one, else the first unsupported year / number, else a real multi-word name.
 - **Lanes, in order:**
@@ -1274,4 +1296,9 @@ Text-path measure (`eval/recheck_eval.py`, real answer model, untimed; multi-par
 
 Default: **VERIFY_RESEARCH=1** (free lanes only). It runs after the metric, so it cannot move ready / done, and it adds no paid call; tests keep it off unless they opt in. VERIFY_RESEARCH_PAID stays 0.
 
-Tests: tests/test_loop.py (25), tests/test_recheck.py (9). Full suite 409 passed (rebased on main 3406485). Screenshots: scratchpad feature_shots/loop/
+Tests: tests/test_loop.py (26), tests/test_recheck.py (9). Full suite 423 passed (rebased on main a99ef81).
+
+Screenshots (scratchpad feature_shots/loop/, 1280×720, light + dark, no horizontal scroll in the final runs):
+- The re-check badge is next to verify: "unverified · still unconfirmed" on conv21 turn 3, "✓ matches 1 source" on mp_03.
+- The "heard 'x' → Y" badge is not captured. In 8 browser replays of conv21 Flux never produced the unsure "mari gure" partial that the run_conv replays did, so there was no rewrite to show. The rewrites are in runs/conv_loop_on*_events.json (heard_fix events).
+- Console: only 404s for audio files served from my ad-hoc replay folder.
