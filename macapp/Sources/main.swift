@@ -3,7 +3,8 @@ import SwiftUI
 import WebKit
 
 /// The native shell: one window around the same web UI, served by the bundled local server.
-final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate,
+                         WKScriptMessageHandler {
     let server = ServerManager()
     let splash = SplashModel()
     var window: NSWindow!
@@ -44,6 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let cfg = WKWebViewConfiguration()
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        // page -> app bridge (window.webkit.messageHandlers.onset): {t: "settings"} from the notice line,
+        // {t: "savePNG", name, data: "data:image/png;base64,..."} from the Results view's "Save as image"
+        cfg.userContentController.add(self, name: "onset")
         web = WKWebView(frame: .zero, configuration: cfg)
         web.uiDelegate = self
         web.navigationDelegate = self
@@ -162,6 +166,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let a = NSAlert(); a.messageText = AppInfo.name; a.informativeText = message
         a.addButton(withTitle: "OK"); a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: window) { r in completionHandler(r == .alertFirstButtonReturn) }
+    }
+
+    // MARK: page bridge
+
+    func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "onset", isOurs(message.frameInfo.securityOrigin),
+              let body = message.body as? [String: Any], let t = body["t"] as? String else { return }
+        switch t {
+        case "settings":
+            showSettings()
+        case "savePNG":
+            guard let s = body["data"] as? String, let comma = s.firstIndex(of: ","), s.hasPrefix("data:image/png;base64"),
+                  let png = Data(base64Encoded: String(s[s.index(after: comma)...])) else { return }
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = (body["name"] as? String).map { ($0 as NSString).lastPathComponent } ?? "Onset results.png"
+            panel.allowedContentTypes = [.png]
+            panel.beginSheetModal(for: window) { r in
+                guard r == .OK, let url = panel.url else { return }
+                try? png.write(to: url)
+            }
+        default:
+            break
+        }
     }
 
     // MARK: menu actions

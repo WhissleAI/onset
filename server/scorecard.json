@@ -1,0 +1,42 @@
+{
+  "title": "Onset: measured results",
+  "subtitle": "The six problems the organizers named, each with one number we measured",
+  "lane_note": "Replays of recorded spoken questions, free Wikipedia lane standing in for paid web search; \"paid\" counts calls that would be Tavily credits.",
+  "headline": [
+    {"id": "speed", "big": "0.61 s", "label": "sooner answers", "detail": "at the same paid searches as plain search (0.78/q)",
+     "source": {"doc": "PROGRESS.md", "section": "Cost parity", "date": "2026-11-13", "quote": "| **610** | 27/30 | 28/30 | **0.78** | **0.78** |",
+                "note": "showcase set, 2 paired runs, Parity budget (the default)"}},
+    {"id": "keystone", "big": "0.369", "label": "paid searches per question", "detail": "vs 0.464 with a plain search cache, same answer quality",
+     "source": {"doc": "docs/RETRIEVAL.md", "section": "4. Workload evaluation", "date": "2026-11-14", "quote": "| **(f) + VOI gate (θ 0.95 from dev)** | **0.369** |",
+                "note": "text-level workload stream; the plain cache row: \"today: search cache | 0.464\""}},
+    {"id": "warm", "big": "0.64 → 0.36", "label": "paid per question as Keystone warms", "detail": "58-question spoken set, 58/58 correct",
+     "source": {"doc": "docs/RETRIEVAL.md", "section": "7. Real-audio A/B", "date": "2026-11-14", "quote": "**0.64 → 0.36 paid/q (round 3)**",
+                "note": "real-audio replay, Keystone off vs warm (round 3)"}}
+  ],
+  "problems": [
+    {"n": "01", "problem": "Too much information", "answer": "Open mic answers what is asked, not every word in the room",
+     "big": "86.8%", "unit": "of turns handled right", "vs": "49.1% without Arc's understanding",
+     "source": {"doc": "docs/ARC_VALUE.md", "section": "5. Open mic", "date": "2026-11-14", "quote": "| turns handled right | 67.6% | **86.8%** | 89.3% |",
+                "note": "521 test turns (text, Flux turns); Arc-off 49.1% in the Headline table"}},
+    {"n": "02", "problem": "Fragmented context", "answer": "A multi-part question is planned, searched part by part, then answered once",
+     "big": "22/26", "unit": "multi-part questions fully right", "vs": "13/26 without Arc",
+     "source": {"doc": "docs/ARC_VALUE.md", "section": "4. Multi-part", "date": "2026-11-14", "quote": "| whole question right | **22/26** | 20/26 | 13/26 |",
+                "note": "26 spoken questions; plain search 20/26"}},
+    {"n": "03", "problem": "Expensive at scale", "answer": "Free lanes first (cards, facts, saved answers), one paid search when needed",
+     "big": "0.369", "unit": "paid searches per question", "vs": "0.464 with a plain search cache",
+     "source": {"doc": "docs/RETRIEVAL.md", "section": "4. Workload evaluation", "date": "2026-11-14", "quote": "| **(f) + VOI gate (θ 0.95 from dev)** | **0.369** |",
+                "note": "Keystone + value-of-information gate; the plain cache row: \"(a) today: search cache | 0.464\""}},
+    {"n": "04", "problem": "Weak personalization", "answer": "Hears what you meant: \"no, I mean...\" changes the search",
+     "big": "65/66", "unit": "self-corrections answered right", "vs": "59/66 without Arc · 0.61 vs 0.98 paid per question",
+     "source": {"doc": "docs/ARC_VALUE.md", "section": "11. Onset under Parity", "date": "2026-11-14", "quote": "| corrections: accuracy | 64/66 | **65/66** | 59/66 |",
+                "note": "33 questions × 2 reps; paid row: \"corrections: paid calls / q | 1.39 | **0.61** | 0.98\""}},
+    {"n": "05", "problem": "Limited memory", "answer": "Remembers the conversation: \"and how tall is he?\" just works",
+     "big": "32/34", "unit": "follow-up questions right", "vs": "2/34 without Arc's memory",
+     "source": {"doc": "docs/ARC_VALUE.md", "section": "3. Follow-ups", "date": "2026-11-14", "quote": "| follow-ups right | **32/34 (94%)** | 32/34 | **2/34 (6%)** |",
+                "note": "21 spoken conversations, 34 follow-up turns"}},
+    {"n": "06", "problem": "Low performance", "answer": "A router picks the right source: live-data card, facts, saved answer or web",
+     "big": "16/16", "unit": "live-data questions right", "vs": "5/16 from a web page",
+     "source": {"doc": "docs/ARC_VALUE.md", "section": "11. Onset under Parity", "date": "2026-11-14", "quote": "| live data (with the section-10 router fix) | 13/16 | **16/16** | 5/16 |",
+                "note": "weather, exchange rates, clock, units vs ground truth; 15 of 16 by a card"}}
+  ]
+}

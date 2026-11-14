@@ -184,25 +184,59 @@
     if (wsOpen && !warm) { cls = "cold"; txt = "warming models…"; }
     else if (wsOpen) {
       cls = "warm";
-      txt = "ready" + (health ? ` · ${health.web_backend} · ${String(health.answer_model || "").replace(/^claude-/, "")}` : "");
+      txt = "ready";
     }
     const deg = (health && health.degraded) || {};
-    if (wsOpen && warm && Object.keys(deg).length) { cls = "degraded"; txt = "ready · degraded"; }
+    if (wsOpen && warm && Object.keys(deg).length) { cls = "degraded"; txt = "ready · limited"; }
     s.className = "status " + cls;
-    s.title = txt;
+    // the details stay one hover away: which ear, web lane and answer model this server runs
+    s.title = txt + (health && wsOpen ? ` · ear: ${health.ear || "?"} · web: ${health.web_backend || "?"} · answers: ${String(health.answer_model || "?").replace(/^claude-/, "")}` : "");
     s.querySelector("b").textContent = txt;
     paintDegraded(deg);
+    paintEarLabel();
   }
-  // Honesty banner: anything served from a fallback (recorded web cache, extractive answers) is labelled, never live.
+  // the pipeline strip names the ear this server runs (Flux + Arc metadata, or Arc alone)
+  function paintEarLabel() {
+    if (!health || !health.ear) return;
+    const lab = health.ear === "flux" ? "Flux + Arc · live words" : health.ear === "arc" ? "Arc · live words" : `${health.ear} + Arc · live words`;
+    const li = document.querySelector('#pipe li[data-st="ear"]');
+    if (!li || PIPE_IDLE.ear === lab) return;
+    const sm = li.querySelector("small");
+    if (!li.classList.contains("on") && (PIPE_IDLE.ear == null || sm.textContent === PIPE_IDLE.ear)) sm.textContent = lab;
+    PIPE_IDLE.ear = lab;
+  }
+  // Notices (server/notices.py): one plain line per thing that is actually wrong, each with what to do; hidden when all
+  // is well. In the Mac app "Open Settings" opens its native Settings window (window.webkit.messageHandlers.onset);
+  // on the web demo the line says where to set it instead. Anything served from a fallback stays labelled.
+  const nativeBridge = () => (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.onset) || null;
+  function noticesOf(deg) {
+    if (health && Array.isArray(health.notices)) return health.notices;
+    const out = [];                                            // an older server: only the degraded dict
+    if (deg.answer) out.push({ id: "answer-down", text: "Answer service unreachable · showing the best source sentence" });
+    if (deg.web) out.push({ id: "web-down", text: "Live web unavailable · using saved results" });
+    return out;
+  }
   function paintDegraded(deg) {
     const b = $("#degraded");
     if (!b) return;
-    const parts = [];
-    if (deg.web) parts.push(`<b>Web:</b> ${esc(deg.web)}` + (health && health.web && health.web.cache_recorded ? ` <span class="muted">(recorded ${esc(String(health.web.cache_recorded).replace("T", " "))})</span>` : ""));
-    if (deg.answer) parts.push(`<b>Answers:</b> ${esc(deg.answer)}`);
-    b.hidden = !parts.length;
-    b.innerHTML = parts.length ? `<span class="dg-tag">Degraded mode</span>` + parts.map((p) => `<span>${p}</span>`).join("") : "";
+    const list = wsOpen && warm ? noticesOf(deg) : [];
+    const sig = JSON.stringify(list.map((n) => n.id + n.text)) + !!nativeBridge();
+    if (b._sig === sig) return;
+    b._sig = sig;
+    b.hidden = !list.length;
+    b.innerHTML = list.map((n) => {
+      let act = "";
+      if (n.action === "settings" && nativeBridge()) act = `<button type="button" class="nt-act" data-act="settings">${esc(n.action_label || "Open Settings")}</button>`;
+      else if (n.hint) act = `<span class="nt-hint">${esc(n.hint)}</span>`;
+      return `<span class="nt" data-id="${esc(n.id || "")}"><i aria-hidden="true"></i><b>${esc(n.text)}</b>${act ? " · " + act : ""}</span>`;
+    }).join("");
   }
+  $("#degraded").addEventListener("click", (e) => {
+    const a = e.target.closest("[data-act]");
+    if (!a) return;
+    const nb = nativeBridge();
+    if (a.dataset.act === "settings" && nb) { try { nb.postMessage({ t: "settings" }); } catch { toast("Open Settings from the app menu (⌘,)", true); } }
+  });
   async function pollHealth() {
     try {
       const r = await fetch("/api/health", { cache: "no-store" });
@@ -223,7 +257,8 @@
     if (e.mode === "sys") {
       if (e.t === "ready") {
         if (e.warm !== undefined) warm = !!e.warm;
-        if (e.degraded) health = { ...(health || {}), web: e.web, answer: e.answer, degraded: e.degraded, web_backend: e.web_backend };
+        if (e.degraded) health = { ...(health || {}), web: e.web, answer: e.answer, degraded: e.degraded, web_backend: e.web_backend,
+          ...(e.notices ? { notices: e.notices } : {}), ...(e.ear ? { ear: e.ear } : {}) };
         paintStatus();
       }
       else if (e.t === "error") toast(e.error || "server error", true);
@@ -322,6 +357,7 @@
         if (e.part) f.part = e.part;                  // planner: the sub-question this search is for
         if (e.tier) f.tier = e.tier;
         if (e.reason) f.reason = e.reason;            // router: which tier served this web-lane call (card | facts | web | wait)
+        liveRoute(q, mode, e);
         if ((e.state === "done" || e.state === "stale" || e.revived) && e.took != null) { const d = HSResults.specDocs(e); if (d) f.docs = d; }
         pipeSpec(q, e);
         if (e.state === "fired") { f.t0 = e.ms; renderResults(mode); break; }
@@ -554,6 +590,8 @@
       p.classList.toggle("off", !!run && !run.modes.includes(m));
       p.classList.remove("winner");
       for (const k of ["answer", "stats", "sources", "path", "delta"]) { const n = p.querySelector(`[data-k="${k}"]`); n.innerHTML = ""; n.className = n.className.replace(/ ?(p-\S+|slow|err)/g, ""); }
+      const rc = p.querySelector('[data-k="route"]');
+      if (rc) { rc.textContent = ""; rc.className = "route-chip"; rc.removeAttribute("title"); }
       p.querySelector('[data-k="delta"]').className = "delta";
       for (const k of ["rq", "res"]) { const n = p.querySelector(`[data-k="${k}"]`); n.innerHTML = ""; n._sig = null; n._h = null; }
       p.querySelector('[data-k="big"]').textContent = "—";
@@ -717,6 +755,57 @@
   // (Wikidata / local Wikipedia leads / Wiktionary), web = the paid search. Honesty: every card names its source and
   // the time its data is "as of"; nothing computed or cached is presented as a live search.
   const LANE_NAME = { card: "live data", facts: "local facts", web: "web", index: "local index hit · 0 paid" };
+
+  // ------------------------------------------------------------------ route chip: which way this question went
+  // card = live-data card (free API) · facts = Wikidata / local facts · saved = a saved answer or search (Keystone,
+  // search cache, recorded results) · web = a paid web search · wait = paid search held until the meaning is final ·
+  // local = your local documents · memory = answered from the conversation. Live while you speak (the latest web-lane
+  // search), final once the answer's sources are known.
+  const ROUTE_TIP = {
+    card: "Live-data card from a free API · no paid search",
+    facts: "Facts lookup (Wikidata / local facts) · no paid search",
+    saved: "A saved answer or search (Keystone, search cache) · no paid search",
+    web: "Paid web search",
+    wait: "Holding the paid search until you finish the question",
+    local: "Your local documents · no paid search",
+    memory: "Answered from the conversation · no search",
+  };
+  function routeOfTier(tier, m) {
+    if (tier === "index") return "saved";
+    if (tier === "card" || tier === "facts" || tier === "wait") return tier;
+    if (m && (m.semcache || m.cached || m.replayed)) return "saved";
+    return tier === "web" ? "web" : null;
+  }
+  function liveRoute(q, mode, e) {
+    if (!/web$/.test(String(e.lane || "")) || !["done", "skipped"].includes(e.state)) return;
+    const r = routeOfTier(e.tier || (e.state === "done" ? "web" : null), e);
+    if (!r) return;
+    q.route = q.route || {};
+    if (q.route[mode] && !q.route[mode].live) return;        // the answer's route is final
+    q.route[mode] = { r, live: true };
+    if (run && q === run.q) paintRoute(mode);
+  }
+  function finalRoute(mode) {
+    const m = run.q.metric[mode];
+    if (!m) return null;
+    if (m.answer_by === "memory") return "memory";
+    if (m.answer_by === "card") return "card";
+    const L = laneOf(mode);
+    if (!L) return null;
+    if (L.tier === "local") return "local";
+    if (L.tier === "web") return L.d.cached ? "saved" : (paidOfMetric(m) ? "web" : "saved");
+    return routeOfTier(L.tier, null) || L.tier;
+  }
+  const paidOfMetric = (m) => m.paid_calls ?? m.web_paid ?? m.web_calls ?? 0;
+  function paintRoute(mode) {
+    const box = pk(mode, "route");
+    if (!box) return;
+    const R = run && run.q.route && run.q.route[mode];
+    if (!R) { box.textContent = ""; box.className = "route-chip"; box.removeAttribute("title"); return; }
+    box.textContent = R.r;
+    box.className = `route-chip rt-${R.r}${R.live ? " live" : ""}`;
+    box.title = (R.live ? "So far: " : "Route: ") + (ROUTE_TIP[R.r] || R.r);
+  }
   function laneOf(mode) {
     const q = run.q, docs = q.sources[mode] || [], m = q.metric[mode];
     if (!docs.length) return null;
@@ -790,6 +879,10 @@
 
   function renderMetric(mode) {
     const q = run.q, m = q.metric[mode];
+    q.route = q.route || {};
+    const fr = finalRoute(mode);
+    if (fr) q.route[mode] = { r: fr, live: false };
+    paintRoute(mode);
     const path = pk(mode, "path");
     path.textContent = m.path || "";
     path.className = "path" + (m.path ? " p-" + m.path : "");
@@ -1551,8 +1644,11 @@
     let d;
     try { d = await (await fetch("/api/results", { cache: "no-store" })).json(); } catch { d = null; }
     const R = normResults(d);
-    if (!R) { body.innerHTML = '<p class="muted">No results yet. The eval harness writes <code>runs/ab_latest.json</code>.</p>'; $("#resSub").textContent = ""; return; }
-    $("#resSub").textContent = R.pairs.length ? `${R.pairs.length} questions · ready ms after the speaker stopped` : "";
+    if (!R) { body.innerHTML = '<p class="muted">No A/B run on this machine yet. The measured results are under <b>Results</b> in the top bar.</p>'; $("#resSub").textContent = ""; return; }
+    const pv = (d && d.provenance) || {};
+    const when = pv.created ? String(pv.created).slice(0, 10) : "";
+    $("#resSub").textContent = [R.pairs.length ? `${R.pairs.length} questions` : "", when ? `run ${when}` : "", pv.web_backend ? `web: ${pv.web_backend}` : "",
+      pv.cost_mode ? `budget: ${pv.cost_mode}` : (pv.created ? "before the Parity budget" : "")].filter(Boolean).join(" · ");
     const tile = (lab, v, cls = "", extra = "") => `<div class="tile ${cls}"><label>${lab}</label><div class="v">${v == null ? "—" : fmtS(v)}${extra}</div></div>`;
     // the saving is the PAIRED median (median over questions of baseline − head start), not p50(BL) − p50(HS)
     const P = R.raw && R.raw.paired && typeof R.raw.paired === "object" ? R.raw.paired : {};
@@ -1563,7 +1659,8 @@
     if (fasterN != null && fasterN > 0 && fasterN <= 1 && nPair > 1) fasterN = Math.round(fasterN * nPair);   // a rate
     if (fasterN == null && both.length) fasterN = both.filter((r) => r.h < r.b).length;
     const fasterTxt = fasterN != null && nPair ? ` <small>faster on ${fasterN}/${nPair}</small>` : "";
-    let html = `<div class="res-tiles">${tile("Onset p50", R.hs50, "hs")}${tile("Baseline p50", R.bl50)}${tile("median saving per question", saved, "hs", fasterTxt)}${tile("p90 HS / BL", R.hs90, "", ` <small>/ ${fmtS(R.bl90)}</small>`)}</div>`;
+    let html = pv.created && !pv.current ? `<p class="res-old">Older run (${esc(when)}${pv.web_backend ? ", " + esc(pv.web_backend) : ""}${pv.cost_mode ? ", " + esc(pv.cost_mode) : ", before the Parity budget"}), not this server's settings. Current measured numbers: <b>Results</b> in the top bar.</p>` : "";
+    html += `<div class="res-tiles">${tile("Onset p50", R.hs50, "hs")}${tile("Baseline p50", R.bl50)}${tile("median saving per question", saved, "hs", fasterTxt)}${tile("p90 HS / BL", R.hs90, "", ` <small>/ ${fmtS(R.bl90)}</small>`)}</div>`;
     const acc = (m) => num(R.summary[m]?.accuracy);
     if (acc("headstart") != null || acc("baseline") != null) {
       const a = (v) => (v == null ? "—" : Math.round(v * 100) + "%");
@@ -1575,7 +1672,6 @@
     }
     if (window.HSMeter) { try { html += window.HSMeter.evalSummary(R.raw); } catch (err) { console.error("meter", err); } }
     if (R.pairs.length) html += chart(R.pairs);
-    else html += `<details><summary class="muted">raw ab_latest.json</summary><pre class="raw">${esc(JSON.stringify(R.raw, null, 2).slice(0, 6000))}</pre></details>`;
     body.innerHTML = html;
   }
 

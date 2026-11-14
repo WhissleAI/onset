@@ -1433,3 +1433,39 @@ Read-only audit of main 411a69f against the organizers' 6 problems, 9 tracks and
   WEB_BACKEND, so the Wikipedia-lane A/Bs don't run the demo's Tavily knobs.
 - Designs (not built): /extract as the verify escalation, /map for site-shaped questions (background, Wikidata P856),
   /crawl → Keystone "site brain"; no TTS exists yet (spoken answer + barge-in proposed).
+
+## Results view + plain notices + route chip (branch feat/results; web/scorecard.js, server/scorecard.py, server/notices.py)
+- **Results button** (top bar) opens a full-window slide over the app (web + the Mac app's WKWebView; no external
+  libraries): the organizers' six problems with one measured number each, three headline numbers, and "This session"
+  from the live cost meter (questions, paid searches, est. $, $ per 100 questions and median time to answer, Onset vs
+  plain search; $ labelled est., the Wikipedia lane priced as Tavily searches). Esc / Close returns, Tab stays inside,
+  focus returns to the button, Space / 1-9 / D don't reach the page while it is open. "Save as image" draws the same
+  slide on a canvas (1920x1080 PNG, current theme): a download in a browser, a save panel in the Mac app.
+- **Data, not prose:** `server/scorecard.json` (tracked, numbers only, bundled with the app) -> `GET /api/scorecard`
+  (+ the server's budget / web lane / Keystone). Every number carries its doc, section and date (footnote + tooltip),
+  and `tests/test_results_view.py` checks each one against a verbatim quote from that doc, so the slide can't drift:
+  follow-ups 32/34 vs 2/34 Arc-off; multi-part 22/26 vs 13/26; live data 16/16 vs 5/16; corrections 65/66 at 0.61
+  paid/q vs 59/66 at 0.98; open mic 86.8% (49.1% Arc-off); Keystone 0.369 vs 0.464 paid/q; warm 0.64 -> 0.36;
+  Parity 0.61 s sooner at 0.78 = 0.78 paid/q (showcase).
+- The race toggle "Answer | Results" is now **"Answer | Sources"** (it switches the race between answers and search
+  results; the new Results is the scorecard).
+- **`/api/results`** (the details-mode A/B card, runs/ab_latest.json, untracked) now carries provenance (date, web
+  backend, budget; `current` = this server's settings) and no config block (it held machine paths); an older run is
+  labelled "Older run (2026-11-12, tavily, before the Parity budget), not this server's settings". Empty state is
+  product copy pointing to Results.
+- **Notices** replace the "Degraded mode" banner: `server/notices.py` builds plain one-liners from the same health,
+  shown only when something is wrong (`notices` in /api/health and the ready event; `degraded` stays for preflight):
+  "Add an Anthropic key for full answers · Open Settings" (no key, or a 401 / auth error; in the Mac app the link opens
+  the native Settings window via a new `window.webkit.messageHandlers.onset` bridge, on the web it says "set
+  ANTHROPIC_API_KEY in .env, then restart the server"), "Answer service unreachable · showing the best source sentence",
+  "Live web unavailable · using saved results", "Live web off · using saved results" (WEB_BACKEND=cache). Status pill:
+  "ready" (details on hover: ear, web lane, answer model), "ready · limited" when a notice is up.
+- **Route chip** in each pane head, visible in the default (minimal) view: card / facts / saved / web / wait (+ local,
+  memory). Dashed while you speak (the latest web-lane search's tier, from the spec events), solid once the answer's
+  sources are known. Race was already the default mode (unless the viewer picked another, kept in localStorage).
+- Header copy: tagline "Free lookups start while you speak." (paid web waits for the end of the turn under Parity);
+  pipeline strip "Flux + Arc · live words" (from /api/health: Arc alone when EAR=arc), "free lookups mid-sentence",
+  "Router: card · facts · saved · web". The meter's Speed | Parity toggle now shows the server's default once prices
+  load (it showed Speed until the first render after a run).
+- Tests: tests/test_results_view.py (21); full suite 499 passed. Shots (1280x720, light + dark, no console errors, no horizontal scroll):
+  scratchpad feature_shots/results/.

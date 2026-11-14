@@ -103,8 +103,10 @@ def degraded() -> dict:
 
 
 def status_payload() -> dict:
-    return {**STATE, **ear.describe(), "web_backend": config.WEB_BACKEND, "web": lanes.web_health(),
-            "answer": answer.health(), "degraded": degraded()}
+    from . import notices
+    w, a = lanes.web_health(), answer.health()
+    return {**STATE, **ear.describe(), "web_backend": config.WEB_BACKEND, "web": w,
+            "answer": a, "degraded": degraded(), "notices": notices.build(w, a)}
 
 
 @app.get("/api/health")
@@ -139,8 +141,18 @@ async def conversations():
 
 @app.get("/api/results")
 async def results():
-    p = ROOT / "runs" / "ab_latest.json"
-    return JSONResponse(json.loads(p.read_text()) if p.exists() else {})
+    """The last local eval A/B (runs/ab_latest.json, untracked: absent in the app and a fresh clone). Served with its
+    provenance (date, web backend, budget) and without its config block (it holds machine paths)."""
+    from . import scorecard
+    return JSONResponse(scorecard.ab_latest(ROOT / "runs" / "ab_latest.json"))
+
+
+@app.get("/api/scorecard")
+async def scorecard_():
+    """The Results view: the organizers' six problems, one measured number each (server/scorecard.json, tracked, with
+    the doc + section each number comes from), plus what this server runs now (budget, web lane)."""
+    from . import scorecard
+    return JSONResponse(scorecard.payload())
 
 
 @app.get("/api/meter")

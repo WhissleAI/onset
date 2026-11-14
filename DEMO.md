@@ -15,9 +15,12 @@ Warm-up takes ~40 s; check the header shows ready. Have the replay list ready in
 4. **Moments search (30 s).** Switch to Local moments, replay local_05: *"In the hearing, where was the gun found?"*
    The audio lane fires on the raw sound of the question (EmbeddingGemma 2 puts speech and text in one space) and
    the answer cites the moment with its timestamp.
-5. **Evidence (30 s).** Results panel: real-audio A/B over 58 spoken questions (13 voices; factoids, fillers,
-   corrections, 20 local moments; runs/ab_full5.json): p50 1.16 vs 1.54 s, p90 1.76 vs 2.13 s, faster on 44/58
-   (median 348 ms saved), accuracy 96.6 % in both modes, web calls 2.38 vs 0.66 per question.
+5. **Evidence (30 s).** Click **Results** in the top bar (Esc returns): the organizers' six problems with one
+   measured number each (follow-ups 32/34 vs 2/34 without Arc, live data 16/16 vs 5/16, ...), the headline (0.61 s
+   sooner at the same paid searches as plain search under Parity; Keystone 0.369 vs 0.464 paid per question), and this
+   session's own meter (questions, paid searches, est. $, $ per 100 questions, median time to answer, vs plain search).
+   Hover a footnote for the doc and date behind a number; "Save as image" gives the slide as a PNG. (An older A/B,
+   runs/ab_full5.json, pre-Parity: p50 1.16 vs 1.54 s, faster on 44/58, but 2.38 vs 0.66 web calls per question.)
    At 20 dB room babble Onset is still faster on 35/48 (440 ms saved; runs/robustness.md). "Same ASR, same search, same
    reranker, same answer model; the only difference is when we start."
 
@@ -25,4 +28,4 @@ Lines for judges: "10-million-parameter tagger in C, ~1 ms per word, on the lapt
 "Speculation is budgeted (≤6 web calls per question) and every miss is shown on the timeline."
 Backup: if Wi-Fi fails, local-moments questions still work (retrieval is on the laptop); the web lane serves the
 recorded cache (`runs/web_cache.json`) and, without the answer model, answers are extracted from the top source. Both
-are labelled in the UI (yellow "Degraded mode" banner). `./run_demo.sh --offline` starts in cached-web mode.
+are labelled in the UI (a one-line notice under the top bar, e.g. "Live web unavailable · using saved results"). `./run_demo.sh --offline` starts in cached-web mode.

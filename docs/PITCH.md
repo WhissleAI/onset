@@ -160,7 +160,7 @@ voice stack, so it adds to them rather than replacing them.
 - **If the venue Wi-Fi fails:**
   - The web lane serves a recorded cache: 57 recorded Wikipedia responses in `runs/web_cache.json`.
   - If the answer model is unreachable, the answer is extracted from the top source instead.
-  - Both fallbacks are labelled in the UI (a yellow "Degraded mode" banner and "cached" / "extractive" badges).
+  - Both fallbacks are labelled in the UI (a one-line notice such as "Live web unavailable · using saved results", and "cached" / "extractive" badges).
     Nothing cached is ever shown as live.
 - Local-moments questions need no web at all.
 
