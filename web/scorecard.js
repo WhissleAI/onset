@@ -52,7 +52,8 @@
       usd: hs ? hs.usd : null, usdBl: bl ? bl.usd : null,
       p100: per100(hs), p100Bl: per100(bl),
       med: median(M.rows.map((r) => r.hsReady)), medBl: median(M.rows.map((r) => r.blReady)),
-      note: "$ is an estimate from list prices" + (be && be !== "tavily" ? `; the web lane here is ${be}, priced as Tavily searches` : ""),
+      note: "$ is an estimate from list prices" + (be === "telem" ? "; the web lane here is Telem, each engine at its own list price" :
+        be && be !== "tavily" ? `; the web lane here is ${be}, priced as Tavily searches` : ""),
     };
   }
 

@@ -907,6 +907,14 @@
     if (m.web_paid == null && mode === "headstart" && m.paid_calls != null) st.push(`paid <b>${m.paid_calls}</b>`);
     if (m.answer_by === "card") st.unshift(`<span class="flag ok" title="the live-data card answered: no model call">card answer</span>`);
     if (m.web_replayed) st.unshift(`<span class="flag" title="web results replayed from the recorded cache, not fetched live">cached web ×${m.web_replayed}</span>`);
+    if (m.telem_engines && m.telem_engines.length) {
+      // Telem (server/telem.py): which search engines answered, how fast; the console ids are in the tooltip
+      const eng = m.telem_engines.map((e) => `${esc(e.provider)}${e.ok ? (e.ms != null ? " " + fmtS(e.ms) : "") : " failed"}`).join(", ");
+      const tr = m.telem_trace || {};
+      const tip = `Searched through Telem${m.telem_routing ? " (engines chosen by Telem: " + m.telem_routing.join(", ") + ")" : ""}. ` +
+        `Telem console session ${tr.session_id || "—"}; calls ${(tr.interaction_ids || []).join(", ") || "—"}`;
+      st.push(`<span title="${esc(tip)}">engines <b>${eng}</b>${m.telem_usd != null ? ` · $${(+m.telem_usd).toFixed(3)} est.` : ""}</span>`);
+    }
     if (m.answer_fallback) st.unshift(`<span class="flag" title="${esc(m.answer_fallback_reason || "")}">${esc(m.answer_fallback)} answer · model offline</span>`);
     const box = pk(mode, "stats");
     box.innerHTML = st.map((s) => `<span>${s}</span>`).join("");
