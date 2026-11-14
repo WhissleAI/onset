@@ -416,16 +416,21 @@ class Session:
         if not self.loop_fixed:
             return out
         toks = [framemod.norm(w) for w in f.words]
-        for a, b, t in heard._mention_spans(f):
-            for aa, bb in {(a, b), (max(0, a - 1), b), (a, min(len(toks), b + 1))}:
+        ments = heard._mention_spans(f)
+        skip = set(f.dropped) | set(f.redact_tok) | set(f.cue)
+        # any 1-3 word window (the tagger may not have re-marked the revised span yet when the endpoint comes)
+        for n in (3, 2, 1):
+            for aa in range(0, len(toks) - n + 1):
+                bb = aa + n
+                if any(i in skip or not toks[i] for i in range(aa, bb)) or toks[aa] in framemod.STOP:
+                    continue
                 said = " ".join(toks[aa:bb])
                 k = heard.pkey(said)
                 for old_said, name in self.loop_fixed:
-                    if len(k) >= 3 and heard.pkey(old_said) == k == heard.pkey(name) and said != old_said:
-                        out.append(heard.Fix(aa, bb, said, name, 1.0, "heard-earlier", t))
-                        break
-                if out:
-                    return out
+                    if len(k) >= 3 and heard.pkey(old_said) == k == heard.pkey(name) and \
+                            heard.letters(said) != heard.letters(name.lower()):
+                        t = next((tt for ma, mb, tt in ments if ma <= aa and bb <= mb), "")
+                        return [heard.Fix(aa, bb, said, name, 1.0, "heard-earlier", t)]
         return out
 
     def _loop_fix(self, f):
