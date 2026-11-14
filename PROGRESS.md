@@ -1328,5 +1328,5 @@ arcvalue scorers. Every flag defaults ON; each off switch restores the old behav
   Arc-off: 0.98); 58 set 56/58 at 0.17; showcase 13/15; follow-ups 31/34 at 0.14; noisy 14/15 + 14/15; live 16/16.
   Multi-part 44/54 parts vs 47/54 under speed on the same branch: under Parity the answer starts before a second part
   still on the wire lands (feat/cost follow-up).
-- Tests: 450 passed (388 on arcvalue + feat/loop's tests + 27 new); `tests/test_open_mic.py` and
+- Tests: 450 passed (423 on main e94f99d + 27 new); `tests/test_open_mic.py` and
   `tests/test_director_v2.py` pin `OPENMIC_GATE=1` for the v1-rule cases; the director test now checks the AND.
