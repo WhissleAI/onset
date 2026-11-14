@@ -103,8 +103,8 @@ def _ceo(monkeypatch, stmts):
 
 
 def test_ceo_changed_days_ago_falls_through(monkeypatch):
-    """The live Wikidata state on 2026-11-14: the CFO made preferred-rank CEO two days earlier (the old CEO's
-    statement has an end time, so the SPARQL filter already drops it)."""
+    """The live Wikidata state on 2026-11-14: Colette Kress (CFO, named interim CEO) preferred-rank CEO since two days
+    earlier (the old CEO's statement has an end time, so the SPARQL filter already drops it): the web lane answers."""
     assert _ceo(monkeypatch, [("Q182477", "P169", "Colette Kress", "PreferredRank", _ago(2))]) == []
     assert "not settled" in knowledge._UNSURE[-1]["why"]
 

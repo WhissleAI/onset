@@ -28,7 +28,7 @@ Accuracy comes first. Each replay row pools every run of every question across r
 | Showcase (scored) | 15 × 2 | 28/30 | 28/30 | 28/30 | 13/15 | none on accuracy. Arc-off answered 4 split turns twice (vs 2) |
 | Self-corrections + restarts | 33 × 2 | **64/66 (97%)** | 62/66 | 59/66 (89%) | **65/66** (×2 reps), mentions wrong 11 | the corrected-away answer is mentioned in 12 vs 24 answers. Arc-off: 4 wasted answers |
 | Follow-ups (21 conversations) | 34 follow-up turns | **32/34 (94%)** | 32/34 | **2/34 (6%)** | 31/34 | pronouns, ellipsis and user facts resolved in place (memory) |
-| Multi-part | 26 × 1 | **47/54 parts (.87)**, 22/26 whole | 46/54, 20/26 | 37/54 (.69), 13/26 | 44/54 (.81), 16/26 (speed on the same branch: 47/54, 20/26) | the planner searches each part |
+| Multi-part | 26 × 1 | **47/54 parts (.87)**, 22/26 whole | 46/54, 20/26 | 37/54 (.69), 13/26 | 44/54 (.81), 16/26 (speed on the same branch: 47/54, 20/26); answer model was down for 5 of the 8 lost parts. feat/polish re-run: 49, 49, 51 of 54 (§11) | the planner searches each part |
 | Open mic (text, Flux turns) | 521 turns | 67.6% of turns handled right | (same frame) | 49.1% | v2 gate: **86.8%** (non-requests answered 22%, requests missed 4.7%) | holds 45% of non-requests, misses 9% of requests (v1) |
 | Privacy (text, PII in a search string) | 671 PII turns | 65.7% leak (54.4% leak most of it) | (same frame) | 98.8% leak | 63.0% (45.3% most); birth-year words 65/69 → 6/69 | redaction catches about a third |
 | Freshness (text, gold labels) | 424 | 73.1% right filter, **21% recall** on time-sensitive | (same frame) | 66.3%, 0% recall | (unchanged) | weak: only news / result / finance shapes get a filter |
@@ -478,11 +478,18 @@ numbers are the ones above.
   feat/gaps changes (the same frame and routing on main).
 - Showcase: sc19 (visa) was also missed in both earlier runs; sc11 (soft-boiled egg) is a Wikipedia answer-content
   miss.
-- **Multi-part is the one set where Parity costs accuracy:** 44/54 parts vs 47/54 under speed on the same branch
-  (`multi_speed_r1.json`, run right after). In all 8 lost parts the second-hop or second-clause part's search was
-  still in flight (`state: fired`) when the answer started, so the answer covered only the first part. mp17 and mp18
-  gained (section 10's Wikidata fix). One rep each, so ±2 parts is within noise, but the in-flight pattern is
-  consistent. Next step for feat/cost: under Parity, let the answer wait for a planner part that is already on the wire.
+- **Multi-part under Parity: the 44/54 was mostly an answer-model outage, not timing** (re-diagnosed on feat/polish).
+  The `state: fired` in the plan metric meant "results landed, vectors pending" (the metric now also records
+  `landed`), not "still on the wire": the plan path already waits up to PLAN_WAIT_S for every part. In
+  `multi_r1.json`, mp21-mp24 have `llm_requests = 0` and answers that are a source's first sentence: the answer model
+  was unreachable and the extractive fallback answered (mp19 the same after a 4 s stall). Five of the lost parts are
+  that; q32-q40 of the 58 set (including q33, "starts mid-sentence in a source") came from the same window. Re-run with
+  the model up (feat/polish, 3 paired reps, parity both arms): **49/54, 49/54, 51/54 parts** before the fix,
+  48/54, 49/54, 49/54 after: parity matches speed's 47/54 either way.
+- What timing did cost under Parity was **paid calls**: Parity fires the parts when the meaning is final, so at the
+  endpoint they were still out, and after PLAN_PART_CAP_S (0.5 s) the same query was sent again (14 duplicate calls on
+  26 questions). feat/polish waits for the part's own call instead (`COST_PARITY_PART_WAIT_MS`, 1.1 s, then the
+  old race): paid calls per question **1.06 → 0.79**, races 28 → 1 over 78 questions, p50 1,539 → 1,503 ms.
 
 ## Where Arc doesn't help (or hurts)
 - **Plain web factoids.** 76/76 for Arc-off on the 38 web questions, the same as both Arc arms, and the showcase is a
@@ -501,13 +508,15 @@ numbers are the ones above.
 - **Privacy.** Better than nothing, but 63% of PII turns still leak at least one hidden word (66% before feat/gaps):
   e-mails mostly, house numbers. Birth years are fixed (a year word leaks in 6/69 turns, was 65/69).
 - **Open mic.** Gate v2 (feat/gaps) still answers 22% of non-requests (was 55%) and misses 4.7% of requests (was 9%).
-  On single keyword-style queries without context (the gold set) it misses more than v1: 14.5% vs 7.1%.
+  On single keyword-style queries without context (the gold set) it misses more than v1: 14.5% vs 7.1%; with the
+  search-style evidence (feat/polish) 11.5%. Of those 53 misses, 14 are follow-ups said without their context
+  ("where was he born") and 17 are turns the tagger reads as statements, which v1 held too.
 - **The facts lane can be confidently wrong.** mp18 answered "Hamlet … written by William Walton" from the 1948 film's
   Wikidata entry. Fixed in feat/gaps (kind + popularity check; unsure falls through), and mp18 now scores 2/2. The
   check reads descriptions and sitelinks, so a wrong item can still slip through when both look plausible.
 - **Cost.** Under speed mode Onset spent more paid calls per question than Arc-off on corrections (1.39 vs 0.98).
-  Under Parity, the default now, it spends 0.61 (section 11). Parity costs some multi-part accuracy (44 vs 47 of 54
-  parts), because the answer doesn't wait for a second part still on the wire.
+  Under Parity, the default now, it spends 0.61 (section 11). Parity's multi-part dip (44 vs 47 of 54 parts) was an
+  answer-model outage during that replay; re-run, Parity scores 48-51 of 54 (section 11).
 
 ## Method notes
 - A bug in main surfaced here and is fixed on this branch (`speculator._part_fire`). When the planner adopted a

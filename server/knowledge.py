@@ -55,10 +55,11 @@ PROPS = {
 # properties whose value changes over time: medium confidence (web fallback when the lookup is weak)
 CHANGING = {"ceo", "population", "head_state", "spouse"}
 # one holder at a time (a CEO, a head of state, a spouse): the current statement must be unambiguous and settled.
-# Two current values with no preferred one, or a current value that started less than config.WD_RECENT_DAYS ago (a change
-# Wikidata editors haven't settled: on 2026-11-12 an edit made Nvidia's CFO its preferred-rank CEO and gave Jensen
-# Huang an end date, two days before "who is the CEO of Nvidia" answered "Colette Kress") -> unsure, the router falls
-# through to the next lane (the web, which carries the news either way).
+# Two current values with no preferred one, or a current value that started < config.WD_RECENT_DAYS ago -> unsure,
+# the router falls through to the next lane (the web, whose pages carry the change in context). The case that found
+# it: on 2026-11-12 Wikidata ended Jensen Huang's CEO statement and made Colette Kress (CFO, named interim CEO) the
+# preferred one, so "who is the CEO of Nvidia" answered a bare "Colette Kress". Wikipedia covered the resignation two
+# days later; a two-day-old single statement is the kind of value Wikidata editors still revise.
 SINGLE_HOLDER = {"ceo", "head_state", "spouse"}
 
 

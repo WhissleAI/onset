@@ -1330,3 +1330,93 @@ arcvalue scorers. Every flag defaults ON; each off switch restores the old behav
   still on the wire lands (feat/cost follow-up).
 - Tests: 450 passed (423 on main e94f99d + 27 new); `tests/test_open_mic.py` and
   `tests/test_director_v2.py` pin `OPENMIC_GATE=1` for the v1-rule cases; the director test now checks the AND.
+
+## Polish: three measured regressions (branch feat/polish; tests/test_polish.py, 28)
+All A/B replays: `COST_MODE=parity`, `WEB_BACKEND=wikipedia`, the `.env` ear, Onset arm only, `runs/.run_ab.lock`
+held per replay only with 200 s gaps, Keystone cold per replay (run_ab's default `INDEX_RESET=per-run`; the in-memory
+shared store warms within one replay, the same for both arms). Load average 4-8.
+
+### 1. Parity multi-part: wait for a part already on the wire (`COST_PARITY_PART_WAIT_MS=1100`, default on)
+- **Diagnosis.** The 44/54 in docs/ARC_VALUE.md §11 was mostly not timing. The plan metric's `state: fired` meant "raw
+  results landed, vectors pending"; `_final_plan` already waits up to PLAN_WAIT_S for every part. mp21-mp24 had
+  `llm_requests = 0` and a source's first sentence as the answer: the answer model was unreachable and the extractive
+  fallback answered (mp19 likewise after a 4 s stall); q32-q40 of that day's 58-set run too. run_ab rows now carry
+  `answer_fallback`, and the plan metric `landed`, so this shows up directly.
+- **What timing did cost was paid calls.** Parity fires the parts when the meaning is final, i.e. at the endpoint; after
+  PLAN_PART_CAP_S (0.5 s) a final search of the *same query* raced the part's own call (14 duplicates on 26
+  questions). Now under parity the part's own call is waited for up to 1.1 s, then the old race. Speed mode unchanged.
+  `COST_PARITY_PART_WAIT_MS=-1` restores the old behaviour. Metric: `plan_part_wait_ms`, `plan_hedged`.
+- Paired runs, alternating order (old→new, new→old, old→new for multi-part; new→old, old→new for the showcase).
+  Before = `COST_PARITY_PART_WAIT_MS=-1`, same code otherwise:
+
+| set | arm | accuracy per rep | p50 (pooled) | p90 (pooled) | paid calls / q | duplicate races |
+|---|---|---|---|---|---|---|
+| multi-part (26 × 3) | before | 49/54, 49/54, 51/54 parts (22, 21, 24 / 26 whole) | 1,539 ms | 2,083 ms | 1.06 | 28 |
+| multi-part (26 × 3) | **after** | 48/54, 49/54, 49/54 parts (21, 22, 22 / 26 whole) | **1,503 ms** | 2,229 ms | **0.79** | 1 |
+| showcase (15 scored × 2) | before | 13/15, 13/15 | 1,303 / 1,225 ms | 2,070 / 2,179 ms | 0.70 | 0 |
+| showcase (15 scored × 2) | after | 14/15, 14/15 | 1,355 / 1,422 ms | 2,006 / 2,106 ms | 0.70 / 0.73 | 0 |
+
+  - Multi-part accuracy: 149 vs 146 of 162 parts, within noise. The differences are mp07 / mp08 / mp12 answer content
+    (Alaska's area, Python's release year missing from the Wikipedia passages), in both arms on some reps.
+  - Latency: on the questions where the change applies (the old arm raced), the paired ready-time delta is +17 / −122 ms
+    (median, r1 / r2). The p50 / p90 moves come from questions the change never touches.
+  - Showcase: no question takes the plan path, so the new code never runs. Paired per-question deltas have a median of
+    −9 / +24 ms (noise). sc11 is a Wikipedia answer-content miss that landed in the "before" runs. Single-part p50 is not
+    affected by construction.
+  - mp25 ("where was the CEO of Nvidia born") expects Huang / Taiwan, see item 2.
+
+### 2. Wikidata one-holder properties (`WD_RECENT_DAYS=30`, server/knowledge.py SINGLE_HOLDER)
+- **Root cause: not a qualifier bug.** The query already drops statements with an end time (P582) and prefers
+  preferred rank. On 2026-11-12 Wikidata ended Jensen Huang's P169 (CEO) statement and added Colette Kress
+  (described there as "CFO and interim CEO of Nvidia") as the preferred-rank CEO from 2026-11-12. English Wikipedia
+  has a "2026 - Jensen Huang's resignation" section since 2026-11-14 (several editors, cited), and the Wikipedia lane's
+  answers in these replays say the same. So "Colette Kress" is probably *current*, not the CFO mistaken for the CEO.
+  A web search on 2026-11-14 found nothing on it yet. The real weakness: the facts lane said a two-day-old,
+  still-edited single value as a bare fact.
+- **Fix.** For CEO / head of state / spouse the query now reads the statement's start (P580). A value that started
+  fewer than WD_RECENT_DAYS ago, or two current values with no preferred one, is "unsure": [] and the router falls
+  through to the web lane, which carries the change in context ("Huang … resigned in November 2026 [1]").
+  `WD_RECENT_DAYS=0` turns it off. P1037 (director / manager) is not in the CEO property list, so no confusion there.
+- Facts regression (the gaps agent's `wd_regress.py`, 95 fact-parseable eval questions + probes, live Wikidata):
+  before vs after differ only in "who is the CEO of Nvidia" (Kress → falls through) and in Wikidata timeouts / 429s
+  (8 questions errored in one run or the other; re-run singly, they match). **0 wrong** (as on feat/gaps). Apple's CEO
+  (John Ternus, from 2026-09-01) and the other CEOs still answer.
+- Open question for the lead: mp25's gold (Huang / Taiwan) may now be outdated.
+
+### 3. Open mic: search-style requests (`OPENMIC_SEARCH=1`, `OPENMIC_DD_SEARCH=0.75`, server/openmic.py `search_like`)
+Positive request evidence for turns without a question word up front, each shape kept narrow after checking it against
+the scenes' room talk (test / val / train):
+- **filler**: a request word after leading fillers ("uh like lah which hawker centre near bugis is good").
+- **embedded**: a first-person ask ("i'm trying to remember who directed inception", "i'd love to find a good sushi
+  place nearby"). It also overrides a "statement" read.
+- **clause**: a mid-turn question clause ("… two hundred river road where's the closest starbucks", "…, am I eligible").
+- **compare**: "X or Y … for …" ("Osprey or Gregory backpack for a week long trek"), never numbers ("seven or eight").
+  It also overrides a "statement" read.
+- **keyword**: one sentence, no subject / verb words, ≥ 3 content words, "for" / "near" ("a summer job for a college
+  student outdoors in colorado").
+- All need device_directed ≥ 0.75 and no person-addressed sentence.
+
+Measured with `eval/arcvalue/textlevel.py` (openmic(); same frames):
+
+| set | v1 rule | v2 (main) | **v2 + search evidence** |
+|---|---|---|---|
+| test scenes (521 turns): handled right / non-requests answered / requests missed | 67.6% / 55% / 9.0% | 86.8% / 21.5% / 4.7% | **86.8% / 21.5% / 4.7%** (no turn changed) |
+| val scenes (274) | — | 83.2% / 24.4% / 9.4% | 83.2% / 24.4% / 9.4% |
+| train scenes (1,965) | — | 85.6% / 20.2% / 8.6% | 85.6% / 20.4% / 8.4% (+2 non-requests, +2 requests) |
+| gold (536): requests missed | 33 (7.1%) | 67 (14.5%) | **53 (11.5%)** |
+| gold: non-requests answered | 45 / 74 | 19 / 74 | 19 / 74 |
+
+- Short of the ~7% target. The 53 misses are 14 turns with no content of their own (follow-ups said without their
+  context: "where was he born", "and for sugar"; live, the follow-up rescue answers them), 17 the tagger reads as
+  statements (v1 held these too; 2 more are now answered via the overrides), and 22 with no request evidence (v2's own
+  extra misses were 34). What is left there is mostly mis-heard or garbled
+  ("Gazette is the control line …", "Whites to Amsterdam …", "Visaki."), "baby monitor …" (read as the vocative
+  "baby"), and bare noun phrases ("Portuguese verb tenses"). Rules broad enough to take those ("any no-clause phrase at
+  device_directed ≥ 0.95") answered 7 more test-scene non-requests ("Ten more minutes.", "Noon works.") for 4 gold
+  requests, so they are not in.
+- The director-AND arm (DIRECTOR_ADDRESSED=1) is unchanged at 89.3% on the test scenes.
+
+Tests: tests/test_polish.py (28): parity wait / old switch / bound / speed unchanged; Wikidata fresh change, settled,
+preferred over normal, two current values, the property scope and the switch; open-mic shapes, room-talk negatives,
+the dd bar and the switch. Full suite 478 passed (450 on main 992eb40 + 28).
+
