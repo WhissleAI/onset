@@ -268,3 +268,23 @@ def test_keep_exact_lets_a_sure_mention_change_only_to_a_same_sound_context_name
     pool2 = heard.Pool()
     pool2.add("Mary Guerra", "memory", "person")                    # close, not the same sound key
     assert heard.propose(f, sure, pool2, use_leads=False) == []
+
+
+def test_keystone_graph_nodes_are_candidates(monkeypatch):
+    """Keystone (server/keystone): the graph's active nodes and their edge values are names the user may mean."""
+    from server.keystone import hook as ks
+    monkeypatch.setattr(config, "INDEX", True)
+    ks.reset()
+    g = ks.store().g
+    n = g.node("Marie Curie", kind="person")
+    g.add_edge(n, "spouse", "Pierre Curie")
+    g.activate(f"s:{ks.SCOPE['session']}", n, 1.0)
+    names = dict(heard.keystone_names())
+    assert "Marie Curie" in names and "Pierre Curie" in names
+    pool = heard.Pool()
+    for name, kind in heard.keystone_names():
+        pool.add(name, "keystone", heard.TYPE_KIND.get(kind, ""))
+    heard.set_leads(heard.Gazetteer([]))
+    f = fr("who was pier guri", [(P, 2, 4)])
+    assert [x.name for x in heard.propose(f, [0.99, 0.99, 0.5, 0.6], pool)] == ["Pierre Curie"]
+    ks.reset()

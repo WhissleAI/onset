@@ -31,6 +31,9 @@ ap.add_argument("--no-conf", action="store_true", help="drop word confidence (an
 ap.add_argument("--spec", action="store_true", help="add this question's speculative results (WEB_BACKEND=wikipedia "
                 "search of the heard query + entity, as live) to the candidates; fetched once per suspect trace, cached")
 ap.add_argument("--no-leads", action="store_true", help="candidates without the local leads index")
+ap.add_argument("--max-wer", type=float, default=0.5, help="skip traces whose Flux words differ from the script by more "
+                "(the handoff notes ~27 %% of director ids were re-used for a different text: such a pair is not a "
+                "mishearing)")
 args = ap.parse_args()
 
 T = Tagger(domain="assistant")
@@ -143,6 +146,11 @@ def prepare():
             words, confs, h = heard_words(tr)
             if not words:
                 continue
+            a, b_ = toks_of(tr["intended"]), [framemod.norm(w) for w in words]
+            sm = difflib.SequenceMatcher(a=a, b=b_, autojunk=False)
+            errs = sum(max(i2 - i1, j2 - j1) for op, i1, i2, j1, j2 in sm.get_opcodes() if op != "equal")
+            if a and errs / len(a) > args.max_wer:
+                continue
             spans, current, events = tag(words)
             f = framemod.build(words, spans, current, events, local_ok=False)
             wc = []
@@ -162,10 +170,13 @@ def main():
               if f.query() and heard.suspects(f, wc)}
         spec = fetch_spec(qs)
     out = {}
-    variants = [("leads", False, True)] + ([("spec", True, False), ("spec+leads", True, True)] if args.spec else [])
-    for name, use_spec, use_leads in variants:
+    variants = [("leads", False, True, False)] + ([("spec", True, False, False), ("spec+leads", True, True, False),
+                                                   ("spec+leads+keep_exact", True, True, True)] if args.spec else [])
+    for name, use_spec, use_leads, kx in variants:
         heard.set_leads(GAZ if use_leads else heard.Gazetteer([]))
+        config.LOOP_KEEP_EXACT = kx
         out[name] = variant(items, spec if use_spec else {}, t0)
+        out[name]["summary"]["keep_exact"] = kx
         print(name, json.dumps(out[name]["summary"], indent=1), flush=True)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(out, indent=1))

@@ -31,6 +31,23 @@ Sources: `server/tagger.py` poll, `frame.build`, `session._apply`.
 | `phrases` / `entity_query` | second entity-only web query, planner, searchcache, narrow rerank, memory subject; **heard.py rewrites it (new)** | test_answer_quality::test_entity_query, test_narrow::test_rerank_prefers_entity_and_domain, **test_loop::test_low_confidence_name_is_rewritten_and_the_search_rekeyed** | verified |
 | `convert` | `router.fx_args`, `answer_hint`, planner skip | test_router::test_fx_args, test_repair::test_hint_reaches_the_answer_model | verified (planner skip untested) |
 
+## 1b. Keystone (merged to main at 947eda0)
+
+The Keystone row is `docs/RETRIEVAL.md` §3c, Keystone's own table of the Arc fields it uses. In short:
+- intent gates the relation family;
+- entity spans + types are the key's subject and the graph node kinds;
+- typed number / time spans are a live relation's argument and the verifier's `num_same`;
+- `when` keeps live questions out of old passages;
+- acts and `directed` decide what may write;
+- correction spans mean an abandoned subject gets no node or cell;
+- `inline` / `carried` key a follow-up by its resolved entity.
+
+Verified on code (feat/index review), two differences from §3c:
+- `note_answer`, `note_qvec` and `absorb_memory` do not check `addressed()`;
+- the live-relation argument comes from a word regex in `relkey`, not from the typed span.
+
+New link (this branch): the Keystone graph's active nodes and their edge values are a name source for heard.py's misheard-name fix (`heard.keystone_names`). Test: test_loop::test_keystone_graph_nodes_are_candidates.
+
 ## 2. Arc audio metadata
 
 Source: `server/arcmeta.py`.
@@ -91,10 +108,10 @@ Arc inputs to `server/confidence.py`:
 
 ## Bigger gaps (reported, not fixed here)
 
-- **G1, Keystone docs overstate gating** (feat/index):
+- **G1, Keystone docs overstate gating** (RETRIEVAL.md §3c vs code):
   - RETRIEVAL.md says side talk never writes a cell, edge or activation, but `note_answer`, `note_qvec` and `absorb_memory` don't check `addressed()`.
   - Typed number spans don't set the live-relation argument (relkey takes it from a word regex).
-  - Not this branch's to edit.
+  - Left to the Keystone owner.
 - **G2, device_directed / for_me don't gate open-mic.** The obvious side-talk signal is ignored unless the director is on. The handoff measured `device_directed` ≥ 0.6 on 94 % of side talk, so the raw signal is too weak to gate on. It needs the fine-tuned head (arc_tagger_handoff docs/03) and an open-mic A/B, not a one-line rule.
 - **G3, emotion / arousal / overlap / speaker** reach only the default-off director features. A cheap rule such as "overlap + speaker change → hold the speculative paid call" is plausible, but it needs the open-mic scenes to measure.
 - **G4, dead director `keep` head / DIRECTOR_KEEP flag and dead `arc_name_boost`.** Delete them or implement them.

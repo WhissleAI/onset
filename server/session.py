@@ -401,6 +401,8 @@ class Session:
                 pool.add(memmod._title(e.get("name") or k), "memory", heard.TYPE_KIND.get(e.get("kind", ""), ""))
             for lab in heard.facts_labels()[-60:]:
                 pool.add(lab, "facts")
+            for name, kind in heard.keystone_names():   # Keystone: active graph nodes + their edge values
+                pool.add(name, "keystone", heard.TYPE_KIND.get(kind, ""))
         except Exception:
             pass
         return pool

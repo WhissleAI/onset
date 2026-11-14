@@ -131,7 +131,7 @@ def similarity(said: str, cand: str) -> tuple[float, float, float]:
 TYPE_KIND = {"person": "person", "place": "place", "city": "place", "country": "place", "location": "place",
              "organization": "org", "company": "org", "team": "org", "brand": "org", "product": "thing",
              "event_name": "thing", "title": "thing", "work_of_art": "thing", "org": "org"}
-SRC_BONUS = {"spec": 0.03, "memory": 0.04, "answer": 0.05, "facts": 0.02, "leads": 0.0}
+SRC_BONUS = {"spec": 0.03, "memory": 0.04, "answer": 0.05, "facts": 0.02, "keystone": 0.04, "leads": 0.0}
 _PERSON_LEAD = re.compile(r"^[^.]{0,120}\((?:[^)]*\bborn\b|[^)]*\d{3,4}\s*[–-]\s*\d{1,2}?\s*\w*\s*\d{3,4})")
 
 
@@ -253,6 +253,30 @@ def facts_labels() -> list[str]:
                     if isinstance(x, dict) and x.get("label"):
                         out.append(x["label"])
         return out
+    except Exception:
+        return []
+
+
+def keystone_names(k: int = 60) -> list[tuple[str, str]]:
+    """(name, kind) of the Keystone graph's most active nodes (session + user scopes, server/keystone/graph.py) and
+    the values of their typed edges: what this user has been asking about, and what those answers named."""
+    try:
+        if not config.INDEX:
+            return []
+        from .keystone import hook as ks
+        g = ks.store().g
+        scopes = [f"s:{ks.SCOPE['session']}", f"u:{ks.SCOPE['user']}"]
+        act = sorted(g.activation(scopes, spread=0.3).items(), key=lambda x: -x[1])[:k]
+        out, live = [], set()
+        for n, _ in act:
+            node = g.nodes.get(n)
+            if node and node.get("name"):
+                live.add(n)
+                out.append((node["name"], node.get("kind") or ""))
+        for (subj, _rel), vals in list(g.edges.items()):          # one pass: the active nodes' edge values
+            if subj in live:
+                out += [(v["value"], "") for v in vals[:3] if isinstance(v, dict) and v.get("value")]
+        return out[:3 * k]
     except Exception:
         return []
 
