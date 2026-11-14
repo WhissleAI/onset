@@ -196,6 +196,11 @@ DIRECTOR_KEEP = os.environ.get("DIRECTOR_KEEP", "0") == "1"
 DIRECTOR_STREAMS = os.environ.get("DIRECTOR_STREAMS", "0") == "1"
 DIRECTOR_ARC_EAR = os.environ.get("DIRECTOR_ARC_EAR", "0") == "1"
 DIRECTOR_ADDRESSED = os.environ.get("DIRECTOR_ADDRESSED", "0") == "1"
+# Open-mic gate (server/openmic.py; open mic only, push-to-talk never gates). OPENMIC_GATE=1 is the old statement rule.
+OPENMIC_GATE = int(os.environ.get("OPENMIC_GATE", "2"))
+OPENMIC_FOLLOWUP_S = float(os.environ.get("OPENMIC_FOLLOWUP_S", "30"))   # "and chips" this soon after an answer = a request
+OPENMIC_DD_MIN = float(os.environ.get("OPENMIC_DD_MIN", "0.45"))   # tagger device_directed below this: held
+OPENMIC_DD_ACT = float(os.environ.get("OPENMIC_DD_ACT", "0.95"))   # a question / command act counts as a request at/above this
 DIRECTOR_ADDR_THR = float(os.environ.get("DIRECTOR_ADDR_THR", "0") or 0)       # 0 = the model's own (director.json)
 DIRECTOR_ROUTE = os.environ.get("DIRECTOR_ROUTE", "0") == "1"
 DIRECTOR_ROUTE_THR = float(os.environ.get("DIRECTOR_ROUTE_THR", "0.8"))

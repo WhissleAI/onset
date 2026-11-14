@@ -26,7 +26,8 @@ def frame(words, acts=(), intent="", p=0.0, act_question=False):
     ("how tall is the eiffel tower", ("statement",), "", 0.0, None),        # question word up front wins
     ("nvidia stock", (), "", 0.0, None),                                       # nothing says statement: answer
 ])
-def test_open_mic_gate(words, acts, intent, p, why):
+def test_open_mic_gate(words, acts, intent, p, why, monkeypatch):
+    monkeypatch.setattr(config, "OPENMIC_GATE", 1)          # the v1 statement rule (v2: tests/test_gaps.py)
     assert open_mic_skip(frame(words.split(), acts, intent, p, act_question="question" in acts)) == why
 
 

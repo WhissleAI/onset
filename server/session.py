@@ -48,7 +48,17 @@ _REQUEST_START = re.compile(r"^(what|whats|what's|who|whos|who's|whom|whose|when
                             r"tell|show|find|search|look|give|get|play|open|define|explain|list|compare|check|any|anything)$")
 
 
-def open_mic_skip(f) -> str | None:
+def open_mic_skip(f, ctx: dict | None = None) -> str | None:
+    """The open-mic gate: OPENMIC_GATE=2 (default) is server/openmic.py (follow-up rescue, device_directed, request
+    evidence, with _rule_skip inside); 1 is the statement rule alone. ctx: raw ear words, seconds since the last answered
+    request, Arc speaker ids (openmic.followup)."""
+    if config.OPENMIC_GATE >= 2:
+        from . import openmic
+        return openmic.skip(f, ctx, _rule_skip)
+    return _rule_skip(f)
+
+
+def _rule_skip(f) -> str | None:
     """Open-mic gate on the frame at the endpoint. Returns why the utterance is not answered ("statement"), or None to
     answer it. Conservative: anything that looks like a request (a question or command act, a web intent the tagger is
     confident in, a question / command word up front) is answered; only an utterance the tagger reads as a statement
@@ -99,6 +109,8 @@ class Session:
         self.noisy = False                     # background too loud for the energy VAD (≈ <13 dB SNR)
         self.answered_level = None             # median voiced RMS of the last answered question
         self.last_answered_end = -1.0           # audio time of the last word of the last closed utterance
+        self.last_request_end = -1.0            # ... of the last utterance that was answered (open-mic follow-ups)
+        self.last_request_speaker = None        # Arc's speaker id when it was asked (None: not known)
         self.last_answered_words: list[str] = []
         self.pending_finals: collections.deque = collections.deque()   # closed utterances waiting for their answer
         self.busy = False                       # an answer is being produced (finals are answered one at a time, FIFO)
@@ -743,16 +755,23 @@ class Session:
         except Exception as e:
             self.emit({"t": "error", "where": "on_turn_tick", "error": f"{type(e).__name__}: {e}"[:300]})
 
-    def _not_request(self, f, out: dict | None = None) -> str | None:
+    def _not_request(self, f, out: dict | None = None, ws: list | None = None) -> str | None:
         """Open-mic gate: why this utterance is heard but not answered, or None to answer it. The rule
         (open_mic_skip) unless DIRECTOR_ADDRESSED=1 and the director has read these words (its addressed head)."""
-        if config.DIRECTOR_ADDRESSED:
+        ws = ws if ws is not None else self.last_ws
+        start = next((w.get("start") for w in ws or [] if w.get("start") is not None), None)
+        ctx = {"raw": [w.get("text", "") for w in ws or []] or None, "speaker": (self.arc or {}).get("speaker"),
+               "request_speaker": self.last_request_speaker,
+               "since_request_s": None if start is None or self.last_request_end < 0 else start - self.last_request_end}
+        why = open_mic_skip(f, ctx)
+        if config.DIRECTOR_ADDRESSED and why is None:
+            # the director's addressed head on top of the rule (both must say "request"; offline the AND beats either)
             o = out if out is not None else self.director_out
             if o and "addr" in o and [framemod.norm(w) for w in o.get("words") or []] == \
                     [framemod.norm(w) for w in f.words][-len(o.get("words") or []):]:
                 thr = config.DIRECTOR_ADDR_THR or float((director.model().thr or {}).get("director_addr", 0.5))
                 return "not_addressed" if o["addr"] < thr else None
-        return open_mic_skip(f)
+        return why
 
     @staticmethod
     def _mem_thr(f, ev: str, thr: float) -> float:
@@ -891,7 +910,7 @@ class Session:
             spec.context = self.context
             if learned and self.user_statement(f) and soft is None:
                 return self._ack_user(job, spec, f, learned, last_end, q)
-            why = self._not_request(f, job.get("director")) if (self.open_mic and soft is None) else None
+            why = self._not_request(f, job.get("director"), ws) if (self.open_mic and soft is None) else None
             if why:
                 # open mic, not a request: heard and labelled, no search and no answer (not part of the conversation)
                 self.emit({"t": "heard", "why": why, "ms": spec.ms(), "speech_end_ms": round(last_end * 1000),
@@ -934,6 +953,8 @@ class Session:
             return m
         job["metric"] = m
         if not m.get("failed") and f is not None:
+            self.last_request_end = max(self.last_request_end, last_end)
+            self.last_request_speaker = (self.arc or {}).get("speaker")
             job["mem_before"] = (self.carry, self.context, self.carry_pool, self.mem.snapshot())
             self._remember(f, m, spec, q)
             if job.get("levels"):

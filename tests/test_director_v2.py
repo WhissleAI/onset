@@ -119,6 +119,7 @@ def _frame(words, acts=(), intent="", p=0.0):
 
 def test_open_mic_gate_uses_addressed_head_only_when_on(monkeypatch):
     monkeypatch.setattr(director, "_model", _M())
+    monkeypatch.setattr(config, "OPENMIC_GATE", 1)
     s = Session(lambda e: None, mode="headstart")
     try:
         stmt = _frame("i like to eat pancakes".split(), ("statement",), "intent.report_inform", 0.6)
@@ -126,13 +127,14 @@ def test_open_mic_gate_uses_addressed_head_only_when_on(monkeypatch):
         # off: the rule
         assert s._not_request(stmt, _out(stmt.words, addr=0.99)) == open_mic_skip(stmt) == "statement"
         monkeypatch.setattr(config, "DIRECTOR_ADDRESSED", True)
-        # on: the head decides (a question asked of another person: not addressed; a statement it reads as a request)
+        # on: the head AND the rule (a question asked of another person: not addressed; a statement stays held)
         assert s._not_request(ask, _out(ask.words, addr=0.1)) == "not_addressed"
-        assert s._not_request(stmt, _out(stmt.words, addr=0.9)) is None
+        assert s._not_request(ask, _out(ask.words, addr=0.9)) is None
+        assert s._not_request(stmt, _out(stmt.words, addr=0.9)) == "statement"
         # the head read other words (stale): the rule stands
-        assert s._not_request(stmt, _out(["something", "else"], addr=0.9)) == "statement"
+        assert s._not_request(ask, _out(["something", "else"], addr=0.1)) is None
         monkeypatch.setattr(config, "DIRECTOR_ADDR_THR", 0.95)
-        assert s._not_request(stmt, _out(stmt.words, addr=0.9)) == "not_addressed"
+        assert s._not_request(ask, _out(ask.words, addr=0.9)) == "not_addressed"
     finally:
         s.close()
 
