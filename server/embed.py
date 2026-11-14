@@ -16,13 +16,26 @@ from . import config
 
 _model = None
 _qmodel = None
+_onnx = None
 _lock = threading.Lock()
 _pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="embed")      # MPS: docs + audio
 _qpool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="embed-q")   # CPU text-only copy: queries (critical path)
 
 
+def onnx():
+    """ONNX_RUNTIME=1: one ONNX Runtime EmbeddingGemma (server/embed_onnx.py) serves queries, docs and audio."""
+    global _onnx
+    with _lock:
+        if _onnx is None:
+            from .embed_onnx import OnnxEmbedder
+            _onnx = OnnxEmbedder(config.EMBED_ONNX_DIR)
+        return _onnx
+
+
 def model():
     global _model
+    if config.ONNX_RUNTIME:
+        return onnx()
     with _lock:
         if _model is None:
             import torch
@@ -36,6 +49,8 @@ def model():
 def qmodel():
     """Text-only CPU copy (271M) for query embeddings, so a query never waits behind document/audio batches on MPS."""
     global _qmodel
+    if config.ONNX_RUNTIME:
+        return onnx()
     with _lock:
         if _qmodel is None:
             import torch
@@ -66,6 +81,8 @@ def encode_docs(texts: list[str], titles: list[str] | None = None) -> np.ndarray
 
 def encode_audio(wavs: list[np.ndarray]) -> np.ndarray:
     """Mono float32 16 kHz arrays -> embeddings (no prompt for audio)."""
+    if config.ONNX_RUNTIME:
+        return _norm(onnx().encode_audio(wavs))
     return _norm(model().encode([{"audio": w.astype(np.float32)} for w in wavs], batch_size=4))
 
 

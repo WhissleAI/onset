@@ -32,6 +32,9 @@ ARC_THREADS = int(os.environ.get("ARC_THREADS", "6"))
 EMBED_MODEL = _mp.embed_model()
 EMBED_DEVICE = os.environ.get("EMBED_DEVICE", "mps")
 EMBED_DIM = int(os.environ.get("EMBED_DIM", "768"))
+# ONNX_RUNTIME=1: every model on ONNX Runtime / C (no torch, transformers, sentence-transformers); MACAPP.md "Native runtime"
+ONNX_RUNTIME = os.environ.get("ONNX_RUNTIME", "0") == "1"
+EMBED_ONNX_DIR = _mp.resolve("embeddinggemma-2-onnx", "EMBED_ONNX_DIR")
 ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "claude-haiku-5-5")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 WEB_BACKEND = os.environ.get("WEB_BACKEND", "tavily" if TAVILY_API_KEY else "wikipedia")
