@@ -1,0 +1,278 @@
+{
+ "test": {
+  "runs/sweep5/v1in_s0": {
+   "bce": 0.2452,
+   "auc": 0.9526,
+   "d_bce_vs_ref": 0.0,
+   "d_bce_ci": [
+    0.0,
+    0.0
+   ]
+  },
+  "runs/sweep5/v1in_s1": {
+   "bce": 0.2469,
+   "auc": 0.9519,
+   "d_bce_vs_ref": 0.0017,
+   "d_bce_ci": [
+    -0.0023,
+    0.0049
+   ]
+  },
+  "runs/sweep5/v1inh2_s0": {
+   "bce": 0.2495,
+   "auc": 0.9512,
+   "d_bce_vs_ref": 0.0043,
+   "d_bce_ci": [
+    0.0009,
+    0.0075
+   ]
+  },
+  "runs/sweep5/v2_s0": {
+   "bce": 0.2483,
+   "auc": 0.9513,
+   "d_bce_vs_ref": 0.0031,
+   "d_bce_ci": [
+    -0.0008,
+    0.0068
+   ]
+  },
+  "runs/sweep5/v2_s1": {
+   "bce": 0.2466,
+   "auc": 0.9523,
+   "d_bce_vs_ref": 0.0013,
+   "d_bce_ci": [
+    -0.0032,
+    0.0053
+   ]
+  },
+  "runs/sweep5/v2-arc_s0": {
+   "bce": 0.2485,
+   "auc": 0.9516,
+   "d_bce_vs_ref": 0.0033,
+   "d_bce_ci": [
+    0.0002,
+    0.0072
+   ]
+  },
+  "runs/sweep5/v2-ear_s0": {
+   "bce": 0.2479,
+   "auc": 0.9514,
+   "d_bce_vs_ref": 0.0027,
+   "d_bce_ci": [
+    -0.0007,
+    0.0062
+   ]
+  },
+  "runs/sweep5/v2-pros_s0": {
+   "bce": 0.2496,
+   "auc": 0.9509,
+   "d_bce_vs_ref": 0.0044,
+   "d_bce_ci": [
+    0.001,
+    0.008
+   ]
+  },
+  "runs/sweep5/v2-tag_s0": {
+   "bce": 0.2476,
+   "auc": 0.9521,
+   "d_bce_vs_ref": 0.0023,
+   "d_bce_ci": [
+    -0.0006,
+    0.0057
+   ]
+  },
+  "runs/sweep5/v2h1_s0": {
+   "bce": 0.2453,
+   "auc": 0.9526,
+   "d_bce_vs_ref": 0.0001,
+   "d_bce_ci": [
+    -0.0029,
+    0.0034
+   ]
+  }
+ },
+ "test_v2": {
+  "runs/sweep5/v1in_s0": {
+   "bce": 0.2833,
+   "auc": 0.9423,
+   "d_bce_vs_ref": 0.0,
+   "d_bce_ci": [
+    0.0,
+    0.0
+   ]
+  },
+  "runs/sweep5/v1in_s1": {
+   "bce": 0.2782,
+   "auc": 0.9441,
+   "d_bce_vs_ref": -0.005,
+   "d_bce_ci": [
+    -0.0101,
+    0.0003
+   ]
+  },
+  "runs/sweep5/v1inh2_s0": {
+   "bce": 0.2819,
+   "auc": 0.9424,
+   "d_bce_vs_ref": -0.0014,
+   "d_bce_ci": [
+    -0.0058,
+    0.0028
+   ]
+  },
+  "runs/sweep5/v2_s0": {
+   "bce": 0.2844,
+   "auc": 0.9411,
+   "d_bce_vs_ref": 0.0011,
+   "d_bce_ci": [
+    -0.0057,
+    0.0075
+   ]
+  },
+  "runs/sweep5/v2_s1": {
+   "bce": 0.2804,
+   "auc": 0.9433,
+   "d_bce_vs_ref": -0.0029,
+   "d_bce_ci": [
+    -0.009,
+    0.0047
+   ]
+  },
+  "runs/sweep5/v2-arc_s0": {
+   "bce": 0.2902,
+   "auc": 0.9408,
+   "d_bce_vs_ref": 0.007,
+   "d_bce_ci": [
+    0.0016,
+    0.0124
+   ]
+  },
+  "runs/sweep5/v2-ear_s0": {
+   "bce": 0.2882,
+   "auc": 0.9416,
+   "d_bce_vs_ref": 0.0049,
+   "d_bce_ci": [
+    -0.002,
+    0.0118
+   ]
+  },
+  "runs/sweep5/v2-pros_s0": {
+   "bce": 0.2795,
+   "auc": 0.9438,
+   "d_bce_vs_ref": -0.0038,
+   "d_bce_ci": [
+    -0.01,
+    0.0018
+   ]
+  },
+  "runs/sweep5/v2-tag_s0": {
+   "bce": 0.278,
+   "auc": 0.9442,
+   "d_bce_vs_ref": -0.0053,
+   "d_bce_ci": [
+    -0.012,
+    0.0008
+   ]
+  },
+  "runs/sweep5/v2h1_s0": {
+   "bce": 0.2809,
+   "auc": 0.9438,
+   "d_bce_vs_ref": -0.0024,
+   "d_bce_ci": [
+    -0.0102,
+    0.004
+   ]
+  }
+ },
+ "heldout80": {
+  "runs/sweep5/v1in_s0": {
+   "bce": 0.1758,
+   "auc": 0.9824,
+   "d_bce_vs_ref": 0.0,
+   "d_bce_ci": [
+    0.0,
+    0.0
+   ]
+  },
+  "runs/sweep5/v1in_s1": {
+   "bce": 0.1808,
+   "auc": 0.9798,
+   "d_bce_vs_ref": 0.0049,
+   "d_bce_ci": [
+    -0.0028,
+    0.0135
+   ]
+  },
+  "runs/sweep5/v1inh2_s0": {
+   "bce": 0.1865,
+   "auc": 0.9799,
+   "d_bce_vs_ref": 0.0106,
+   "d_bce_ci": [
+    0.0033,
+    0.0184
+   ]
+  },
+  "runs/sweep5/v2_s0": {
+   "bce": 0.1895,
+   "auc": 0.9777,
+   "d_bce_vs_ref": 0.0137,
+   "d_bce_ci": [
+    0.0055,
+    0.0235
+   ]
+  },
+  "runs/sweep5/v2_s1": {
+   "bce": 0.1857,
+   "auc": 0.979,
+   "d_bce_vs_ref": 0.0098,
+   "d_bce_ci": [
+    0.0012,
+    0.0192
+   ]
+  },
+  "runs/sweep5/v2-arc_s0": {
+   "bce": 0.1984,
+   "auc": 0.9779,
+   "d_bce_vs_ref": 0.0226,
+   "d_bce_ci": [
+    0.0143,
+    0.0318
+   ]
+  },
+  "runs/sweep5/v2-ear_s0": {
+   "bce": 0.19,
+   "auc": 0.9786,
+   "d_bce_vs_ref": 0.0142,
+   "d_bce_ci": [
+    0.005,
+    0.0249
+   ]
+  },
+  "runs/sweep5/v2-pros_s0": {
+   "bce": 0.1864,
+   "auc": 0.9789,
+   "d_bce_vs_ref": 0.0106,
+   "d_bce_ci": [
+    0.0027,
+    0.0199
+   ]
+  },
+  "runs/sweep5/v2-tag_s0": {
+   "bce": 0.192,
+   "auc": 0.9783,
+   "d_bce_vs_ref": 0.0161,
+   "d_bce_ci": [
+    0.0085,
+    0.0244
+   ]
+  },
+  "runs/sweep5/v2h1_s0": {
+   "bce": 0.184,
+   "auc": 0.978,
+   "d_bce_vs_ref": 0.0082,
+   "d_bce_ci": [
+    0.0005,
+    0.0179
+   ]
+  }
+ }
+}

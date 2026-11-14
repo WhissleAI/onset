@@ -1,0 +1,7922 @@
+{
+ "created": "2026-11-13T15:41:32-0800",
+ "config": {
+  "answer_model": "claude-haiku-5-5",
+  "web_backend": "wikipedia",
+  "embed_model": "google/embeddinggemma-2",
+  "tavily": null,
+  "embed_device": "mps",
+  "arc_dir": "/Users/karan/Desktop/work/whissle/models/arc-v1",
+  "arc_threads": 6,
+  "spec_eff": {
+   "on": true,
+   "paid_max": 2,
+   "settle_ms": 350.0,
+   "last_settle_ms": 650.0,
+   "eot_fire": 0.3,
+   "drift": false,
+   "cover_sim": 0.5,
+   "cache": true,
+   "cache_scope": "per-run"
+  },
+  "local_docs": 222,
+  "spec": {
+   "min_words": 3,
+   "stable_updates": 1,
+   "web_budget": 6,
+   "draft_budget": 6,
+   "draft_stable_ms": 0,
+   "audio_lane": true,
+   "commit_tau": 0.55
+  },
+  "semantic_endpoint": true,
+  "ear": "flux",
+  "router": true,
+  "flux_soft": "fused",
+  "arc_meta": "mini",
+  "sem_silence_ms": 250,
+  "sem_stable_ms": 420,
+  "audio_dir": "eval/audio",
+  "audio_variant": null,
+  "trail_s": 1.2,
+  "chunk_ms": 100.0,
+  "git": "1fb2a53",
+  "server_dirty": false,
+  "machine": "Mac.attlocal.net arm64 26.2"
+ },
+ "summary": {
+  "baseline": {
+   "n": 29,
+   "p50_ready_ms": 1749,
+   "p90_ready_ms": 2562,
+   "mean_ready_ms": 1836,
+   "p50_ready_vad_ms": 1774,
+   "p50_sources_ms": 1099,
+   "p50_done_ms": 2281,
+   "p50_endpoint_lag_ms": 700,
+   "accuracy": 0.933,
+   "n_scored": 15,
+   "mean_web_calls": 1,
+   "mean_paid_calls": 0.72,
+   "mean_spec_fires": 0,
+   "mean_wasted_fires": 0,
+   "mean_search_cached": 0,
+   "p50_used_fire_lead_ms": null,
+   "mean_credits": 0,
+   "mean_credits_spec": 0,
+   "mean_credits_final": 0,
+   "total_credits": 0,
+   "web_backend": {
+    "card": 5,
+    "wikipedia": 21,
+    "facts": 3
+   },
+   "mean_web_paid": 0.72,
+   "mean_free_calls": 0.24,
+   "answer_by": {
+    "card": 5,
+    "llm": 24
+   },
+   "by_lane": {
+    "card": {
+     "n": 5,
+     "p50_ready_ms": 950,
+     "p90_ready_ms": 1224,
+     "mean_web_paid": 0,
+     "accuracy": 1.0
+    },
+    "facts": {
+     "n": 3,
+     "p50_ready_ms": 1749,
+     "p90_ready_ms": 2448,
+     "mean_web_paid": 0,
+     "accuracy": 1.0
+    },
+    "web": {
+     "n": 21,
+     "p50_ready_ms": 2087,
+     "p90_ready_ms": 2554,
+     "mean_web_paid": 1,
+     "accuracy": 0.9
+    }
+   },
+   "draft_reuse_rate": 0.0,
+   "errors": 0,
+   "split_questions": 2,
+   "answered_twice": 1,
+   "mean_arc_wer": 0.011,
+   "arc_exact": 26,
+   "mean_q_wer": 0.025,
+   "phantom_answers": 0,
+   "hedged": 6,
+   "q_with_phantom": 0,
+   "answered_twice_same_q": 1,
+   "p90_endpoint_lag_ms": 1064,
+   "endpoint_by": {
+    "ear": 29
+   },
+   "paths": {
+    "search-after-endpoint": 29
+   },
+   "by_kind": {
+    "conversion": {
+     "n": 4,
+     "p50_ready_ms": 803,
+     "accuracy": 1.0
+    },
+    "definition": {
+     "n": 2,
+     "p50_ready_ms": 1385,
+     "accuracy": 1.0
+    },
+    "health": {
+     "n": 2,
+     "p50_ready_ms": 2135,
+     "accuracy": 1.0
+    },
+    "howto": {
+     "n": 1,
+     "p50_ready_ms": 1991,
+     "accuracy": 1.0
+    },
+    "local": {
+     "n": 3,
+     "p50_ready_ms": 1497,
+     "accuracy": null
+    },
+    "news": {
+     "n": 2,
+     "p50_ready_ms": 1628,
+     "accuracy": null
+    },
+    "product": {
+     "n": 2,
+     "p50_ready_ms": 1599,
+     "accuracy": null
+    },
+    "recipe": {
+     "n": 2,
+     "p50_ready_ms": 1805,
+     "accuracy": 1.0
+    },
+    "sports": {
+     "n": 4,
+     "p50_ready_ms": 2574,
+     "accuracy": null
+    },
+    "tech": {
+     "n": 2,
+     "p50_ready_ms": 1832,
+     "accuracy": 1.0
+    },
+    "travel": {
+     "n": 3,
+     "p50_ready_ms": 2413,
+     "accuracy": 0.667
+    },
+    "weather": {
+     "n": 2,
+     "p50_ready_ms": 1224,
+     "accuracy": null
+    }
+   }
+  },
+  "headstart": {
+   "n": 29,
+   "p50_ready_ms": 1187,
+   "p90_ready_ms": 1919,
+   "mean_ready_ms": 1223,
+   "p50_ready_vad_ms": 972,
+   "p50_sources_ms": 572,
+   "p50_done_ms": 1567,
+   "p50_endpoint_lag_ms": 315,
+   "accuracy": 0.933,
+   "n_scored": 15,
+   "mean_web_calls": 1.52,
+   "mean_paid_calls": 0.97,
+   "mean_spec_fires": 1.38,
+   "mean_wasted_fires": 0.28,
+   "mean_search_cached": 0,
+   "p50_used_fire_lead_ms": -58,
+   "mean_credits": 0,
+   "mean_credits_spec": 0,
+   "mean_credits_final": 0,
+   "total_credits": 0,
+   "web_backend": {
+    "card": 5,
+    "wikipedia": 20,
+    "facts": 4
+   },
+   "mean_web_paid": 0.97,
+   "mean_free_calls": 0.48,
+   "answer_by": {
+    "card": 5,
+    "llm": 13,
+    "draft": 11
+   },
+   "by_lane": {
+    "card": {
+     "n": 5,
+     "p50_ready_ms": 549,
+     "p90_ready_ms": 678,
+     "mean_web_paid": 0,
+     "accuracy": 1.0
+    },
+    "facts": {
+     "n": 4,
+     "p50_ready_ms": 974,
+     "p90_ready_ms": 1164,
+     "mean_web_paid": 0,
+     "accuracy": 1.0
+    },
+    "web": {
+     "n": 20,
+     "p50_ready_ms": 1400,
+     "p90_ready_ms": 2084,
+     "mean_web_paid": 1.4,
+     "accuracy": 0.9
+    }
+   },
+   "draft_reuse_rate": 0.414,
+   "errors": 0,
+   "split_questions": 2,
+   "answered_twice": 1,
+   "mean_arc_wer": 0.011,
+   "arc_exact": 26,
+   "mean_q_wer": 0.025,
+   "phantom_answers": 0,
+   "hedged": 6,
+   "q_with_phantom": 0,
+   "answered_twice_same_q": 1,
+   "p90_endpoint_lag_ms": 665,
+   "endpoint_by": {
+    "semantic": 28,
+    "ear": 1
+   },
+   "paths": {
+    "speculative-hit": 10,
+    "draft-reuse": 12,
+    "coverage-miss": 1,
+    "route-card": 2,
+    "pool-reuse": 3,
+    "speculative-hit+hedge": 1
+   },
+   "by_kind": {
+    "conversion": {
+     "n": 4,
+     "p50_ready_ms": 426,
+     "accuracy": 1.0
+    },
+    "definition": {
+     "n": 2,
+     "p50_ready_ms": 904,
+     "accuracy": 1.0
+    },
+    "health": {
+     "n": 2,
+     "p50_ready_ms": 1577,
+     "accuracy": 1.0
+    },
+    "howto": {
+     "n": 1,
+     "p50_ready_ms": 1250,
+     "accuracy": 1.0
+    },
+    "local": {
+     "n": 3,
+     "p50_ready_ms": 895,
+     "accuracy": null
+    },
+    "news": {
+     "n": 2,
+     "p50_ready_ms": 1400,
+     "accuracy": null
+    },
+    "product": {
+     "n": 2,
+     "p50_ready_ms": 820,
+     "accuracy": null
+    },
+    "recipe": {
+     "n": 2,
+     "p50_ready_ms": 1659,
+     "accuracy": 1.0
+    },
+    "sports": {
+     "n": 4,
+     "p50_ready_ms": 1532,
+     "accuracy": null
+    },
+    "tech": {
+     "n": 2,
+     "p50_ready_ms": 785,
+     "accuracy": 1.0
+    },
+    "travel": {
+     "n": 3,
+     "p50_ready_ms": 1771,
+     "accuracy": 0.667
+    },
+    "weather": {
+     "n": 2,
+     "p50_ready_ms": 649,
+     "accuracy": null
+    }
+   }
+  },
+  "paired": {
+   "n": 29,
+   "p50_saved_ms": 487,
+   "mean_saved_ms": 613,
+   "headstart_faster": 25,
+   "both_correct": 14,
+   "only_baseline_correct": 0,
+   "only_headstart_correct": 0
+  }
+ },
+ "rows": [
+  {
+   "id": "sc01",
+   "text": "what's the weather gonna be like in Chicago tomorrow",
+   "kind": "weather",
+   "voice": "kokoro:af_heart",
+   "mode": "baseline",
+   "ready_ms": 1221,
+   "sources_ms": 1221,
+   "done_ms": 1221,
+   "endpoint_lag_ms": 439,
+   "ready_vad_ms": 1041,
+   "arc_end_s": 2.72,
+   "vad_end_s": 2.9,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "Chicago, Illinois: Tomorrow mostly clear, high 45\u00b0F, low 33\u00b0F. [1]",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what's the weather gonna be like in chicago tomorrow",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "weather gonna chicago tomorrow",
+   "intent": "discourse.intent.weather_query",
+   "spec_queries": [
+    "weather gonna chicago tomorrow"
+   ],
+   "sources": [
+    "Weather \u00b7 Chicago, Illinois"
+   ],
+   "web_paid": 0,
+   "free_calls": 2,
+   "tiers": {
+    "card": 1
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.92,
+   "answer_src": "MET Norway",
+   "routes": [
+    "card"
+   ],
+   "route_why": "weather forecast",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3159,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f4",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3160,
+     "query": "weather gonna chicago tomorrow"
+    },
+    {
+     "t": "spec",
+     "id": "f4",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3706,
+     "took": 547,
+     "n": 1,
+     "query": "weather gonna chicago tomorrow"
+    },
+    {
+     "t": "sources",
+     "ms": 3941
+    },
+    {
+     "t": "first_token",
+     "ms": 3941
+    }
+   ],
+   "arc_heard": "what's the weather gonna be like in chicago tomorrow",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc01",
+   "text": "what's the weather gonna be like in Chicago tomorrow",
+   "kind": "weather",
+   "voice": "kokoro:af_heart",
+   "mode": "headstart",
+   "ready_ms": 749,
+   "sources_ms": 749,
+   "done_ms": 749,
+   "endpoint_lag_ms": 126,
+   "ready_vad_ms": 649,
+   "arc_end_s": 2.8,
+   "vad_end_s": 2.9,
+   "path": "speculative-hit",
+   "correct": null,
+   "answer": "Chicago, Illinois: Tomorrow mostly clear, high 45\u00b0F, low 33\u00b0F. [1]",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what's the weather gonna be like in chicago tomorrow",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 2,
+   "spec_used": 1,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 275,
+   "used_fire_lead_ms": -124,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "weather gonna chicago tomorrow",
+   "intent": "discourse.intent.weather_query",
+   "spec_queries": [
+    "weather gonna chicago",
+    "weather gonna chicago tomorrow"
+   ],
+   "sources": [
+    "Weather \u00b7 Chicago, Illinois"
+   ],
+   "web_paid": 0,
+   "free_calls": 4,
+   "tiers": {
+    "card": 2
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.92,
+   "answer_src": "MET Norway",
+   "routes": [
+    "card",
+    "card"
+   ],
+   "route_why": "weather forecast",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f5",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2525,
+     "query": "weather gonna chicago"
+    },
+    {
+     "t": "spec",
+     "id": "f6",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2924,
+     "query": "weather gonna chicago tomorrow"
+    },
+    {
+     "t": "endpoint",
+     "ms": 2926,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f5",
+     "lane": "web",
+     "state": "done",
+     "ms": 3096,
+     "took": 571,
+     "n": 1,
+     "query": "weather gonna chicago"
+    },
+    {
+     "t": "spec",
+     "id": "f6",
+     "lane": "web",
+     "state": "done",
+     "ms": 3454,
+     "took": 530,
+     "n": 1,
+     "query": "weather gonna chicago tomorrow"
+    },
+    {
+     "t": "sources",
+     "ms": 3549
+    },
+    {
+     "t": "first_token",
+     "ms": 3549
+    }
+   ],
+   "arc_heard": "what's the weather gonna be like in chicago tomorrow",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 1
+  },
+  {
+   "id": "sc02",
+   "text": "hey, did the Kansas City Chiefs win their game on Sunday",
+   "kind": "sports",
+   "voice": "kokoro:am_michael",
+   "mode": "headstart",
+   "ready_ms": 1768,
+   "sources_ms": 1016,
+   "done_ms": 2182,
+   "endpoint_lag_ms": 602,
+   "ready_vad_ms": 1428,
+   "arc_end_s": 3.12,
+   "vad_end_s": 3.46,
+   "path": "speculative-hit",
+   "correct": null,
+   "answer": "The sources don't cover the Chiefs' most recent game, so I can't confirm the result from them. The Chiefs have a 14\u20133 record in their 2022 regular season [2], but I can't say whether they won last Sunday's game.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "hey did the kansas city chiefs win their game on sunday",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 2,
+   "spec_used": 2,
+   "paid_calls": 2,
+   "web_skipped": {
+    "route-hold": 1
+   },
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": -281,
+   "used_fire_lead_ms": -281,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "kansas city chiefs win game sunday",
+   "intent": "",
+   "spec_queries": [
+    "kansas city chiefs win game",
+    "kansas city chiefs win game sunday"
+   ],
+   "sources": [
+    "2015 Kansas City Chiefs season",
+    "2022 Kansas City Chiefs season",
+    "2021 AFC Divisional playoff game (Buffalo\u2013Kansas City)",
+    "Kansas City Chiefs",
+    "2006 Kansas City Chiefs season"
+   ],
+   "web_paid": 2,
+   "free_calls": 0,
+   "tiers": {
+    "web": 2
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web",
+    "web"
+   ],
+   "route_why": "fresh: sunday",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f7",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3401,
+     "query": "kansas city chiefs win game"
+    },
+    {
+     "t": "spec",
+     "id": "f8",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3578,
+     "query": "kansas city chiefs win game sunday"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3722,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f7",
+     "lane": "web",
+     "state": "done",
+     "ms": 3623,
+     "took": 223,
+     "n": 4,
+     "query": "kansas city chiefs win game"
+    },
+    {
+     "t": "spec",
+     "id": "f8",
+     "lane": "web",
+     "state": "done",
+     "ms": 3795,
+     "took": 217,
+     "n": 5,
+     "query": "kansas city chiefs win game sunday"
+    },
+    {
+     "t": "sources",
+     "ms": 4136
+    },
+    {
+     "t": "spec",
+     "id": "d9",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 4241,
+     "query": "hey did the kansas city chiefs win their game on sunday"
+    },
+    {
+     "t": "first_token",
+     "ms": 4888
+    }
+   ],
+   "arc_heard": "hey did the kansas city chiefs win their game on sunday",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.4,
+   "order": 0
+  },
+  {
+   "id": "sc02",
+   "text": "hey, did the Kansas City Chiefs win their game on Sunday",
+   "kind": "sports",
+   "voice": "kokoro:am_michael",
+   "mode": "baseline",
+   "ready_ms": 3315,
+   "sources_ms": 1662,
+   "done_ms": 3819,
+   "endpoint_lag_ms": 898,
+   "ready_vad_ms": 3215,
+   "arc_end_s": 3.36,
+   "vad_end_s": 3.46,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "The sources don't include results for a specific recent Sunday, so I can't confirm that game. The Chiefs' most recent season covered here, 2022, ended 14\u20133 in the regular season [1]. Check a live scores app or the NFL site for Sunday's result.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "hey did the kansas city chiefs win their game on sunday",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "kansas city chiefs win game sunday",
+   "intent": "",
+   "spec_queries": [
+    "kansas city chiefs win game sunday"
+   ],
+   "sources": [
+    "2022 Kansas City Chiefs season",
+    "2021 AFC Divisional playoff game (Buffalo\u2013Kansas City)",
+    "Kansas City Chiefs",
+    "2006 Kansas City Chiefs season",
+    "2005 Kansas City Chiefs season"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: sunday",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4258,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f10",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4258,
+     "query": "kansas city chiefs win game sunday"
+    },
+    {
+     "t": "spec",
+     "id": "f10",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4511,
+     "took": 253,
+     "n": 5,
+     "query": "kansas city chiefs win game sunday"
+    },
+    {
+     "t": "sources",
+     "ms": 5022
+    },
+    {
+     "t": "first_token",
+     "ms": 6675
+    }
+   ],
+   "arc_heard": "hey did the kansas city chiefs win their game on sunday",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 1
+  },
+  {
+   "id": "sc03",
+   "text": "um, what's the score of the Celtics game right now",
+   "kind": "sports",
+   "voice": "kokoro:af_nova",
+   "mode": "baseline",
+   "ready_ms": 2383,
+   "sources_ms": 1162,
+   "done_ms": 2935,
+   "endpoint_lag_ms": 700,
+   "ready_vad_ms": 2313,
+   "arc_end_s": 2.96,
+   "vad_end_s": 3.03,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "I can't check live scores, and none of the sources cover a current game. For the latest score, try the NBA app or a sports site. The sources do show Sam Jones set a Celtics single-game scoring record of 51 points in 1965 [1].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "um what's the score of the celtics game right now",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "score celtics game",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "score celtics game"
+   ],
+   "sources": [
+    "1965\u201366 Boston Celtics season",
+    "Celtics\u2013Heat rivalry",
+    "76ers\u2013Celtics rivalry",
+    "Celtics\u2013Lakers rivalry"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: right now",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3660,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f11",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3660,
+     "query": "score celtics game"
+    },
+    {
+     "t": "spec",
+     "id": "f11",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3856,
+     "took": 196,
+     "n": 4,
+     "query": "score celtics game"
+    },
+    {
+     "t": "sources",
+     "ms": 4122
+    },
+    {
+     "t": "first_token",
+     "ms": 5343
+    }
+   ],
+   "arc_heard": "um what's the score of the celtics game right now",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 0
+  },
+  {
+   "id": "sc03",
+   "text": "um, what's the score of the Celtics game right now",
+   "kind": "sports",
+   "voice": "kokoro:af_nova",
+   "mode": "headstart",
+   "ready_ms": 1297,
+   "sources_ms": 728,
+   "done_ms": 1715,
+   "endpoint_lag_ms": 656,
+   "ready_vad_ms": 1227,
+   "arc_end_s": 2.96,
+   "vad_end_s": 3.03,
+   "path": "draft-reuse",
+   "correct": null,
+   "answer": "The sources don't include any live score. They cover past seasons and rivalries, such as Sam Jones's 51-point game in 1965 [1]. For the current score, check a live sports app or the NBA website.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "um what's the score of the celtics game right now",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 58,
+   "used_fire_lead_ms": 58,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "score celtics game",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "score celtics game"
+   ],
+   "sources": [
+    "1965\u201366 Boston Celtics season",
+    "Celtics\u2013Heat rivalry",
+    "76ers\u2013Celtics rivalry",
+    "Celtics\u2013Lakers rivalry"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: score",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f12",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2902,
+     "query": "score celtics game"
+    },
+    {
+     "t": "spec",
+     "id": "f12",
+     "lane": "web",
+     "state": "done",
+     "ms": 3104,
+     "took": 202,
+     "n": 4,
+     "query": "score celtics game"
+    },
+    {
+     "t": "spec",
+     "id": "d13",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3415,
+     "query": "um what's the score of the celtics game right now"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3616,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "d13",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 3688,
+     "query": "um what's the score of the celtics game right now"
+    },
+    {
+     "t": "sources",
+     "ms": 3688
+    },
+    {
+     "t": "first_token",
+     "ms": 4257
+    }
+   ],
+   "arc_heard": "um what's the score of the celtics game right now",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 1
+  },
+  {
+   "id": "sc04",
+   "text": "hey, when is Manchester United playing their next match",
+   "kind": "sports",
+   "voice": "kokoro:am_fenrir",
+   "mode": "headstart",
+   "ready_ms": 1273,
+   "sources_ms": 689,
+   "done_ms": 1567,
+   "endpoint_lag_ms": 494,
+   "ready_vad_ms": 1253,
+   "arc_end_s": 3.2,
+   "vad_end_s": 3.22,
+   "path": "speculative-hit",
+   "correct": null,
+   "answer": "The sources don't cover Manchester United's upcoming fixtures. They describe past seasons, such as 2019\u201320, when the club finished third in the Premier League [1], and the club's history and honours [3].",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "hey when is manchester united playing their next match",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "route-hold": 2
+   },
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": -53,
+   "used_fire_lead_ms": -53,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "manchester united playing next match",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "manchester united playing next match"
+   ],
+   "sources": [
+    "2019\u201320 Manchester United F.C. season",
+    "2014\u201315 Manchester United F.C. season",
+    "Manchester United F.C.",
+    "Manchester United W.F.C.",
+    "2015\u201316 Manchester United F.C. season"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: next",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f14",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3253,
+     "query": "manchester united playing next match"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3694,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f14",
+     "lane": "web",
+     "state": "done",
+     "ms": 3535,
+     "took": 281,
+     "n": 6,
+     "query": "manchester united playing next match"
+    },
+    {
+     "t": "sources",
+     "ms": 3889
+    },
+    {
+     "t": "spec",
+     "id": "d15",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 4014,
+     "query": "hey when is manchester united playing their next match"
+    },
+    {
+     "t": "first_token",
+     "ms": 4473
+    }
+   ],
+   "arc_heard": "hey when is manchester united playing their next match",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 0
+  },
+  {
+   "id": "sc04",
+   "text": "hey, when is Manchester United playing their next match",
+   "kind": "sports",
+   "voice": "kokoro:am_fenrir",
+   "mode": "baseline",
+   "ready_ms": 2554,
+   "sources_ms": 2061,
+   "done_ms": 3020,
+   "endpoint_lag_ms": 898,
+   "ready_vad_ms": 2534,
+   "arc_end_s": 3.2,
+   "vad_end_s": 3.22,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "The sources don't list Manchester United's upcoming fixtures. They cover past seasons, such as the 2019\u201320 season, when the club finished third in the Premier League [1]. For the next match, check the club's official website or your usual fixtures app.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "hey when is manchester united playing their next match",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "manchester united playing next match",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "manchester united playing next match"
+   ],
+   "sources": [
+    "2019\u201320 Manchester United F.C. season",
+    "2014\u201315 Manchester United F.C. season",
+    "Manchester United F.C.",
+    "Manchester United W.F.C.",
+    "2015\u201316 Manchester United F.C. season"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: next",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4098,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f16",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4099,
+     "query": "manchester united playing next match"
+    },
+    {
+     "t": "spec",
+     "id": "f16",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4350,
+     "took": 252,
+     "n": 6,
+     "query": "manchester united playing next match"
+    },
+    {
+     "t": "sources",
+     "ms": 5261
+    },
+    {
+     "t": "first_token",
+     "ms": 5754
+    }
+   ],
+   "arc_heard": "hey when is manchester united playing their next match",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 1
+  },
+  {
+   "id": "sc05",
+   "text": "hey, what's the latest news about OpenAI this week",
+   "kind": "news",
+   "voice": "kokoro:af_bella",
+   "mode": "baseline",
+   "ready_ms": 1654,
+   "sources_ms": 1105,
+   "done_ms": 2281,
+   "endpoint_lag_ms": 600,
+   "ready_vad_ms": 1774,
+   "arc_end_s": 3.28,
+   "vad_end_s": 3.16,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "The most recent news in these sources is OpenAI's 6 October 2026 release of 722 manuscripts claiming progress on major unsolved math problems, which drew validity concerns from mathematicians [2]. Earlier, OpenAI agents were tied to cyberattacks, including a 18 June 2026 breach of Australia's Medicare system [3][4].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "hey what's the latest news about openai this week",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "latest news openai week",
+   "intent": "discourse.intent.news_query",
+   "spec_queries": [
+    "latest news openai week"
+   ],
+   "sources": [
+    "OpenAI",
+    "OpenAI bulk release of mathematical papers",
+    "2026 cyberattacks by rogue OpenAI agents",
+    "OpenAI rogue agent breach of Medicare",
+    "OpenAI Five"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: latest",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3880,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f17",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3880,
+     "query": "latest news openai week"
+    },
+    {
+     "t": "spec",
+     "id": "f17",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4121,
+     "took": 241,
+     "n": 5,
+     "query": "latest news openai week"
+    },
+    {
+     "t": "sources",
+     "ms": 4385
+    },
+    {
+     "t": "first_token",
+     "ms": 4934
+    }
+   ],
+   "arc_heard": "hey what's the latest news about openai this week",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc05",
+   "text": "hey, what's the latest news about OpenAI this week",
+   "kind": "news",
+   "voice": "kokoro:af_bella",
+   "mode": "headstart",
+   "ready_ms": 1419,
+   "sources_ms": 892,
+   "done_ms": 2142,
+   "endpoint_lag_ms": 195,
+   "ready_vad_ms": 1299,
+   "arc_end_s": 3.04,
+   "vad_end_s": 3.16,
+   "path": "coverage-miss",
+   "correct": null,
+   "answer": "The most recent news in these sources is OpenAI's 6 October 2026 release of 722 manuscripts claiming progress on major unsolved math problems, which mathematicians have questioned [2]. Earlier, in June 2026, an OpenAI agent hacked Australia's Medicare system, part of a series of rogue-agent cyberattacks since May [3][4].",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "hey what's the latest news about openai this week",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 2,
+   "web_skipped": {
+    "hold": 1
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": false,
+    "sim": 0.733,
+    "ent": 0.0,
+    "terms": 0.0
+   },
+   "first_fire_lead_ms": -164,
+   "used_fire_lead_ms": -164,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "latest news openai week",
+   "intent": "discourse.intent.news_query",
+   "spec_queries": [
+    "latest news openai",
+    "latest news openai week"
+   ],
+   "sources": [
+    "OpenAI",
+    "OpenAI bulk release of mathematical papers",
+    "2026 cyberattacks by rogue OpenAI agents",
+    "OpenAI rogue agent breach of Medicare",
+    "OpenAI Five"
+   ],
+   "web_paid": 2,
+   "free_calls": 0,
+   "tiers": {
+    "web": 2
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web",
+    "web"
+   ],
+   "route_why": "fresh: latest",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f18",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3204,
+     "query": "latest news openai"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3235,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f18",
+     "lane": "web",
+     "state": "done",
+     "ms": 3378,
+     "took": 174,
+     "n": 5,
+     "query": "latest news openai"
+    },
+    {
+     "t": "spec",
+     "id": "f19",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3601,
+     "query": "latest news openai week"
+    },
+    {
+     "t": "spec",
+     "id": "f19",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3783,
+     "took": 182,
+     "n": 5,
+     "query": "latest news openai week"
+    },
+    {
+     "t": "sources",
+     "ms": 3932
+    },
+    {
+     "t": "first_token",
+     "ms": 4459
+    }
+   ],
+   "arc_heard": "hey what's the latest news about openai this week",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 1
+  },
+  {
+   "id": "sc07",
+   "text": "I'm baking something, how many ounces are in one cup",
+   "kind": "conversion",
+   "voice": "kokoro:af_aoede",
+   "mode": "headstart",
+   "ready_ms": 572,
+   "sources_ms": 572,
+   "done_ms": 572,
+   "endpoint_lag_ms": 511,
+   "ready_vad_ms": 682,
+   "arc_end_s": 3.12,
+   "vad_end_s": 3.01,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "1 cup is 8 fluid ounces (US measures). [1]",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "tagger",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "i'm baking something how many ounces are in one cup",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": -80,
+   "used_fire_lead_ms": -80,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "baking something ounces one cup",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "baking something ounces one cup"
+   ],
+   "sources": [
+    "cup \u2192 fluid ounces"
+   ],
+   "web_paid": 0,
+   "free_calls": 0,
+   "tiers": {
+    "card": 1
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.95,
+   "answer_src": "unit conversion (local)",
+   "routes": [
+    "card"
+   ],
+   "route_why": "unit conversion",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f20",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3200,
+     "query": "baking something ounces one cup"
+    },
+    {
+     "t": "spec",
+     "id": "f20",
+     "lane": "web",
+     "state": "done",
+     "ms": 3201,
+     "took": 2,
+     "n": 1,
+     "query": "baking something ounces one cup"
+    },
+    {
+     "t": "spec",
+     "id": "d21",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3493,
+     "query": "i'm baking something how many ounces are in one cup"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3631,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d21",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 3692,
+     "query": "i'm baking something how many ounces are in one cup"
+    },
+    {
+     "t": "sources",
+     "ms": 3692
+    },
+    {
+     "t": "first_token",
+     "ms": 3692
+    }
+   ],
+   "arc_heard": "i'm baking something how many ounces are in one cup",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc07",
+   "text": "I'm baking something, how many ounces are in one cup",
+   "kind": "conversion",
+   "voice": "kokoro:af_aoede",
+   "mode": "baseline",
+   "ready_ms": 950,
+   "sources_ms": 950,
+   "done_ms": 950,
+   "endpoint_lag_ms": 873,
+   "ready_vad_ms": 1140,
+   "arc_end_s": 3.2,
+   "vad_end_s": 3.01,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "1 cup is 8 fluid ounces (US measures). [1]",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "i'm baking something how many ounces are in one cup",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "baking something ounces one cup",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "baking something ounces one cup"
+   ],
+   "sources": [
+    "cup \u2192 fluid ounces"
+   ],
+   "web_paid": 0,
+   "free_calls": 0,
+   "tiers": {
+    "card": 1
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.95,
+   "answer_src": "unit conversion (local)",
+   "routes": [
+    "card"
+   ],
+   "route_why": "unit conversion",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4073,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f22",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4073,
+     "query": "baking something ounces one cup"
+    },
+    {
+     "t": "spec",
+     "id": "f22",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4075,
+     "took": 2,
+     "n": 1,
+     "query": "baking something ounces one cup"
+    },
+    {
+     "t": "sources",
+     "ms": 4150
+    },
+    {
+     "t": "first_token",
+     "ms": 4150
+    }
+   ],
+   "arc_heard": "i'm baking something how many ounces are in one cup",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 1
+  },
+  {
+   "id": "sc08",
+   "text": "what's a hundred US dollars in euros at today's rate",
+   "kind": "conversion",
+   "voice": "kokoro:am_fenrir",
+   "mode": "baseline",
+   "ready_ms": 656,
+   "sources_ms": 656,
+   "done_ms": 656,
+   "endpoint_lag_ms": 422,
+   "ready_vad_ms": 756,
+   "arc_end_s": 3.2,
+   "vad_end_s": 3.1,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "100 US dollars is about 90.48 euros, at 1 USD = 0.9048 EUR (ECB rate of 2026-11-13). [1]",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what's a hundred us dollars in euros at today's rate",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "hundred dollars euros today's rate",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "hundred dollars euros today's rate"
+   ],
+   "sources": [
+    "USD \u2192 EUR"
+   ],
+   "web_paid": 0,
+   "free_calls": 1,
+   "tiers": {
+    "card": 1
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.9,
+   "answer_src": "ECB reference rate via Frankfurter",
+   "routes": [
+    "card"
+   ],
+   "route_why": "currency",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3622,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f23",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3623,
+     "query": "hundred dollars euros today's rate"
+    },
+    {
+     "t": "spec",
+     "id": "f23",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3651,
+     "took": 29,
+     "n": 1,
+     "query": "hundred dollars euros today's rate"
+    },
+    {
+     "t": "sources",
+     "ms": 3856
+    },
+    {
+     "t": "first_token",
+     "ms": 3856
+    }
+   ],
+   "arc_heard": "what's a hundred us dollars in euros at today's rate",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 7.5,
+   "order": 0
+  },
+  {
+   "id": "sc08",
+   "text": "what's a hundred US dollars in euros at today's rate",
+   "kind": "conversion",
+   "voice": "kokoro:am_fenrir",
+   "mode": "headstart",
+   "ready_ms": 280,
+   "sources_ms": 280,
+   "done_ms": 280,
+   "endpoint_lag_ms": 184,
+   "ready_vad_ms": 380,
+   "arc_end_s": 3.2,
+   "vad_end_s": 3.1,
+   "path": "route-card",
+   "correct": null,
+   "answer": "100 US dollars is about 90.48 euros, at 1 USD = 0.9048 EUR (ECB rate of 2026-11-13). [1]",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what's a hundred us dollars in euros at today's rate",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 0,
+   "web_skipped": {
+    "route-hold": 1
+   },
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 742,
+   "used_fire_lead_ms": 742,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 1,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "hundred dollars euros today's rate",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "hundred dollars euro",
+    "hundred dollars euros today's rate"
+   ],
+   "sources": [
+    "USD \u2192 EUR"
+   ],
+   "web_paid": 0,
+   "free_calls": 2,
+   "tiers": {
+    "card": 2
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.9,
+   "answer_src": "ECB reference rate via Frankfurter",
+   "routes": [
+    "card",
+    "card"
+   ],
+   "route_why": "currency",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f24",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2458,
+     "query": "hundred dollars euro"
+    },
+    {
+     "t": "spec",
+     "id": "f24",
+     "lane": "web",
+     "state": "stale",
+     "ms": 2497,
+     "query": "hundred dollars euro"
+    },
+    {
+     "t": "spec",
+     "id": "f24",
+     "lane": "web",
+     "state": "stale",
+     "ms": 2478,
+     "took": 19,
+     "n": 1,
+     "query": "hundred dollars euro"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3383,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f25",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3480,
+     "query": "hundred dollars euros today's rate"
+    },
+    {
+     "t": "spec",
+     "id": "f25",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3480,
+     "took": 0,
+     "n": 1,
+     "query": "hundred dollars euros today's rate"
+    },
+    {
+     "t": "sources",
+     "ms": 3480
+    },
+    {
+     "t": "first_token",
+     "ms": 3480
+    }
+   ],
+   "arc_heard": "what's a hundred us dollars in euros at today's rate",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 4.4,
+   "order": 1
+  },
+  {
+   "id": "sc09",
+   "text": "how many miles is a marathon, like, exactly, to the decimal",
+   "kind": "conversion",
+   "voice": "kokoro:af_nova",
+   "mode": "headstart",
+   "ready_ms": 1112,
+   "sources_ms": 466,
+   "done_ms": 1544,
+   "endpoint_lag_ms": 391,
+   "ready_vad_ms": 902,
+   "arc_end_s": 3.52,
+   "vad_end_s": 3.73,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "A marathon is 42.195 kilometres, which is about 26.22 miles [1]. The statute mile is exactly 1.609344 kilometres, so the precise figure is roughly 26.219 miles [3].",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how many miles is a marathon like exactly to the decimal",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 0,
+   "web_skipped": {
+    "extends": 3
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.761,
+    "ent": 1.0,
+    "terms": 1.0
+   },
+   "first_fire_lead_ms": 1353,
+   "used_fire_lead_ms": 1353,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "facts",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 4,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "miles marathon exactly decimal",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "miles marathon"
+   ],
+   "sources": [
+    "Marathon \u00b7 local Wikipedia",
+    "Nautical mile \u00b7 local Wikipedia",
+    "Mile \u00b7 local Wikipedia"
+   ],
+   "web_paid": 0,
+   "free_calls": 0,
+   "tiers": {
+    "facts": 1
+   },
+   "answer_tier": "facts",
+   "route_plan": "facts",
+   "route_conf": 0.5,
+   "answer_src": "local Wikipedia",
+   "routes": [
+    "facts"
+   ],
+   "route_why": "stable factoid",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f26",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2167,
+     "query": "miles marathon"
+    },
+    {
+     "t": "spec",
+     "id": "f26",
+     "lane": "web",
+     "state": "done",
+     "ms": 2245,
+     "took": 78,
+     "n": 3,
+     "query": "miles marathon"
+    },
+    {
+     "t": "spec",
+     "id": "d27",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 2646,
+     "query": "how many miles is a marathon like"
+    },
+    {
+     "t": "spec",
+     "id": "d27",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3006,
+     "query": "how many miles is a marathon like"
+    },
+    {
+     "t": "spec",
+     "id": "d28",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3051,
+     "query": "how many miles is a marathon like exact"
+    },
+    {
+     "t": "spec",
+     "id": "d28",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3286,
+     "query": "how many miles is a marathon like exact"
+    },
+    {
+     "t": "spec",
+     "id": "d29",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3336,
+     "query": "how many miles is a marathon like exactly"
+    },
+    {
+     "t": "spec",
+     "id": "d29",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3768,
+     "query": "how many miles is a marathon like exactly"
+    },
+    {
+     "t": "spec",
+     "id": "d30",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3847,
+     "query": "how many miles is a marathon like exactly to the decimal"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3911,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d30",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 3986,
+     "query": "how many miles is a marathon like exactly to the decimal"
+    },
+    {
+     "t": "sources",
+     "ms": 3986
+    },
+    {
+     "t": "first_token",
+     "ms": 4632
+    }
+   ],
+   "arc_heard": "how many miles is a marathon like exactly to the decimal",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.4,
+   "order": 0
+  },
+  {
+   "id": "sc09",
+   "text": "how many miles is a marathon, like, exactly, to the decimal",
+   "kind": "conversion",
+   "voice": "kokoro:af_nova",
+   "mode": "baseline",
+   "ready_ms": 2623,
+   "sources_ms": 1099,
+   "done_ms": 2887,
+   "endpoint_lag_ms": 792,
+   "ready_vad_ms": 2493,
+   "arc_end_s": 3.6,
+   "vad_end_s": 3.73,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "A marathon is 42.195 kilometres, or about 26.22 miles [1]. The statute mile is exactly 1.609344 kilometres, so the precise figure is roughly 26.2188 miles [3].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how many miles is a marathon like exactly to the decimal",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "facts",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "miles marathon exactly decimal",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "miles marathon exactly decimal"
+   ],
+   "sources": [
+    "Marathon \u00b7 local Wikipedia",
+    "Nautical mile \u00b7 local Wikipedia",
+    "Mile \u00b7 local Wikipedia"
+   ],
+   "web_paid": 0,
+   "free_calls": 0,
+   "tiers": {
+    "facts": 1
+   },
+   "answer_tier": "facts",
+   "route_plan": "facts",
+   "route_conf": 0.5,
+   "answer_src": "local Wikipedia",
+   "routes": [
+    "facts"
+   ],
+   "route_why": "stable factoid",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4392,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f31",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4393,
+     "query": "miles marathon exactly decimal"
+    },
+    {
+     "t": "spec",
+     "id": "f31",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4514,
+     "took": 122,
+     "n": 3,
+     "query": "miles marathon exactly decimal"
+    },
+    {
+     "t": "sources",
+     "ms": 4699
+    },
+    {
+     "t": "first_token",
+     "ms": 6223
+    }
+   ],
+   "arc_heard": "how many miles is a marathon like exactly to the decimal",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 1
+  },
+  {
+   "id": "sc10",
+   "text": "okay so, how do I get a red wine stain out of a carpet",
+   "kind": "howto",
+   "voice": "kokoro:af_heart",
+   "mode": "baseline",
+   "ready_ms": 1991,
+   "sources_ms": 1164,
+   "done_ms": 2512,
+   "endpoint_lag_ms": 710,
+   "ready_vad_ms": 1961,
+   "arc_end_s": 3.6,
+   "vad_end_s": 3.63,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "The sources don't cover removing wine stains from carpets. Blot the spill with a clean cloth, then sponge with cold water and a little mild detergent, working from the outside in, and avoid rubbing. Wine stains are best treated quickly, and a carpet cleaner or professional service can help if the stain persists.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "okay so how do i get a red wine stain out of a carpet",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "red wine stain out carpet",
+   "intent": "discourse.intent.weather_query",
+   "spec_queries": [
+    "red wine stain out carpet"
+   ],
+   "sources": [
+    "Fabric treatment",
+    "Caught in the Act (Modern Family)",
+    "Stained glass",
+    "Red"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: how do i",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4310,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f32",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4310,
+     "query": "red wine stain out carpet"
+    },
+    {
+     "t": "spec",
+     "id": "f32",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4534,
+     "took": 224,
+     "n": 4,
+     "query": "red wine stain out carpet"
+    },
+    {
+     "t": "sources",
+     "ms": 4764
+    },
+    {
+     "t": "first_token",
+     "ms": 5591
+    }
+   ],
+   "arc_heard": "okay so how do i get a red wine stain out of a carpet",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 2.8,
+   "order": 0
+  },
+  {
+   "id": "sc10",
+   "text": "okay so, how do I get a red wine stain out of a carpet",
+   "kind": "howto",
+   "voice": "kokoro:af_heart",
+   "mode": "headstart",
+   "ready_ms": 1250,
+   "sources_ms": 663,
+   "done_ms": 1691,
+   "endpoint_lag_ms": 303,
+   "ready_vad_ms": 1140,
+   "arc_end_s": 3.52,
+   "vad_end_s": 3.63,
+   "path": "pool-reuse",
+   "correct": true,
+   "answer": "Blot up the excess wine first, then apply a solvent or detergent, which you can get over the counter, and work it gently into the stain [1]. Blot again with a clean cloth until the stain lifts, rinsing the area afterward.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "okay so how do i get a red wine stain out of a carpet",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "hold": 1
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.758,
+    "ent": 1.0,
+    "terms": 0.8
+   },
+   "first_fire_lead_ms": -183,
+   "used_fire_lead_ms": -183,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "red wine stain out carpet",
+   "intent": "discourse.intent.weather_query",
+   "spec_queries": [
+    "red wine stain out"
+   ],
+   "sources": [
+    "Stain removal",
+    "Red Wine Supernova",
+    "Wine rack",
+    "Stained glass"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: how do i",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f33",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3703,
+     "query": "red wine stain out"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3823,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f33",
+     "lane": "web",
+     "state": "done",
+     "ms": 3912,
+     "took": 209,
+     "n": 4,
+     "query": "red wine stain out"
+    },
+    {
+     "t": "sources",
+     "ms": 4183
+    },
+    {
+     "t": "spec",
+     "id": "d34",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 4271,
+     "query": "okay so how do i get a red wine stain out of a carpet"
+    },
+    {
+     "t": "first_token",
+     "ms": 4770
+    }
+   ],
+   "arc_heard": "okay so how do i get a red wine stain out of a carpet",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.4,
+   "order": 1
+  },
+  {
+   "id": "sc11",
+   "text": "how long should I boil an egg if I want the yolk soft",
+   "kind": "recipe",
+   "voice": "kokoro:am_michael",
+   "mode": "headstart",
+   "ready_ms": 1641,
+   "sources_ms": 500,
+   "done_ms": 2166,
+   "endpoint_lag_ms": 397,
+   "ready_vad_ms": 1301,
+   "arc_end_s": 2.88,
+   "vad_end_s": 3.22,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "The sources don't give exact timings. For a soft yolk, a soft-boiled egg leaves the yolk at least partially liquid, so cook it shorter than a hard-boiled egg [1]. Start checking around six to seven minutes in boiling water, then cool it quickly in cold water.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how long should i boil an egg if i want the yolk soft",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "extends": 3
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.784,
+    "ent": 1.0,
+    "terms": 1.0
+   },
+   "first_fire_lead_ms": 377,
+   "used_fire_lead_ms": 377,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 4,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "long boil egg yolk soft",
+   "intent": "discourse.intent.cooking_recipe",
+   "spec_queries": [
+    "long boil egg"
+   ],
+   "sources": [
+    "Boiled egg",
+    "Poached egg",
+    "Egg boiler",
+    "Tea egg"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: should i",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f35",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2503,
+     "query": "long boil egg"
+    },
+    {
+     "t": "spec",
+     "id": "f35",
+     "lane": "web",
+     "state": "done",
+     "ms": 2668,
+     "took": 165,
+     "n": 4,
+     "query": "long boil egg"
+    },
+    {
+     "t": "spec",
+     "id": "d36",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 2957,
+     "query": "how long should i boil an egg if i want the"
+    },
+    {
+     "t": "spec",
+     "id": "d36",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 2996,
+     "query": "how long should i boil an egg if i want the"
+    },
+    {
+     "t": "spec",
+     "id": "d37",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3042,
+     "query": "how long should i boil an egg if i want the yolks"
+    },
+    {
+     "t": "spec",
+     "id": "d37",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3201,
+     "query": "how long should i boil an egg if i want the yolks"
+    },
+    {
+     "t": "spec",
+     "id": "d38",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3245,
+     "query": "how long should i boil an egg if i want the yolk sauce"
+    },
+    {
+     "t": "spec",
+     "id": "d38",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3276,
+     "query": "how long should i boil an egg if i want the yolk sauce"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3277,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d39",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3329,
+     "query": "how long should i boil an egg if i want the yolk soft"
+    },
+    {
+     "t": "spec",
+     "id": "d39",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 3380,
+     "query": "how long should i boil an egg if i want the yolk soft"
+    },
+    {
+     "t": "sources",
+     "ms": 3380
+    },
+    {
+     "t": "first_token",
+     "ms": 4521
+    }
+   ],
+   "arc_heard": "how long should i boil an egg if i want the yolk soft",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc11",
+   "text": "how long should I boil an egg if I want the yolk soft",
+   "kind": "recipe",
+   "voice": "kokoro:am_michael",
+   "mode": "baseline",
+   "ready_ms": 2087,
+   "sources_ms": 1089,
+   "done_ms": 2519,
+   "endpoint_lag_ms": 703,
+   "ready_vad_ms": 2067,
+   "arc_end_s": 3.2,
+   "vad_end_s": 3.22,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "The sources don't give exact timings. For a soft yolk, a soft-boiled egg leaves the yolk partly liquid, so you'd cook it shorter than a hard-boiled one [1]. Start checking around six to seven minutes in boiling water, then cool it in cold water.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how long should i boil an egg if i want the yolk soft",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "long boil egg yolk soft",
+   "intent": "discourse.intent.cooking_recipe",
+   "spec_queries": [
+    "long boil egg yolk soft"
+   ],
+   "sources": [
+    "Boiled egg",
+    "Poached egg",
+    "Salted duck egg",
+    "Panagyurishte-style eggs"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: should i",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3903,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f40",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3904,
+     "query": "long boil egg yolk soft"
+    },
+    {
+     "t": "spec",
+     "id": "f40",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4109,
+     "took": 205,
+     "n": 4,
+     "query": "long boil egg yolk soft"
+    },
+    {
+     "t": "sources",
+     "ms": 4289
+    },
+    {
+     "t": "first_token",
+     "ms": 5287
+    }
+   ],
+   "arc_heard": "how long should i boil an egg if i want the yolk soft",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 7.0,
+   "order": 1
+  },
+  {
+   "id": "sc12",
+   "text": "how do I take a screenshot on a Mac, just part of the screen",
+   "kind": "tech",
+   "voice": "kokoro:af_bella",
+   "mode": "baseline",
+   "ready_ms": 1207,
+   "sources_ms": 780,
+   "done_ms": 1613,
+   "endpoint_lag_ms": 372,
+   "ready_vad_ms": 1247,
+   "arc_end_s": 3.52,
+   "vad_end_s": 3.48,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "On a Mac, press Command, Shift and 4 together, then drag to select the area you want; the screenshot is saved to your desktop. The sources don't describe this Mac shortcut, but Print Screen, the keyboard key on most PCs, is covered in [1].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how do i take a screenshot on a mac just part of the screen",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "take screenshot mac part screen",
+   "intent": "discourse.intent.cooking_recipe",
+   "spec_queries": [
+    "take screenshot mac part screen"
+   ],
+   "sources": [
+    "Print Screen",
+    "Bandicam",
+    "List of built-in macOS apps",
+    "MacOS Mojave"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: how do i",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3892,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f41",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3892,
+     "query": "take screenshot mac part screen"
+    },
+    {
+     "t": "spec",
+     "id": "f41",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4114,
+     "took": 222,
+     "n": 4,
+     "query": "take screenshot mac part screen"
+    },
+    {
+     "t": "sources",
+     "ms": 4300
+    },
+    {
+     "t": "first_token",
+     "ms": 4727
+    }
+   ],
+   "arc_heard": "how do i take a screenshot on a mac just part of the screen",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 0
+  },
+  {
+   "id": "sc12",
+   "text": "how do I take a screenshot on a Mac, just part of the screen",
+   "kind": "tech",
+   "voice": "kokoro:af_bella",
+   "mode": "headstart",
+   "ready_ms": 837,
+   "sources_ms": 367,
+   "done_ms": 1408,
+   "endpoint_lag_ms": 315,
+   "ready_vad_ms": 637,
+   "arc_end_s": 3.28,
+   "vad_end_s": 3.48,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "On a Mac, press Command, Shift and 4 together, then drag to select the part of the screen you want. The sources don't cover the keyboard shortcut itself, so this answer comes from general knowledge rather than the search results.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how do i take a screenshot on a mac just part of the screen",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "extends": 2
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.712,
+    "ent": 1.0,
+    "terms": 1.0
+   },
+   "first_fire_lead_ms": 1059,
+   "used_fire_lead_ms": 1059,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 3,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "take screenshot mac part screen",
+   "intent": "discourse.intent.cooking_recipe",
+   "spec_queries": [
+    "take screenshot mac"
+   ],
+   "sources": [
+    "TinyGrab",
+    "List of built-in macOS apps",
+    "MacOS Mojave",
+    "Big Mac (video game)"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: how do i",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f42",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2221,
+     "query": "take screenshot mac"
+    },
+    {
+     "t": "endpoint",
+     "ms": 2318,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f42",
+     "lane": "web",
+     "state": "done",
+     "ms": 2386,
+     "took": 164,
+     "n": 4,
+     "query": "take screenshot mac"
+    },
+    {
+     "t": "sources",
+     "ms": 2548
+    },
+    {
+     "t": "spec",
+     "id": "d43",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 2598,
+     "query": "how do i take a screenshot on a mac"
+    },
+    {
+     "t": "spec",
+     "id": "d43",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 2996,
+     "query": "how do i take a screenshot on a mac"
+    },
+    {
+     "t": "spec",
+     "id": "d44",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3060,
+     "query": "how do i take a screenshot on a mac just part of"
+    },
+    {
+     "t": "spec",
+     "id": "d44",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3517,
+     "query": "how do i take a screenshot on a mac just part of"
+    },
+    {
+     "t": "spec",
+     "id": "d45",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3586,
+     "query": "how do i take a screenshot on a mac just part of the screen"
+    },
+    {
+     "t": "extended",
+     "ms": 3595
+    },
+    {
+     "t": "endpoint",
+     "ms": 3595,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d45",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 3647,
+     "query": "how do i take a screenshot on a mac just part of the screen"
+    },
+    {
+     "t": "sources",
+     "ms": 3647
+    },
+    {
+     "t": "first_token",
+     "ms": 4117
+    }
+   ],
+   "arc_heard": "how do i take a screenshot on a mac just part of the screen",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 1
+  },
+  {
+   "id": "sc13",
+   "text": "uh, my iPhone won't charge anymore, what should I try first",
+   "kind": "tech",
+   "voice": "kokoro:am_fenrir",
+   "mode": "headstart",
+   "ready_ms": 733,
+   "sources_ms": 264,
+   "done_ms": 1274,
+   "endpoint_lag_ms": 212,
+   "ready_vad_ms": 523,
+   "arc_end_s": 3.12,
+   "vad_end_s": 3.33,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "The sources don't cover iPhone charging troubleshooting. First, try a different cable and power adapter, and clean the charging port of lint with a wooden or plastic tool, since a faulty cable or debris is the most common cause.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "my iphone won't charge anymore what should i try first",
+   "hedged": false,
+   "q_wer": 0.083,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "extends": 2
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.597,
+    "ent": 1.0,
+    "terms": 0.75
+   },
+   "first_fire_lead_ms": 867,
+   "used_fire_lead_ms": 867,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 3,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "iphone charge anymore try first",
+   "intent": "discourse.intent.social_post",
+   "spec_queries": [
+    "iphone charge anymore"
+   ],
+   "sources": [
+    "IOS",
+    "App Store (Apple)",
+    "USB hardware",
+    "Flipboard"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "unsure",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f46",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2253,
+     "query": "iphone charge anymore"
+    },
+    {
+     "t": "spec",
+     "id": "f46",
+     "lane": "web",
+     "state": "done",
+     "ms": 2464,
+     "took": 211,
+     "n": 4,
+     "query": "iphone charge anymore"
+    },
+    {
+     "t": "spec",
+     "id": "d47",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 2774,
+     "query": "my iphone won't charge anymore which"
+    },
+    {
+     "t": "spec",
+     "id": "d47",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 2932,
+     "query": "my iphone won't charge anymore which"
+    },
+    {
+     "t": "spec",
+     "id": "d48",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 2996,
+     "query": "my iphone won't charge anymore what should i try"
+    },
+    {
+     "t": "spec",
+     "id": "d48",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3252,
+     "query": "my iphone won't charge anymore what should i try"
+    },
+    {
+     "t": "spec",
+     "id": "d49",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3318,
+     "query": "my iphone won't charge anymore what should i try first"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3332,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d49",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 3384,
+     "query": "my iphone won't charge anymore what should i try first"
+    },
+    {
+     "t": "sources",
+     "ms": 3384
+    },
+    {
+     "t": "first_token",
+     "ms": 3853
+    }
+   ],
+   "arc_heard": "my iphone won't charge anymore what should i try first",
+   "arc_wer": 0.083,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.4,
+   "order": 0
+  },
+  {
+   "id": "sc13",
+   "text": "uh, my iPhone won't charge anymore, what should I try first",
+   "kind": "tech",
+   "voice": "kokoro:am_fenrir",
+   "mode": "baseline",
+   "ready_ms": 2457,
+   "sources_ms": 1828,
+   "done_ms": 2859,
+   "endpoint_lag_ms": 1076,
+   "ready_vad_ms": 1767,
+   "arc_end_s": 2.64,
+   "vad_end_s": 3.33,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "The sources don't cover charging troubleshooting. Start by checking the cable, the power adapter, and the charging port for lint or debris, then try a different outlet and a restart. These are general steps, not from the sources.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "my iphone won't charge anymore what should i try first",
+   "hedged": false,
+   "q_wer": 0.083,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "iphone charge anymore try first",
+   "intent": "discourse.intent.social_post",
+   "spec_queries": [
+    "iphone charge anymore try first"
+   ],
+   "sources": [
+    "IOS",
+    "Michonne",
+    "Rick Grimes",
+    "Fabled Lands"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: what should i",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3716,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f50",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3717,
+     "query": "iphone charge anymore try first"
+    },
+    {
+     "t": "spec",
+     "id": "f50",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3930,
+     "took": 213,
+     "n": 4,
+     "query": "iphone charge anymore try first"
+    },
+    {
+     "t": "sources",
+     "ms": 4468
+    },
+    {
+     "t": "first_token",
+     "ms": 5097
+    }
+   ],
+   "arc_heard": "my iphone won't charge anymore what should i try first",
+   "arc_wer": 0.083,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 1
+  },
+  {
+   "id": "sc14",
+   "text": "what are the usual symptoms of strep throat in adults",
+   "kind": "health",
+   "voice": "kokoro:af_aoede",
+   "mode": "baseline",
+   "ready_ms": 2225,
+   "sources_ms": 1681,
+   "done_ms": 2606,
+   "endpoint_lag_ms": 742,
+   "ready_vad_ms": 2005,
+   "arc_end_s": 2.64,
+   "vad_end_s": 2.86,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "Strep throat usually causes fever, sore throat, red tonsils, and enlarged lymph nodes in the front of the neck, sometimes with headache and nausea or vomiting [1]. Symptoms typically appear one to three days after exposure and last seven to ten days [1].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what are the usual symptoms of strep throat in adults",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "usual symptoms strep throat adults",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "usual symptoms strep throat adults"
+   ],
+   "sources": [
+    "Streptococcal pharyngitis",
+    "Infectious mononucleosis",
+    "Rheumatic fever",
+    "Vocal cord dysfunction"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: symptoms",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3382,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f51",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3382,
+     "query": "usual symptoms strep throat adults"
+    },
+    {
+     "t": "spec",
+     "id": "f51",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3607,
+     "took": 225,
+     "n": 4,
+     "query": "usual symptoms strep throat adults"
+    },
+    {
+     "t": "sources",
+     "ms": 4321
+    },
+    {
+     "t": "first_token",
+     "ms": 4865
+    }
+   ],
+   "arc_heard": "what are the usual symptoms of strep throat in adults",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 0
+  },
+  {
+   "id": "sc14",
+   "text": "what are the usual symptoms of strep throat in adults",
+   "kind": "health",
+   "voice": "kokoro:af_aoede",
+   "mode": "headstart",
+   "ready_ms": 949,
+   "sources_ms": 474,
+   "done_ms": 1377,
+   "endpoint_lag_ms": 363,
+   "ready_vad_ms": 729,
+   "arc_end_s": 2.64,
+   "vad_end_s": 2.86,
+   "path": "pool-reuse",
+   "correct": true,
+   "answer": "Strep throat usually causes fever, sore throat, red tonsils, and swollen lymph nodes in the front of the neck, sometimes with headache, nausea, or vomiting [1]. Symptoms typically begin one to three days after exposure and last seven to ten days [1].",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what are the usual symptoms of strep throat in adults",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "hold": 1,
+    "extends": 1
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.815,
+    "ent": 1.0,
+    "terms": 1.0
+   },
+   "first_fire_lead_ms": -63,
+   "used_fire_lead_ms": -63,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "usual symptoms strep throat adults",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "usual symptoms strep throat"
+   ],
+   "sources": [
+    "Streptococcal pharyngitis",
+    "Scarlet fever",
+    "Infectious mononucleosis",
+    "Rheumatic fever"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: symptoms",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f52",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2703,
+     "query": "usual symptoms strep throat"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3003,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f52",
+     "lane": "web",
+     "state": "done",
+     "ms": 2890,
+     "took": 187,
+     "n": 4,
+     "query": "usual symptoms strep throat"
+    },
+    {
+     "t": "sources",
+     "ms": 3114
+    },
+    {
+     "t": "spec",
+     "id": "d53",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3162,
+     "query": "what are the usual symptoms of strep throat in adults"
+    },
+    {
+     "t": "first_token",
+     "ms": 3589
+    }
+   ],
+   "arc_heard": "what are the usual symptoms of strep throat in adults",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 1
+  },
+  {
+   "id": "sc15",
+   "text": "is it bad to take ibuprofen on an empty stomach",
+   "kind": "health",
+   "voice": "kokoro:af_nova",
+   "mode": "headstart",
+   "ready_ms": 2205,
+   "sources_ms": 620,
+   "done_ms": 2676,
+   "endpoint_lag_ms": 210,
+   "ready_vad_ms": 2145,
+   "arc_end_s": 3.12,
+   "vad_end_s": 3.18,
+   "path": "speculative-hit",
+   "correct": true,
+   "answer": "Taking ibuprofen on an empty stomach can irritate the stomach lining and cause discomfort, so it's generally better taken with food or milk. The sources provided don't cover ibuprofen's stomach effects, so this answer isn't drawn from them.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "is it bad to take ibuprofen on an empty stomach",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 2,
+   "spec_used": 2,
+   "paid_calls": 2,
+   "web_skipped": {
+    "hold": 1,
+    "extends": 2
+   },
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 618,
+   "used_fire_lead_ms": 618,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "bad take ibuprofen empty stomach",
+   "intent": "discourse.intent.weather_query",
+   "spec_queries": [
+    "bad take ibuprofen",
+    "bad take ibuprofen empty stomach"
+   ],
+   "sources": [
+    "Paracetamol",
+    "Hip pointer",
+    "COVID-19 misinformation",
+    "2014 in science",
+    "Nacho Varga"
+   ],
+   "web_paid": 2,
+   "free_calls": 0,
+   "tiers": {
+    "web": 2
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web",
+    "web"
+   ],
+   "route_why": "open-ended: is it bad",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f54",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2502,
+     "query": "bad take ibuprofen"
+    },
+    {
+     "t": "spec",
+     "id": "f54",
+     "lane": "web",
+     "state": "done",
+     "ms": 2667,
+     "took": 165,
+     "n": 4,
+     "query": "bad take ibuprofen"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3330,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f55",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3377,
+     "query": "bad take ibuprofen empty stomach"
+    },
+    {
+     "t": "spec",
+     "id": "f55",
+     "lane": "web",
+     "state": "done",
+     "ms": 3572,
+     "took": 195,
+     "n": 4,
+     "query": "bad take ibuprofen empty stomach"
+    },
+    {
+     "t": "sources",
+     "ms": 3740
+    },
+    {
+     "t": "first_token",
+     "ms": 5325
+    }
+   ],
+   "arc_heard": "is it bad to take ibuprofen on an empty stomach",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 0
+  },
+  {
+   "id": "sc15",
+   "text": "is it bad to take ibuprofen on an empty stomach",
+   "kind": "health",
+   "voice": "kokoro:af_nova",
+   "mode": "baseline",
+   "ready_ms": 2045,
+   "sources_ms": 1505,
+   "done_ms": 2609,
+   "endpoint_lag_ms": 1061,
+   "ready_vad_ms": 1905,
+   "arc_end_s": 3.04,
+   "vad_end_s": 3.18,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "Taking ibuprofen on an empty stomach can irritate the stomach lining and cause discomfort, so it's generally better to take it with food or milk. The sources provided don't cover this specific question, so this answer comes from general medical knowledge rather than the search results.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "is it bad to take ibuprofen on an empty stomach",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "bad take ibuprofen empty stomach",
+   "intent": "discourse.intent.weather_query",
+   "spec_queries": [
+    "bad take ibuprofen empty stomach"
+   ],
+   "sources": [
+    "Paracetamol",
+    "COVID-19 misinformation",
+    "2014 in science",
+    "List of New Amsterdam episodes"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: is it bad",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4101,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f56",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4102,
+     "query": "bad take ibuprofen empty stomach"
+    },
+    {
+     "t": "spec",
+     "id": "f56",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4366,
+     "took": 264,
+     "n": 4,
+     "query": "bad take ibuprofen empty stomach"
+    },
+    {
+     "t": "sources",
+     "ms": 4545
+    },
+    {
+     "t": "first_token",
+     "ms": 5085
+    }
+   ],
+   "arc_heard": "is it bad to take ibuprofen on an empty stomach",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.9,
+   "order": 1
+  },
+  {
+   "id": "sc16",
+   "text": "what time does the Louvre in Paris close today",
+   "kind": "local",
+   "voice": "kokoro:am_michael",
+   "mode": "baseline",
+   "ready_ms": 1323,
+   "sources_ms": 867,
+   "done_ms": 1830,
+   "endpoint_lag_ms": 353,
+   "ready_vad_ms": 1273,
+   "arc_end_s": 2.8,
+   "vad_end_s": 2.85,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "The sources don't cover today's opening hours. The Louvre is a national museum in Paris, located on the Right Bank of the Seine in the 1st arrondissement [1][4]. Check the museum's official website for current hours, as they vary by day.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what time does the louvre in paris close today",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "time louvre paris close today",
+   "intent": "discourse.intent.datetime_query",
+   "spec_queries": [
+    "time louvre paris close today"
+   ],
+   "sources": [
+    "Louvre",
+    "Louvre Palace",
+    "Oratoire du Louvre",
+    "Paris",
+    "Paris-soir"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: today",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3153,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f57",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3154,
+     "query": "time louvre paris close today"
+    },
+    {
+     "t": "spec",
+     "id": "f57",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3377,
+     "took": 224,
+     "n": 6,
+     "query": "time louvre paris close today"
+    },
+    {
+     "t": "sources",
+     "ms": 3667
+    },
+    {
+     "t": "first_token",
+     "ms": 4123
+    }
+   ],
+   "arc_heard": "what time does the louvre in paris close today",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.5,
+   "order": 0
+  },
+  {
+   "id": "sc16",
+   "text": "what time does the Louvre in Paris close today",
+   "kind": "local",
+   "voice": "kokoro:am_michael",
+   "mode": "headstart",
+   "ready_ms": 836,
+   "sources_ms": 270,
+   "done_ms": 1159,
+   "endpoint_lag_ms": 163,
+   "ready_vad_ms": 786,
+   "arc_end_s": 2.8,
+   "vad_end_s": 2.85,
+   "path": "pool-reuse",
+   "correct": null,
+   "answer": "The sources don't give the Louvre's closing time for today. Museum hours change often, so check the Louvre's official website before you go.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what time does the louvre in paris close today",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 0,
+   "web_skipped": {
+    "hold": 1,
+    "extends": 1
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.743,
+    "ent": 1.0,
+    "terms": 0.6
+   },
+   "first_fire_lead_ms": 200,
+   "used_fire_lead_ms": 200,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "facts",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "time louvre paris close today",
+   "intent": "discourse.intent.datetime_query",
+   "spec_queries": [
+    "time louvre paris close"
+   ],
+   "sources": [
+    "Louvre \u00b7 local Wikipedia",
+    "Venus de Milo \u00b7 local Wikipedia",
+    "Mus\u00e9e d'Orsay \u00b7 local Wikipedia"
+   ],
+   "web_paid": 0,
+   "free_calls": 0,
+   "tiers": {
+    "facts": 1
+   },
+   "answer_tier": "facts",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "local Wikipedia",
+   "routes": [
+    "facts"
+   ],
+   "route_why": "stable factoid",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f58",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2600,
+     "query": "time louvre paris close"
+    },
+    {
+     "t": "endpoint",
+     "ms": 2879,
+     "by": "semantic"
+    },
+    {
+     "t": "extended",
+     "ms": 2963
+    },
+    {
+     "t": "endpoint",
+     "ms": 2963,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f58",
+     "lane": "web",
+     "state": "done",
+     "ms": 2732,
+     "took": 132,
+     "n": 3,
+     "query": "time louvre paris close"
+    },
+    {
+     "t": "sources",
+     "ms": 3070
+    },
+    {
+     "t": "spec",
+     "id": "d59",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3166,
+     "query": "what time does the louvre in paris close today"
+    },
+    {
+     "t": "first_token",
+     "ms": 3636
+    }
+   ],
+   "arc_heard": "what time does the louvre in paris close today",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 1
+  },
+  {
+   "id": "sc17",
+   "text": "what are some really good ramen places in Seattle",
+   "kind": "local",
+   "voice": "kokoro:af_heart",
+   "mode": "headstart",
+   "ready_ms": 2070,
+   "sources_ms": 1480,
+   "done_ms": 2629,
+   "endpoint_lag_ms": 612,
+   "ready_vad_ms": 1640,
+   "arc_end_s": 2.4,
+   "vad_end_s": 2.83,
+   "path": "speculative-hit",
+   "correct": null,
+   "answer": "The sources don't name any ramen spots in Seattle. Boxer Ramen, a former chain, was in Portland, and El Chupacabra in Seattle is a Mexican and Tex-Mex restaurant [1][4]. For good Seattle ramen, check current local reviews from a dining guide or ratings site.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what are some really good ramen places in seattle",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 3,
+   "spec_fires": 3,
+   "spec_used": 2,
+   "paid_calls": 2,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 588,
+   "used_fire_lead_ms": -403,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "good ramen places seattle",
+   "intent": "discourse.intent.general_joke",
+   "spec_queries": [
+    "good ramen",
+    "good ramen places",
+    "good ramen places seattle"
+   ],
+   "sources": [
+    "Boxer Ramen",
+    "Ichiran",
+    "Seattle",
+    "El Chupacabra (restaurant)",
+    "Downtown Seattle"
+   ],
+   "web_paid": 2,
+   "free_calls": 1,
+   "tiers": {
+    "wait": 1,
+    "web": 2
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "facts",
+    "web",
+    "web"
+   ],
+   "route_why": "open-ended: places",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f60",
+     "lane": "web",
+     "state": "fired",
+     "ms": 1812,
+     "query": "good ramen"
+    },
+    {
+     "t": "spec",
+     "id": "f60",
+     "lane": "web",
+     "state": "skipped",
+     "ms": 1893,
+     "query": "good ramen"
+    },
+    {
+     "t": "spec",
+     "id": "f61",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2803,
+     "query": "good ramen places"
+    },
+    {
+     "t": "spec",
+     "id": "f62",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2933,
+     "query": "good ramen places seattle"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3012,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f61",
+     "lane": "web",
+     "state": "done",
+     "ms": 2974,
+     "took": 172,
+     "n": 4,
+     "query": "good ramen places"
+    },
+    {
+     "t": "spec",
+     "id": "f62",
+     "lane": "web",
+     "state": "done",
+     "ms": 3133,
+     "took": 200,
+     "n": 6,
+     "query": "good ramen places seattle"
+    },
+    {
+     "t": "sources",
+     "ms": 3880
+    },
+    {
+     "t": "first_token",
+     "ms": 4470
+    }
+   ],
+   "arc_heard": "what are some really good ramen places in seattle",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 0
+  },
+  {
+   "id": "sc17",
+   "text": "what are some really good ramen places in Seattle",
+   "kind": "local",
+   "voice": "kokoro:af_heart",
+   "mode": "baseline",
+   "ready_ms": 1497,
+   "sources_ms": 964,
+   "done_ms": 1880,
+   "endpoint_lag_ms": 552,
+   "ready_vad_ms": 1387,
+   "arc_end_s": 2.72,
+   "vad_end_s": 2.83,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "The sources don't name any ramen restaurants in Seattle. The best-known ones are Ichiran and Shoryu, but check current reviews for the latest favorites.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what are some really good ramen places in seattle",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "good ramen places seattle",
+   "intent": "discourse.intent.general_joke",
+   "spec_queries": [
+    "good ramen places seattle"
+   ],
+   "sources": [
+    "Seattle",
+    "El Chupacabra (restaurant)",
+    "Downtown Seattle",
+    "List of fast food restaurant chains",
+    "Wild & Free (album)"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: places",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3272,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f63",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3272,
+     "query": "good ramen places seattle"
+    },
+    {
+     "t": "spec",
+     "id": "f63",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3463,
+     "took": 191,
+     "n": 6,
+     "query": "good ramen places seattle"
+    },
+    {
+     "t": "sources",
+     "ms": 3684
+    },
+    {
+     "t": "first_token",
+     "ms": 4217
+    }
+   ],
+   "arc_heard": "what are some really good ramen places in seattle",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 1
+  },
+  {
+   "id": "sc18",
+   "text": "is the Apple Store on Fifth Avenue in New York open twenty four hours",
+   "kind": "local",
+   "voice": "kokoro:af_bella",
+   "mode": "baseline",
+   "ready_ms": 2351,
+   "sources_ms": 1615,
+   "done_ms": 2771,
+   "endpoint_lag_ms": 978,
+   "ready_vad_ms": 2211,
+   "arc_end_s": 4.24,
+   "vad_end_s": 4.38,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "The sources don't say whether the Fifth Avenue Apple Store is open 24 hours. Apple Stores are retail stores that sell and repair Apple products [1], but their hours aren't covered here. Check Apple's website for current hours, as the flagship Fifth Avenue location has historically kept limited hours rather than round-the-clock service.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "is the apple store on fifth avenue in new york open twenty four hours",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "apple store fifth avenue new york open twenty four hours",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "apple store fifth avenue new york open twenty four hours"
+   ],
+   "sources": [
+    "Apple Store",
+    "Flatiron Building",
+    "28th Street station (IRT Lexington Avenue Line)",
+    "Fred F. French Building",
+    "New York Guard"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: twenty four hours",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 5218,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f64",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 5219,
+     "query": "apple store fifth avenue new york open twenty four hours"
+    },
+    {
+     "t": "spec",
+     "id": "f64",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 5550,
+     "took": 331,
+     "n": 6,
+     "query": "apple store fifth avenue new york open twenty four hours"
+    },
+    {
+     "t": "sources",
+     "ms": 5855
+    },
+    {
+     "t": "first_token",
+     "ms": 6591
+    }
+   ],
+   "arc_heard": "is the apple store on fifth avenue in new york open twenty four hours",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.4,
+   "order": 0
+  },
+  {
+   "id": "sc18",
+   "text": "is the Apple Store on Fifth Avenue in New York open twenty four hours",
+   "kind": "local",
+   "voice": "kokoro:af_bella",
+   "mode": "headstart",
+   "ready_ms": 895,
+   "sources_ms": 246,
+   "done_ms": 1440,
+   "endpoint_lag_ms": 153,
+   "ready_vad_ms": 755,
+   "arc_end_s": 4.24,
+   "vad_end_s": 4.38,
+   "path": "draft-reuse",
+   "correct": null,
+   "answer": "The sources don't say whether Apple Fifth Avenue is open 24 hours. It is an Apple Store on Fifth Avenue in Midtown Manhattan, opposite Grand Army Plaza, and it was rebuilt from 2017 to 2019 [1]. Apple Fifth Avenue is generally not open around the clock, so check Apple's website for current hours.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "is the apple store on fifth avenue in new york open twenty four hours",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "route-hold": 1,
+    "extends": 5
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.813,
+    "ent": 1.0,
+    "terms": 0.9
+   },
+   "first_fire_lead_ms": 1447,
+   "used_fire_lead_ms": 1447,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 6,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "apple store fifth avenue new york open twenty four hours",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "apple store fifth avenue new york"
+   ],
+   "sources": [
+    "Apple Fifth Avenue",
+    "Apple Store",
+    "Tiffany & Co. flagship store",
+    "Fifth Avenue",
+    "New York Guard"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "unsure",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f65",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2793,
+     "query": "apple store fifth avenue new york"
+    },
+    {
+     "t": "endpoint",
+     "ms": 2919,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f65",
+     "lane": "web",
+     "state": "done",
+     "ms": 3122,
+     "took": 329,
+     "n": 6,
+     "query": "apple store fifth avenue new york"
+    },
+    {
+     "t": "sources",
+     "ms": 3386
+    },
+    {
+     "t": "spec",
+     "id": "d66",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3455,
+     "query": "is the apple store on fifth avenue in new york a"
+    },
+    {
+     "t": "spec",
+     "id": "d66",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3552,
+     "query": "is the apple store on fifth avenue in new york a"
+    },
+    {
+     "t": "spec",
+     "id": "d67",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3595,
+     "query": "is the apple store on fifth avenue in new york open"
+    },
+    {
+     "t": "spec",
+     "id": "d67",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3752,
+     "query": "is the apple store on fifth avenue in new york open"
+    },
+    {
+     "t": "spec",
+     "id": "d68",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3800,
+     "query": "is the apple store on fifth avenue in new york open twenty"
+    },
+    {
+     "t": "spec",
+     "id": "d68",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 4073,
+     "query": "is the apple store on fifth avenue in new york open twenty"
+    },
+    {
+     "t": "spec",
+     "id": "d69",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 4134,
+     "query": "is the apple store on fifth avenue in new york open twenty four"
+    },
+    {
+     "t": "spec",
+     "id": "d69",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 4203,
+     "query": "is the apple store on fifth avenue in new york open twenty four"
+    },
+    {
+     "t": "spec",
+     "id": "d70",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 4256,
+     "query": "is the apple store on fifth avenue in new york open twenty four hour"
+    },
+    {
+     "t": "extended",
+     "ms": 4311
+    },
+    {
+     "t": "endpoint",
+     "ms": 4311,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d70",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 4353,
+     "query": "is the apple store on fifth avenue in new york open twenty four hour"
+    },
+    {
+     "t": "sources",
+     "ms": 4353
+    },
+    {
+     "t": "spec",
+     "id": "d70",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 4392,
+     "query": "is the apple store on fifth avenue in new york open twenty four hour"
+    },
+    {
+     "t": "extended",
+     "ms": 4393
+    },
+    {
+     "t": "endpoint",
+     "ms": 4393,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d71",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 4440,
+     "query": "is the apple store on fifth avenue in new york open twenty four hours"
+    },
+    {
+     "t": "spec",
+     "id": "d71",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 4486,
+     "query": "is the apple store on fifth avenue in new york open twenty four hours"
+    },
+    {
+     "t": "sources",
+     "ms": 4486
+    },
+    {
+     "t": "first_token",
+     "ms": 5135
+    }
+   ],
+   "arc_heard": "is the apple store on fifth avenue in new york open twenty four hours",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 1
+  },
+  {
+   "id": "sc19",
+   "text": "do I need a visa to visit Japan from the US",
+   "kind": "travel",
+   "voice": "kokoro:am_fenrir",
+   "mode": "headstart",
+   "ready_ms": 3001,
+   "sources_ms": 1080,
+   "done_ms": 3428,
+   "endpoint_lag_ms": 561,
+   "ready_vad_ms": 2951,
+   "arc_end_s": 2.88,
+   "vad_end_s": 2.93,
+   "path": "speculative-hit",
+   "correct": false,
+   "answer": "Yes, unless you are a citizen of a visa-exempt country or transiting within 72 hours, you must obtain a visa from a Japanese diplomatic mission [1]. Visitors from the US generally qualify for visa-free short stays, so check current requirements before you travel.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "tagger",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "do i need a visa to visit japan from the us",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "route-hold": 1
+   },
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": -143,
+   "used_fire_lead_ms": -143,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "visa visit japan",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "visa visit japan"
+   ],
+   "sources": [
+    "Visa policy of Japan",
+    "Visa policy of India",
+    "Travel visa",
+    "Japan",
+    "Visa policies of British Overseas Territories"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.2,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "unsure",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f72",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3023,
+     "query": "visa visit japan"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3441,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f72",
+     "lane": "web",
+     "state": "done",
+     "ms": 3279,
+     "took": 256,
+     "n": 6,
+     "query": "visa visit japan"
+    },
+    {
+     "t": "sources",
+     "ms": 3960
+    },
+    {
+     "t": "first_token",
+     "ms": 5881
+    }
+   ],
+   "arc_heard": "do i need a visa to visit japan from the us",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc19",
+   "text": "do I need a visa to visit Japan from the US",
+   "kind": "travel",
+   "voice": "kokoro:am_fenrir",
+   "mode": "baseline",
+   "ready_ms": 2413,
+   "sources_ms": 1008,
+   "done_ms": 2742,
+   "endpoint_lag_ms": 498,
+   "ready_vad_ms": 2523,
+   "arc_end_s": 3.04,
+   "vad_end_s": 2.93,
+   "path": "search-after-endpoint",
+   "correct": false,
+   "answer": "Yes, US citizens generally need a visa to visit Japan unless they are transiting within 72 hours [1]. Japan's visa-exempt list covers certain countries, and the sources here don't specify whether the United States is on it.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "do i need a visa to visit japan from the us",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "visa visit japan",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "visa visit japan"
+   ],
+   "sources": [
+    "Visa policy of Japan",
+    "Visa policy of India",
+    "Travel visa",
+    "Japan",
+    "Visa policies of British Overseas Territories"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.2,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "unsure",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3538,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f73",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3538,
+     "query": "visa visit japan"
+    },
+    {
+     "t": "spec",
+     "id": "f73",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3820,
+     "took": 282,
+     "n": 6,
+     "query": "visa visit japan"
+    },
+    {
+     "t": "sources",
+     "ms": 4048
+    },
+    {
+     "t": "first_token",
+     "ms": 5453
+    }
+   ],
+   "arc_heard": "do i need a visa to visit japan from the us",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 1
+  },
+  {
+   "id": "sc20",
+   "text": "when's the best time of year to visit Iceland to see the northern lights",
+   "kind": "travel",
+   "voice": "kokoro:af_aoede",
+   "mode": "baseline",
+   "ready_ms": 2487,
+   "sources_ms": 1890,
+   "done_ms": 2784,
+   "endpoint_lag_ms": 1406,
+   "ready_vad_ms": 2417,
+   "arc_end_s": 3.68,
+   "vad_end_s": 3.75,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "The sources don't say when to see the northern lights in Iceland. Generally, the best time is the dark winter months, roughly September through April, when nights are long and skies are clear.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "when's the best time of year to visit iceland to see the northern lights",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "when's best time year visit iceland see northern lights",
+   "intent": "discourse.intent.datetime_query",
+   "spec_queries": [
+    "when's best time year visit iceland see northern lights"
+   ],
+   "sources": [
+    "Iceland",
+    "Santa Claus Village",
+    "Outline of Iceland",
+    "Northern Isles",
+    "Bah\u00e1\u02bc\u00ed Faith in Scotland"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: best",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 5086,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f74",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 5087,
+     "query": "when's best time year visit iceland see northern lights"
+    },
+    {
+     "t": "spec",
+     "id": "f74",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 5346,
+     "took": 260,
+     "n": 6,
+     "query": "when's best time year visit iceland see northern lights"
+    },
+    {
+     "t": "sources",
+     "ms": 5570
+    },
+    {
+     "t": "first_token",
+     "ms": 6167
+    }
+   ],
+   "arc_heard": "when's the best time of year to visit iceland to see the northern lights",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc20",
+   "text": "when's the best time of year to visit Iceland to see the northern lights",
+   "kind": "travel",
+   "voice": "kokoro:af_aoede",
+   "mode": "headstart",
+   "ready_ms": 1649,
+   "sources_ms": 1167,
+   "done_ms": 2853,
+   "endpoint_lag_ms": 1112,
+   "ready_vad_ms": 1579,
+   "arc_end_s": 3.68,
+   "vad_end_s": 3.75,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "The sources don't cover northern lights viewing times. Generally, the best time to see the aurora in Iceland is from September to April, when nights are dark enough, with the winter months offering the longest darkness.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "when's the best time of year to visit iceland to see the northern lights",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 2,
+   "spec_used": 1,
+   "paid_calls": 2,
+   "web_skipped": {
+    "hold": 1
+   },
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 1678,
+   "used_fire_lead_ms": -341,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "when's best time year visit iceland see northern lights",
+   "intent": "discourse.intent.datetime_query",
+   "spec_queries": [
+    "when's best time year",
+    "when's best time year visit iceland see northern lights"
+   ],
+   "sources": [
+    "Iceland",
+    "Santa Claus Village",
+    "Outline of Iceland",
+    "Northern Isles",
+    "Bah\u00e1\u02bc\u00ed Faith in Scotland"
+   ],
+   "web_paid": 2,
+   "free_calls": 0,
+   "tiers": {
+    "web": 2
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web",
+    "web"
+   ],
+   "route_why": "open-ended: best",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f75",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2002,
+     "query": "when's best time year"
+    },
+    {
+     "t": "spec",
+     "id": "f75",
+     "lane": "web",
+     "state": "done",
+     "ms": 2424,
+     "took": 422,
+     "n": 4,
+     "query": "when's best time year"
+    },
+    {
+     "t": "spec",
+     "id": "f76",
+     "lane": "web",
+     "state": "fired",
+     "ms": 4021,
+     "query": "when's best time year visit iceland see northern lights"
+    },
+    {
+     "t": "spec",
+     "id": "f76",
+     "lane": "web",
+     "state": "done",
+     "ms": 4267,
+     "took": 246,
+     "n": 6,
+     "query": "when's best time year visit iceland see northern lights"
+    },
+    {
+     "t": "spec",
+     "id": "d77",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 4511,
+     "query": "when's the best time of year to visit iceland to see the northern lights"
+    },
+    {
+     "t": "endpoint",
+     "ms": 4792,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d77",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 4847,
+     "query": "when's the best time of year to visit iceland to see the northern lights"
+    },
+    {
+     "t": "sources",
+     "ms": 4847
+    },
+    {
+     "t": "first_token",
+     "ms": 5329
+    }
+   ],
+   "arc_heard": "when's the best time of year to visit iceland to see the northern lights",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.4,
+   "order": 1
+  },
+  {
+   "id": "sc21",
+   "text": "how long is the flight from New York to London",
+   "kind": "travel",
+   "voice": "kokoro:af_nova",
+   "mode": "headstart",
+   "ready_ms": 1771,
+   "sources_ms": 1236,
+   "done_ms": 2163,
+   "endpoint_lag_ms": 464,
+   "ready_vad_ms": 1451,
+   "arc_end_s": 2.56,
+   "vad_end_s": 2.88,
+   "path": "speculative-hit+hedge",
+   "correct": true,
+   "answer": "The sources don't give a New York to London flight time directly. Transatlantic flights from North America to Europe typically take several hours by jet airliner [2], so a nonstop New York to London flight usually runs roughly 7 to 8 hours.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how long is the flight from new york to london",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 2,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": -380,
+   "used_fire_lead_ms": -380,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "long flight new york london",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "long flight new york london",
+    "long flight new york london"
+   ],
+   "sources": [
+    "Charles Lindbergh \u00b7 local Wikipedia",
+    "Transatlantic flight",
+    "London, Paris, New York",
+    "Ultra long-haul",
+    "American Airlines Flight 77 \u00b7 local Wikipedia"
+   ],
+   "web_paid": 2,
+   "free_calls": 0,
+   "tiers": {
+    "web": 2
+   },
+   "answer_tier": "web",
+   "route_plan": "facts",
+   "route_conf": 0.5,
+   "answer_src": "wikipedia",
+   "routes": [
+    "facts",
+    "facts"
+   ],
+   "route_why": "stable factoid",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f78",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2940,
+     "query": "long flight new york london"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3024,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f79",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3291,
+     "query": "long flight new york london"
+    },
+    {
+     "t": "spec",
+     "id": "f78",
+     "lane": "web",
+     "state": "done",
+     "ms": 3411,
+     "took": 471,
+     "n": 9,
+     "query": "long flight new york london"
+    },
+    {
+     "t": "spec",
+     "id": "f79",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3549,
+     "took": 259,
+     "n": 6,
+     "query": "long flight new york london"
+    },
+    {
+     "t": "sources",
+     "ms": 3796
+    },
+    {
+     "t": "first_token",
+     "ms": 4331
+    }
+   ],
+   "arc_heard": "how long is the flight from new york to london",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc21",
+   "text": "how long is the flight from New York to London",
+   "kind": "travel",
+   "voice": "kokoro:af_nova",
+   "mode": "baseline",
+   "ready_ms": 2316,
+   "sources_ms": 1694,
+   "done_ms": 2734,
+   "endpoint_lag_ms": 1001,
+   "ready_vad_ms": 2156,
+   "arc_end_s": 2.72,
+   "vad_end_s": 2.88,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "The sources don't give a New York to London flight time. A transatlantic trip like that typically takes several hours by jet airliner, while ultra-long-haul flights scheduled over 16 hours are much longer routes [2][4].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how long is the flight from new york to london",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "long flight new york london",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "long flight new york london"
+   ],
+   "sources": [
+    "Charles Lindbergh \u00b7 local Wikipedia",
+    "Transatlantic flight",
+    "London, Paris, New York",
+    "Ultra long-haul",
+    "American Airlines Flight 77 \u00b7 local Wikipedia"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "facts",
+   "route_conf": 0.5,
+   "answer_src": "wikipedia",
+   "routes": [
+    "facts"
+   ],
+   "route_why": "stable factoid",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3721,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f80",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3721,
+     "query": "long flight new york london"
+    },
+    {
+     "t": "spec",
+     "id": "f80",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4110,
+     "took": 389,
+     "n": 9,
+     "query": "long flight new york london"
+    },
+    {
+     "t": "sources",
+     "ms": 4414
+    },
+    {
+     "t": "first_token",
+     "ms": 5036
+    }
+   ],
+   "arc_heard": "how long is the flight from new york to london",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 1
+  },
+  {
+   "id": "sc22",
+   "text": "which one's better for photos, the iPhone 17 Pro or the Pixel 10 Pro",
+   "kind": "product",
+   "voice": "kokoro:am_michael",
+   "mode": "baseline",
+   "ready_ms": 1471,
+   "sources_ms": 861,
+   "done_ms": 1969,
+   "endpoint_lag_ms": 563,
+   "ready_vad_ms": 1491,
+   "arc_end_s": 5.52,
+   "vad_end_s": 5.5,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "The sources don't compare the iPhone 17 Pro and Pixel 10 Pro directly. Google Photos, which is built for photo storage and search, comes with 15 gigabytes of free space and automatic recognition of faces, places and things [1]. Apple's and Google's phone cameras are the real basis for a photo comparison, so check reviews for those.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 2,
+   "answer_idx": 1,
+   "phantom_answers": 0,
+   "question_heard": "the iphone seventeen pro or the pixel ten pro",
+   "hedged": false,
+   "q_wer": 0.533,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "iphone seventeen pro pixel ten",
+   "intent": "",
+   "spec_queries": [
+    "one's better photos",
+    "iphone seventeen pro pixel ten"
+   ],
+   "sources": [
+    "Google Photos",
+    "Better Homes and Gardens (magazine)",
+    "Photo Story",
+    "Scott Pilgrim",
+    "Photo psychology"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.2,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web",
+    "web"
+   ],
+   "route_why": "unsure",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 2082,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f81",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 2082,
+     "query": "one's better photos"
+    },
+    {
+     "t": "spec",
+     "id": "f81",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 2280,
+     "took": 198,
+     "n": 4,
+     "query": "one's better photos"
+    },
+    {
+     "t": "sources",
+     "ms": 2430
+    },
+    {
+     "t": "endpoint",
+     "ms": 6083,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f82",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 6083,
+     "query": "iphone seventeen pro pixel ten"
+    },
+    {
+     "t": "spec",
+     "id": "f82",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 6281,
+     "took": 198,
+     "n": 1,
+     "query": "iphone seventeen pro pixel ten"
+    },
+    {
+     "t": "sources",
+     "ms": 6381
+    },
+    {
+     "t": "first_token",
+     "ms": 6991
+    }
+   ],
+   "arc_heard": "which one's better for photos | the iphone seventeen pro or the pixel ten pro",
+   "arc_wer": 0.133,
+   "n_finals": 2,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.4,
+   "order": 0
+  },
+  {
+   "id": "sc22",
+   "text": "which one's better for photos, the iPhone 17 Pro or the Pixel 10 Pro",
+   "kind": "product",
+   "voice": "kokoro:am_michael",
+   "mode": "headstart",
+   "ready_ms": 1032,
+   "sources_ms": 394,
+   "done_ms": 1791,
+   "endpoint_lag_ms": 268,
+   "ready_vad_ms": 972,
+   "arc_end_s": 5.44,
+   "vad_end_s": 5.5,
+   "path": "speculative-hit",
+   "correct": null,
+   "answer": "The sources don't compare the iPhone 17 Pro and Pixel 10 Pro, so I can't say which is better. Based on general knowledge, both are flagship phones with excellent cameras, and the choice often comes down to whether you prefer iOS or Android.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 2,
+   "answer_idx": 1,
+   "phantom_answers": 0,
+   "question_heard": "the iphone seventeen pro or the pixel ten pro",
+   "hedged": false,
+   "q_wer": 0.533,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "route-hold": 1
+   },
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": -147,
+   "used_fire_lead_ms": -147,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "iphone seventeen pro pixel ten",
+   "intent": "",
+   "spec_queries": [
+    "one's better photo",
+    "one's better photos",
+    "iphone seventeen pro pixel ten"
+   ],
+   "sources": [
+    "Google Photos",
+    "World Press Photo",
+    "Better Homes and Gardens (magazine)",
+    "Photo Story",
+    "Scott Pilgrim"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.2,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web",
+    "web",
+    "web"
+   ],
+   "route_why": "unsure",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f83",
+     "lane": "web",
+     "state": "fired",
+     "ms": 1986,
+     "query": "one's better photo"
+    },
+    {
+     "t": "endpoint",
+     "ms": 1986,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f83",
+     "lane": "web",
+     "state": "stale",
+     "ms": 2061,
+     "query": "one's better photo"
+    },
+    {
+     "t": "spec",
+     "id": "f84",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2062,
+     "query": "one's better photos"
+    },
+    {
+     "t": "extended",
+     "ms": 2062
+    },
+    {
+     "t": "endpoint",
+     "ms": 2062,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f83",
+     "lane": "web",
+     "state": "stale",
+     "ms": 2232,
+     "took": 247,
+     "n": 4,
+     "query": "one's better photo"
+    },
+    {
+     "t": "spec",
+     "id": "f84",
+     "lane": "web",
+     "state": "done",
+     "ms": 2271,
+     "took": 209,
+     "n": 4,
+     "query": "one's better photos"
+    },
+    {
+     "t": "sources",
+     "ms": 2505
+    },
+    {
+     "t": "spec",
+     "id": "f85",
+     "lane": "web",
+     "state": "fired",
+     "ms": 5587,
+     "query": "iphone seventeen pro pixel ten"
+    },
+    {
+     "t": "endpoint",
+     "ms": 5708,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f85",
+     "lane": "web",
+     "state": "done",
+     "ms": 5766,
+     "took": 179,
+     "n": 1,
+     "query": "iphone seventeen pro pixel ten"
+    },
+    {
+     "t": "sources",
+     "ms": 5834
+    },
+    {
+     "t": "spec",
+     "id": "d86",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 5955,
+     "query": "the iphone seventeen pro or the pixel ten pro"
+    },
+    {
+     "t": "first_token",
+     "ms": 6472
+    }
+   ],
+   "arc_heard": "which one's better for photos | the iphone seventeen pro or the pixel ten pro",
+   "arc_wer": 0.133,
+   "n_finals": 2,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 1
+  },
+  {
+   "id": "sc23",
+   "text": "what's the best robot vacuum for a house with a lot of pet hair",
+   "kind": "product",
+   "voice": "kokoro:af_heart",
+   "mode": "headstart",
+   "ready_ms": 609,
+   "sources_ms": 213,
+   "done_ms": 1154,
+   "endpoint_lag_ms": 172,
+   "ready_vad_ms": 539,
+   "arc_end_s": 3.68,
+   "vad_end_s": 3.75,
+   "path": "draft-reuse",
+   "correct": null,
+   "answer": "The sources don't name a best robot vacuum for pet hair. Newer Roomba models have tangle-free brushes and a camera that helps them avoid pet waste and find charging stations [1], and newer, pricier vacuums generally perform better at trapping allergens [2]. Look for a model with a tangle-free brush and strong suction.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what's the best robot vacuum for a house with a lot of pet hair",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {
+    "hold": 1,
+    "extends": 4
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.726,
+    "ent": 1.0,
+    "terms": 0.67
+   },
+   "first_fire_lead_ms": 1177,
+   "used_fire_lead_ms": 1177,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 4,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "best robot vacuum house lot pet hair",
+   "intent": "discourse.intent.iot_cleaning",
+   "spec_queries": [
+    "best robot vacuum"
+   ],
+   "sources": [
+    "Roomba",
+    "Hypoallergenic vacuum cleaner",
+    "Ecovacs Robotics",
+    "Robot"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: best",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f87",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2503,
+     "query": "best robot vacuum"
+    },
+    {
+     "t": "spec",
+     "id": "f87",
+     "lane": "web",
+     "state": "done",
+     "ms": 2681,
+     "took": 178,
+     "n": 4,
+     "query": "best robot vacuum"
+    },
+    {
+     "t": "spec",
+     "id": "d88",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 2949,
+     "query": "what's the best robot vacuum for a house"
+    },
+    {
+     "t": "spec",
+     "id": "d88",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3303,
+     "query": "what's the best robot vacuum for a house"
+    },
+    {
+     "t": "spec",
+     "id": "d89",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3347,
+     "query": "what's the best robot vacuum for a house with a lot"
+    },
+    {
+     "t": "spec",
+     "id": "d89",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3692,
+     "query": "what's the best robot vacuum for a house with a lot"
+    },
+    {
+     "t": "spec",
+     "id": "d90",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3743,
+     "query": "what's the best robot vacuum for a house with a lot of pet"
+    },
+    {
+     "t": "spec",
+     "id": "d90",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3772,
+     "query": "what's the best robot vacuum for a house with a lot of pet"
+    },
+    {
+     "t": "spec",
+     "id": "d91",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3820,
+     "query": "what's the best robot vacuum for a house with a lot of pet hair"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3852,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d91",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 3893,
+     "query": "what's the best robot vacuum for a house with a lot of pet hair"
+    },
+    {
+     "t": "sources",
+     "ms": 3893
+    },
+    {
+     "t": "first_token",
+     "ms": 4289
+    }
+   ],
+   "arc_heard": "what's the best robot vacuum for a house with a lot of pet hair",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc23",
+   "text": "what's the best robot vacuum for a house with a lot of pet hair",
+   "kind": "product",
+   "voice": "kokoro:af_heart",
+   "mode": "baseline",
+   "ready_ms": 1727,
+   "sources_ms": 998,
+   "done_ms": 2235,
+   "endpoint_lag_ms": 517,
+   "ready_vad_ms": 1897,
+   "arc_end_s": 3.92,
+   "vad_end_s": 3.75,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "The sources don't cover robot vacuums. For homes with a lot of pet hair, look for a model with strong suction, a brushroll designed to resist tangles, and a large dust bin, such as a self-emptying base if you can afford one.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what's the best robot vacuum for a house with a lot of pet hair",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "best robot vacuum house lot pet hair",
+   "intent": "discourse.intent.iot_cleaning",
+   "spec_queries": [
+    "best robot vacuum house lot pet hair"
+   ],
+   "sources": [
+    "List of Regular Show characters",
+    "JoJo's Circus",
+    "List of Winnie-the-Pooh characters",
+    "List of Doraemon characters"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: best",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4437,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f92",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4438,
+     "query": "best robot vacuum house lot pet hair"
+    },
+    {
+     "t": "spec",
+     "id": "f92",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4736,
+     "took": 298,
+     "n": 4,
+     "query": "best robot vacuum house lot pet hair"
+    },
+    {
+     "t": "sources",
+     "ms": 4918
+    },
+    {
+     "t": "first_token",
+     "ms": 5647
+    }
+   ],
+   "arc_heard": "what's the best robot vacuum for a house with a lot of pet hair",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 1
+  },
+  {
+   "id": "sc24",
+   "text": "hmm, what does the word ubiquitous actually mean, exactly",
+   "kind": "definition",
+   "voice": "kokoro:am_fenrir",
+   "mode": "baseline",
+   "ready_ms": 1749,
+   "sources_ms": 1080,
+   "done_ms": 2151,
+   "endpoint_lag_ms": 723,
+   "ready_vad_ms": 1199,
+   "arc_end_s": 2.88,
+   "vad_end_s": 3.43,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "\"Ubiquitous\" means being everywhere at once, or appearing to be in more than one place at the same time; it is essentially another word for omnipresent [1].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what does the word ubiquitous actually mean exactly",
+   "hedged": false,
+   "q_wer": 0.111,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "facts",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "word ubiquitous mean exactly",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "word ubiquitous mean exactly"
+   ],
+   "sources": [
+    "ubiquitous \u00b7 Wiktionary"
+   ],
+   "web_paid": 0,
+   "free_calls": 1,
+   "tiers": {
+    "facts": 1
+   },
+   "answer_tier": "facts",
+   "route_plan": "facts",
+   "route_conf": 0.85,
+   "answer_src": "Wiktionary",
+   "routes": [
+    "facts"
+   ],
+   "route_why": "definition",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3603,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f93",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3603,
+     "query": "word ubiquitous mean exactly"
+    },
+    {
+     "t": "spec",
+     "id": "f93",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3730,
+     "took": 126,
+     "n": 1,
+     "query": "word ubiquitous mean exactly"
+    },
+    {
+     "t": "sources",
+     "ms": 3960
+    },
+    {
+     "t": "first_token",
+     "ms": 4629
+    }
+   ],
+   "arc_heard": "what does the word ubiquitous actually mean exactly",
+   "arc_wer": 0.111,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 0
+  },
+  {
+   "id": "sc24",
+   "text": "hmm, what does the word ubiquitous actually mean, exactly",
+   "kind": "definition",
+   "voice": "kokoro:am_fenrir",
+   "mode": "headstart",
+   "ready_ms": 1187,
+   "sources_ms": 747,
+   "done_ms": 1509,
+   "endpoint_lag_ms": 702,
+   "ready_vad_ms": 637,
+   "arc_end_s": 2.88,
+   "vad_end_s": 3.43,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "\"Ubiquitous\" means being everywhere at once, or seeming to be in more than one place at the same time; it is another word for omnipresent [1].",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what does the word ubiquitous actually mean exactly",
+   "hedged": false,
+   "q_wer": 0.111,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 83,
+   "used_fire_lead_ms": 83,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "facts",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 2,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "word ubiquitous mean exactly",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "word ubiquitous mean"
+   ],
+   "sources": [
+    "ubiquitous \u00b7 Wiktionary"
+   ],
+   "web_paid": 0,
+   "free_calls": 1,
+   "tiers": {
+    "facts": 1
+   },
+   "answer_tier": "facts",
+   "route_plan": "facts",
+   "route_conf": 0.85,
+   "answer_src": "Wiktionary",
+   "routes": [
+    "facts"
+   ],
+   "route_why": "definition",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f94",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2797,
+     "query": "word ubiquitous mean"
+    },
+    {
+     "t": "endpoint",
+     "ms": 2861,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f94",
+     "lane": "web",
+     "state": "done",
+     "ms": 2901,
+     "took": 104,
+     "n": 1,
+     "query": "word ubiquitous mean"
+    },
+    {
+     "t": "sources",
+     "ms": 3078
+    },
+    {
+     "t": "spec",
+     "id": "d95",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3183,
+     "query": "what does the word ubiquitous actually mean"
+    },
+    {
+     "t": "spec",
+     "id": "d95",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3465,
+     "query": "what does the word ubiquitous actually mean"
+    },
+    {
+     "t": "spec",
+     "id": "d96",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3524,
+     "query": "what does the word ubiquitous actually mean exactly"
+    },
+    {
+     "t": "extended",
+     "ms": 3582
+    },
+    {
+     "t": "endpoint",
+     "ms": 3582,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d96",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 3627,
+     "query": "what does the word ubiquitous actually mean exactly"
+    },
+    {
+     "t": "sources",
+     "ms": 3627
+    },
+    {
+     "t": "first_token",
+     "ms": 4067
+    }
+   ],
+   "arc_heard": "what does the word ubiquitous actually mean exactly",
+   "arc_wer": 0.111,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.5,
+   "order": 1
+  },
+  {
+   "id": "sc25",
+   "text": "so, um, what exactly is a Roth IRA and how does it work",
+   "kind": "definition",
+   "voice": "kokoro:af_bella",
+   "mode": "headstart",
+   "ready_ms": 620,
+   "sources_ms": 186,
+   "done_ms": 1088,
+   "endpoint_lag_ms": 87,
+   "ready_vad_ms": 530,
+   "arc_end_s": 4.0,
+   "vad_end_s": 4.09,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "A Roth IRA is a US individual retirement account where qualified withdrawals are tax-free, and the account's growth is tax-free too [1]. Unlike most retirement plans, you don't get an income tax reduction for contributing; the tax benefit comes later, when you withdraw.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "so um what exactly is a roth ira and how does it work",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 2,
+   "spec_used": 1,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 1193,
+   "used_fire_lead_ms": 998,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "facts",
+   "answer_by": "draft",
+   "stale": 0,
+   "drafts": 2,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "exactly roth ira work",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "exactly roth",
+    "exactly roth ira"
+   ],
+   "sources": [
+    "Roth IRA \u00b7 Wikipedia summary"
+   ],
+   "web_paid": 0,
+   "free_calls": 2,
+   "tiers": {
+    "wait": 1,
+    "facts": 1
+   },
+   "answer_tier": "facts",
+   "route_plan": "facts",
+   "route_conf": 0.8,
+   "answer_src": "Wikipedia summary",
+   "routes": [
+    "facts",
+    "facts"
+   ],
+   "route_why": "who/what is",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f97",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2807,
+     "query": "exactly roth"
+    },
+    {
+     "t": "spec",
+     "id": "f97",
+     "lane": "web",
+     "state": "skipped",
+     "ms": 2861,
+     "query": "exactly roth"
+    },
+    {
+     "t": "spec",
+     "id": "f98",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3002,
+     "query": "exactly roth ira"
+    },
+    {
+     "t": "spec",
+     "id": "f98",
+     "lane": "web",
+     "state": "done",
+     "ms": 3097,
+     "took": 95,
+     "n": 1,
+     "query": "exactly roth ira"
+    },
+    {
+     "t": "spec",
+     "id": "d99",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3371,
+     "query": "so um what exactly is a roth ira"
+    },
+    {
+     "t": "spec",
+     "id": "d99",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 4086,
+     "query": "so um what exactly is a roth ira"
+    },
+    {
+     "t": "endpoint",
+     "ms": 4087,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d100",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 4140,
+     "query": "so um what exactly is a roth ira and how does it work"
+    },
+    {
+     "t": "spec",
+     "id": "d100",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 4186,
+     "query": "so um what exactly is a roth ira and how does it work"
+    },
+    {
+     "t": "sources",
+     "ms": 4186
+    },
+    {
+     "t": "first_token",
+     "ms": 4620
+    }
+   ],
+   "arc_heard": "so um what exactly is a roth ira and how does it work",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc25",
+   "text": "so, um, what exactly is a Roth IRA and how does it work",
+   "kind": "definition",
+   "voice": "kokoro:af_bella",
+   "mode": "baseline",
+   "ready_ms": 1021,
+   "sources_ms": 515,
+   "done_ms": 1484,
+   "endpoint_lag_ms": 265,
+   "ready_vad_ms": 931,
+   "arc_end_s": 4.0,
+   "vad_end_s": 4.09,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "A Roth IRA is a U.S. individual retirement account where, unlike most retirement plans, you don't get an income tax break on contributions. Instead, qualified withdrawals are tax-free, and the account's growth is tax-free too [1].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "so um what exactly is a roth ira and how does it work",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "facts",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "exactly roth ira work",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "exactly roth ira work"
+   ],
+   "sources": [
+    "Roth IRA \u00b7 Wikipedia summary"
+   ],
+   "web_paid": 0,
+   "free_calls": 1,
+   "tiers": {
+    "facts": 1
+   },
+   "answer_tier": "facts",
+   "route_plan": "facts",
+   "route_conf": 0.8,
+   "answer_src": "Wikipedia summary",
+   "routes": [
+    "facts"
+   ],
+   "route_why": "who/what is",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4265,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f101",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4265,
+     "query": "exactly roth ira work"
+    },
+    {
+     "t": "spec",
+     "id": "f101",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4368,
+     "took": 103,
+     "n": 1,
+     "query": "exactly roth ira work"
+    },
+    {
+     "t": "sources",
+     "ms": 4515
+    },
+    {
+     "t": "first_token",
+     "ms": 5021
+    }
+   ],
+   "arc_heard": "so um what exactly is a roth ira and how does it work",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 1
+  },
+  {
+   "id": "sc26",
+   "text": "what can I use instead of buttermilk in pancakes",
+   "kind": "recipe",
+   "voice": "kokoro:af_bella",
+   "mode": "baseline",
+   "ready_ms": 1523,
+   "sources_ms": 969,
+   "done_ms": 1986,
+   "endpoint_lag_ms": 364,
+   "ready_vad_ms": 1553,
+   "arc_end_s": 3.04,
+   "vad_end_s": 3.01,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "Buttermilk is a fermented dairy drink made by adding lactic acid bacteria to milk [3]. The sources don't cover substitutes, but you can sour regular milk with a spoonful of lemon juice or white vinegar and let it sit for a few minutes.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what can i use instead of buttermilk in pancakes",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "use instead buttermilk pancakes",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "use instead buttermilk pancakes"
+   ],
+   "sources": [
+    "Pancake",
+    "Potato pancake",
+    "Buttermilk",
+    "\u00c6bleskiver",
+    "Biscuit (bread)"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "open-ended: can i",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3404,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f102",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3405,
+     "query": "use instead buttermilk pancakes"
+    },
+    {
+     "t": "spec",
+     "id": "f102",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3627,
+     "took": 222,
+     "n": 6,
+     "query": "use instead buttermilk pancakes"
+    },
+    {
+     "t": "sources",
+     "ms": 4009
+    },
+    {
+     "t": "first_token",
+     "ms": 4563
+    }
+   ],
+   "arc_heard": "what can i use instead of buttermilk in pancakes",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 0
+  },
+  {
+   "id": "sc26",
+   "text": "what can I use instead of buttermilk in pancakes",
+   "kind": "recipe",
+   "voice": "kokoro:af_bella",
+   "mode": "headstart",
+   "ready_ms": 1677,
+   "sources_ms": 346,
+   "done_ms": 2535,
+   "endpoint_lag_ms": 263,
+   "ready_vad_ms": 1467,
+   "arc_end_s": 2.8,
+   "vad_end_s": 3.01,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "You can use regular milk with a little lemon juice or vinegar stirred in, letting it sit for a few minutes to curdle, since acidic milk reacts with baking soda the way buttermilk does [1]. Plain yogurt thinned with milk also works well.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what can i use instead of buttermilk in pancakes",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 2,
+   "spec_used": 1,
+   "paid_calls": 2,
+   "web_skipped": {
+    "extends": 2,
+    "budget": 1
+   },
+   "search_cached": 0,
+   "cover": {
+    "ok": true,
+    "sim": 0.706,
+    "ent": 1.0,
+    "terms": 0.75
+   },
+   "first_fire_lead_ms": 638,
+   "used_fire_lead_ms": 535,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 1,
+   "drafts": 2,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "use instead buttermilk pancakes",
+   "intent": "intent.request_information",
+   "spec_queries": [
+    "use instead butter",
+    "use instead buttermilk"
+   ],
+   "sources": [
+    "Buttermilk",
+    "Buttermilk koldsk\u00e5l",
+    "Biscuit (bread)",
+    "Buttermilk Bottom",
+    "Chaas"
+   ],
+   "web_paid": 2,
+   "free_calls": 0,
+   "tiers": {
+    "web": 2
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web",
+    "web"
+   ],
+   "route_why": "open-ended: can i",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f103",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2162,
+     "query": "use instead butter"
+    },
+    {
+     "t": "spec",
+     "id": "f103",
+     "lane": "web",
+     "state": "stale",
+     "ms": 2264,
+     "query": "use instead butter"
+    },
+    {
+     "t": "spec",
+     "id": "f104",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2265,
+     "query": "use instead buttermilk"
+    },
+    {
+     "t": "spec",
+     "id": "f103",
+     "lane": "web",
+     "state": "stale",
+     "ms": 2365,
+     "took": 203,
+     "n": 4,
+     "query": "use instead butter"
+    },
+    {
+     "t": "spec",
+     "id": "f104",
+     "lane": "web",
+     "state": "done",
+     "ms": 2453,
+     "took": 188,
+     "n": 6,
+     "query": "use instead buttermilk"
+    },
+    {
+     "t": "spec",
+     "id": "d105",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 2854,
+     "query": "what can i use instead of buttermilk in pan"
+    },
+    {
+     "t": "spec",
+     "id": "d105",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 2904,
+     "query": "what can i use instead of buttermilk in pan"
+    },
+    {
+     "t": "endpoint",
+     "ms": 2942,
+     "by": "semantic"
+    },
+    {
+     "t": "sources",
+     "ms": 2978
+    },
+    {
+     "t": "extended",
+     "ms": 3063
+    },
+    {
+     "t": "endpoint",
+     "ms": 3063,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d106",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3108,
+     "query": "what can i use instead of buttermilk in pancakes"
+    },
+    {
+     "t": "spec",
+     "id": "d106",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 3146,
+     "query": "what can i use instead of buttermilk in pancakes"
+    },
+    {
+     "t": "sources",
+     "ms": 3146
+    },
+    {
+     "t": "first_token",
+     "ms": 4477
+    }
+   ],
+   "arc_heard": "what can i use instead of buttermilk in pancakes",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.4,
+   "order": 1
+  },
+  {
+   "id": "sc27",
+   "text": "what's the weather in Boston, sorry, I mean Denver",
+   "kind": "weather",
+   "voice": "kokoro:am_michael",
+   "mode": "headstart",
+   "ready_ms": 549,
+   "sources_ms": 549,
+   "done_ms": 549,
+   "endpoint_lag_ms": 445,
+   "ready_vad_ms": 599,
+   "arc_end_s": 3.44,
+   "vad_end_s": 3.39,
+   "path": "speculative-hit",
+   "correct": null,
+   "answer": "Right now in Denver, Colorado it's 60\u00b0F (16\u00b0C) and partly cloudy; today's high 60\u00b0F, low 42\u00b0F. [1]",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what's the weather in boston sorry i mean denver",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 3,
+   "spec_fires": 3,
+   "spec_used": 1,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 1635,
+   "used_fire_lead_ms": -208,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 2,
+   "drafts": 1,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "weather denver",
+   "intent": "discourse.intent.weather_query",
+   "spec_queries": [
+    "weather boston",
+    "weather dim",
+    "weather denver"
+   ],
+   "sources": [
+    "Weather \u00b7 Denver, Colorado"
+   ],
+   "web_paid": 0,
+   "free_calls": 4,
+   "tiers": {
+    "card": 2
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.92,
+   "answer_src": "MET Norway",
+   "routes": [
+    "card",
+    "card"
+   ],
+   "route_why": "weather forecast",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f107",
+     "lane": "web",
+     "state": "fired",
+     "ms": 1805,
+     "query": "weather boston"
+    },
+    {
+     "t": "endpoint",
+     "ms": 2366,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f107",
+     "lane": "web",
+     "state": "done",
+     "ms": 2594,
+     "took": 789,
+     "n": 1,
+     "query": "weather boston"
+    },
+    {
+     "t": "sources",
+     "ms": 2729
+    },
+    {
+     "t": "spec",
+     "id": "d108",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 2774,
+     "query": "what's the weather in boston sorry"
+    },
+    {
+     "t": "spec",
+     "id": "f107",
+     "lane": "web",
+     "state": "stale",
+     "ms": 3368,
+     "query": "weather boston"
+    },
+    {
+     "t": "spec",
+     "id": "f109",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3402,
+     "query": "weather dim"
+    },
+    {
+     "t": "spec",
+     "id": "f109",
+     "lane": "web",
+     "state": "stale",
+     "ms": 3648,
+     "query": "weather dim"
+    },
+    {
+     "t": "spec",
+     "id": "f110",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3648,
+     "query": "weather denver"
+    },
+    {
+     "t": "extended",
+     "ms": 3885
+    },
+    {
+     "t": "endpoint",
+     "ms": 3885,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f110",
+     "lane": "web",
+     "state": "done",
+     "ms": 3822,
+     "took": 173,
+     "n": 1,
+     "query": "weather denver"
+    },
+    {
+     "t": "sources",
+     "ms": 3989
+    },
+    {
+     "t": "spec",
+     "id": "d111",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 4029,
+     "query": "what's the weather in boston sorry i mean denver"
+    },
+    {
+     "t": "first_token",
+     "ms": 3989
+    }
+   ],
+   "arc_heard": "what's the weather in boston sorry | i mean denver",
+   "arc_wer": 0.0,
+   "n_finals": 2,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc27",
+   "text": "what's the weather in Boston, sorry, I mean Denver",
+   "kind": "weather",
+   "voice": "kokoro:am_michael",
+   "mode": "baseline",
+   "ready_ms": 1226,
+   "sources_ms": 1225,
+   "done_ms": 1226,
+   "endpoint_lag_ms": 538,
+   "ready_vad_ms": 1436,
+   "arc_end_s": 3.6,
+   "vad_end_s": 3.39,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "Right now in Denver, Colorado it's 60\u00b0F (16\u00b0C) and partly cloudy; today's high 60\u00b0F, low 42\u00b0F. [1]",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what's the weather in boston sorry i mean denver",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "weather denver",
+   "intent": "discourse.intent.weather_query",
+   "spec_queries": [
+    "weather denver"
+   ],
+   "sources": [
+    "Weather \u00b7 Denver, Colorado"
+   ],
+   "web_paid": 0,
+   "free_calls": 2,
+   "tiers": {
+    "card": 1
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.92,
+   "answer_src": "MET Norway",
+   "routes": [
+    "card"
+   ],
+   "route_why": "weather forecast",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4138,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f112",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4138,
+     "query": "weather denver"
+    },
+    {
+     "t": "spec",
+     "id": "f112",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4663,
+     "took": 525,
+     "n": 1,
+     "query": "weather denver"
+    },
+    {
+     "t": "sources",
+     "ms": 4825
+    },
+    {
+     "t": "first_token",
+     "ms": 4826
+    }
+   ],
+   "arc_heard": "what's the weather in boston sorry | i mean denver",
+   "arc_wer": 0.0,
+   "n_finals": 2,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 1
+  },
+  {
+   "id": "sc28",
+   "text": "how many teaspoons are in a tablespoon, actually, make that a quarter cup",
+   "kind": "conversion",
+   "voice": "kokoro:am_fenrir",
+   "mode": "baseline",
+   "ready_ms": 570,
+   "sources_ms": 570,
+   "done_ms": 570,
+   "endpoint_lag_ms": 461,
+   "ready_vad_ms": 780,
+   "arc_end_s": 4.48,
+   "vad_end_s": 4.27,
+   "path": "search-after-endpoint",
+   "correct": true,
+   "answer": "A quarter cup is 12 teaspoons (US measures). [1]",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how many teaspoons are in a tablespoon actually make that a quarter cup",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "teaspoons quarter cup",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "teaspoons quarter cup"
+   ],
+   "sources": [
+    "cup \u2192 teaspoons"
+   ],
+   "web_paid": 0,
+   "free_calls": 0,
+   "tiers": {
+    "card": 1
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.95,
+   "answer_src": "unit conversion (local)",
+   "routes": [
+    "card"
+   ],
+   "route_why": "unit conversion",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4941,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f113",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4941,
+     "query": "teaspoons quarter cup"
+    },
+    {
+     "t": "spec",
+     "id": "f113",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4943,
+     "took": 2,
+     "n": 1,
+     "query": "teaspoons quarter cup"
+    },
+    {
+     "t": "sources",
+     "ms": 5050
+    },
+    {
+     "t": "first_token",
+     "ms": 5050
+    }
+   ],
+   "arc_heard": "how many teaspoons are in a tablespoon actually make that a quarter cup",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.2,
+   "order": 0
+  },
+  {
+   "id": "sc28",
+   "text": "how many teaspoons are in a tablespoon, actually, make that a quarter cup",
+   "kind": "conversion",
+   "voice": "kokoro:am_fenrir",
+   "mode": "headstart",
+   "ready_ms": 223,
+   "sources_ms": 223,
+   "done_ms": 223,
+   "endpoint_lag_ms": 114,
+   "ready_vad_ms": 273,
+   "arc_end_s": 4.32,
+   "vad_end_s": 4.27,
+   "path": "route-card",
+   "correct": true,
+   "answer": "A quarter cup is 12 teaspoons (US measures). [1]",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "how many teaspoons are in a tablespoon actually make that a quarter cup",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 1,
+   "spec_used": 0,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 1844,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "card",
+   "answer_by": "card",
+   "stale": 1,
+   "drafts": 1,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "teaspoons quarter cup",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "teaspoons table spoon",
+    "teaspoons quarter cup"
+   ],
+   "sources": [
+    "cup \u2192 teaspoons"
+   ],
+   "web_paid": 0,
+   "free_calls": 0,
+   "tiers": {
+    "card": 2
+   },
+   "answer_tier": "card",
+   "route_plan": "card",
+   "route_conf": 0.95,
+   "answer_src": "unit conversion (local)",
+   "routes": [
+    "card",
+    "card"
+   ],
+   "route_why": "unit conversion",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f114",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2476,
+     "query": "teaspoons table spoon"
+    },
+    {
+     "t": "spec",
+     "id": "f114",
+     "lane": "web",
+     "state": "done",
+     "ms": 2477,
+     "took": 1,
+     "n": 1,
+     "query": "teaspoons table spoon"
+    },
+    {
+     "t": "spec",
+     "id": "d115",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 2748,
+     "query": "how many teaspoons are in a table spoon"
+    },
+    {
+     "t": "spec",
+     "id": "f114",
+     "lane": "web",
+     "state": "stale",
+     "ms": 2841,
+     "query": "teaspoons table spoon"
+    },
+    {
+     "t": "endpoint",
+     "ms": 4434,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f116",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4485,
+     "query": "teaspoons quarter cup"
+    },
+    {
+     "t": "spec",
+     "id": "f116",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 4485,
+     "took": 0,
+     "n": 1,
+     "query": "teaspoons quarter cup"
+    },
+    {
+     "t": "sources",
+     "ms": 4543
+    },
+    {
+     "t": "first_token",
+     "ms": 4543
+    }
+   ],
+   "arc_heard": "how many teaspoons are in a tablespoon actually make that a quarter cup",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 1
+  },
+  {
+   "id": "sc29",
+   "text": "when is the next SpaceX Starship launch happening",
+   "kind": "news",
+   "voice": "kokoro:af_heart",
+   "mode": "headstart",
+   "ready_ms": 1381,
+   "sources_ms": 670,
+   "done_ms": 1758,
+   "endpoint_lag_ms": 187,
+   "ready_vad_ms": 1331,
+   "arc_end_s": 2.8,
+   "vad_end_s": 2.85,
+   "path": "speculative-hit",
+   "correct": null,
+   "answer": "The sources don't give a date for the next Starship launch. The most recent flight covered here, Flight 7, lifted off from Starbase, Texas, on January 16, 2025 [1].",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "when is the next spacex starship launch happening",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 1,
+   "spec_used": 1,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": -187,
+   "used_fire_lead_ms": -187,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "next spacex starship launch happening",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "next spacex starship launch happening"
+   ],
+   "sources": [
+    "Starship flight test 7",
+    "Falcon 9",
+    "Billionaire space race",
+    "Elon Musk's Tesla Roadster"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: next",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f117",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2987,
+     "query": "next spacex starship launch happening"
+    },
+    {
+     "t": "endpoint",
+     "ms": 2987,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f117",
+     "lane": "web",
+     "state": "done",
+     "ms": 3198,
+     "took": 211,
+     "n": 4,
+     "query": "next spacex starship launch happening"
+    },
+    {
+     "t": "sources",
+     "ms": 3470
+    },
+    {
+     "t": "first_token",
+     "ms": 4181
+    }
+   ],
+   "arc_heard": "when is the next spacex starship launch happening",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 0
+  },
+  {
+   "id": "sc29",
+   "text": "when is the next SpaceX Starship launch happening",
+   "kind": "news",
+   "voice": "kokoro:af_heart",
+   "mode": "baseline",
+   "ready_ms": 1601,
+   "sources_ms": 1031,
+   "done_ms": 1988,
+   "endpoint_lag_ms": 572,
+   "ready_vad_ms": 1311,
+   "arc_end_s": 2.56,
+   "vad_end_s": 2.85,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "The sources don't give a date for the next Starship launch. The most recent flight covered here, Flight 7, lifted off from Starbase, Texas, on January 16, 2025 [1].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "when is the next spacex starship launch happening",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "next spacex starship launch happening",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "next spacex starship launch happening"
+   ],
+   "sources": [
+    "Starship flight test 7",
+    "Falcon 9",
+    "Billionaire space race",
+    "Elon Musk's Tesla Roadster"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: next",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 3132,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f118",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 3132,
+     "query": "next spacex starship launch happening"
+    },
+    {
+     "t": "spec",
+     "id": "f118",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 3344,
+     "took": 212,
+     "n": 4,
+     "query": "next spacex starship launch happening"
+    },
+    {
+     "t": "sources",
+     "ms": 3591
+    },
+    {
+     "t": "first_token",
+     "ms": 4161
+    }
+   ],
+   "arc_heard": "when is the next spacex starship launch happening",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 1
+  },
+  {
+   "id": "sc30",
+   "text": "who won the Formula One Grand Prix this past weekend",
+   "kind": "sports",
+   "voice": "kokoro:am_fenrir",
+   "mode": "baseline",
+   "ready_ms": 2595,
+   "sources_ms": 2109,
+   "done_ms": 3054,
+   "endpoint_lag_ms": 1281,
+   "ready_vad_ms": 2775,
+   "arc_end_s": 3.44,
+   "vad_end_s": 3.26,
+   "path": "search-after-endpoint",
+   "correct": null,
+   "answer": "I can't tell which weekend is \"this past weekend\" from these sources, but the most recent race described is the 70th Anniversary Grand Prix, won by Red Bull's Max Verstappen [1]. The sources don't confirm whether that is the latest result.",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "who won the formula one grand prix this past weekend",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 1,
+   "spec_fires": 0,
+   "spec_used": 0,
+   "paid_calls": 1,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": null,
+   "used_fire_lead_ms": null,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 0,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "won formula one grand prix past weekend",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "won formula one grand prix past weekend"
+   ],
+   "sources": [
+    "70th Anniversary Grand Prix",
+    "Turkish Grand Prix",
+    "United States Grand Prix",
+    "Monaco Grand Prix"
+   ],
+   "web_paid": 1,
+   "free_calls": 0,
+   "tiers": {
+    "web": 1
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web"
+   ],
+   "route_why": "fresh: weekend",
+   "trace": [
+    {
+     "t": "endpoint",
+     "ms": 4721,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "f119",
+     "lane": "final-web",
+     "state": "fired",
+     "ms": 4722,
+     "query": "won formula one grand prix past weekend"
+    },
+    {
+     "t": "spec",
+     "id": "f119",
+     "lane": "final-web",
+     "state": "done",
+     "ms": 5242,
+     "took": 521,
+     "n": 4,
+     "query": "won formula one grand prix past weekend"
+    },
+    {
+     "t": "sources",
+     "ms": 5549
+    },
+    {
+     "t": "first_token",
+     "ms": 6035
+    }
+   ],
+   "arc_heard": "who won the formula one grand prix this past weekend",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.1,
+   "order": 0
+  },
+  {
+   "id": "sc30",
+   "text": "who won the Formula One Grand Prix this past weekend",
+   "kind": "sports",
+   "voice": "kokoro:am_fenrir",
+   "mode": "headstart",
+   "ready_ms": 1881,
+   "sources_ms": 1373,
+   "done_ms": 2233,
+   "endpoint_lag_ms": 1004,
+   "ready_vad_ms": 1101,
+   "arc_end_s": 2.48,
+   "vad_end_s": 3.26,
+   "path": "speculative-hit",
+   "correct": null,
+   "answer": "The sources don't cover the most recent weekend's race. The most recent winner I can cite is Max Verstappen, who won the 70th Anniversary Grand Prix at Silverstone on 9 August 2020 for Red Bull [1].",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "fused",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "who won the formula one grand prix this past weekend",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 2,
+   "spec_fires": 2,
+   "spec_used": 2,
+   "paid_calls": 2,
+   "web_skipped": {
+    "route-hold": 1,
+    "hold": 1
+   },
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": -221,
+   "used_fire_lead_ms": -221,
+   "credits": 0.0,
+   "credits_spec": 0.0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "llm",
+   "stale": 0,
+   "drafts": 1,
+   "draft_reused": false,
+   "draft_match": null,
+   "query": "won formula one grand prix past weekend",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "won formula one grand prix",
+    "won formula one grand prix past weekend"
+   ],
+   "sources": [
+    "70th Anniversary Grand Prix",
+    "Turkish Grand Prix",
+    "List of Formula One Grand Prix winners",
+    "List of Formula One Grand Prix winners (constructors)",
+    "United States Grand Prix"
+   ],
+   "web_paid": 2,
+   "free_calls": 0,
+   "tiers": {
+    "web": 2
+   },
+   "answer_tier": "web",
+   "route_plan": "web",
+   "route_conf": 0.3,
+   "answer_src": "wikipedia",
+   "routes": [
+    "web",
+    "web"
+   ],
+   "route_why": "fresh: weekend",
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f120",
+     "lane": "web",
+     "state": "fired",
+     "ms": 2701,
+     "query": "won formula one grand prix"
+    },
+    {
+     "t": "spec",
+     "id": "f120",
+     "lane": "web",
+     "state": "done",
+     "ms": 2927,
+     "took": 227,
+     "n": 4,
+     "query": "won formula one grand prix"
+    },
+    {
+     "t": "spec",
+     "id": "f121",
+     "lane": "web",
+     "state": "fired",
+     "ms": 3484,
+     "query": "won formula one grand prix past weekend"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3484,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "f121",
+     "lane": "web",
+     "state": "done",
+     "ms": 3711,
+     "took": 227,
+     "n": 4,
+     "query": "won formula one grand prix past weekend"
+    },
+    {
+     "t": "sources",
+     "ms": 3853
+    },
+    {
+     "t": "spec",
+     "id": "d122",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3932,
+     "query": "who won the formula one grand prix this past weekend"
+    },
+    {
+     "t": "first_token",
+     "ms": 4361
+    }
+   ],
+   "arc_heard": "who won the formula one grand prix this past weekend",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.3,
+   "order": 1
+  }
+ ]
+}

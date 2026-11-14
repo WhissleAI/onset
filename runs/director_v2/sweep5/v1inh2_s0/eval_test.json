@@ -1,0 +1,518 @@
+{
+ "run": "runs/sweep5/v1inh2_s0",
+ "params": 29697,
+ "split": "test",
+ "thr": {
+  "director_eot": [
+   0.6,
+   0.825
+  ],
+  "target_premature_val": 36.8,
+  "lr_eot": [
+   0.725,
+   0.725
+  ],
+  "director_fire": 0.17500000000000004,
+  "director_draft": 0.8750000000000003
+ },
+ "eot": {
+  "EndOfTurn only": {
+   "n": 984,
+   "p50": 666.0,
+   "p50_ci": [
+    647.0,
+    694.8
+   ],
+   "mean": 745.5,
+   "mean_ci": [
+    718.6,
+    773.7
+   ],
+   "p90": 1291.7,
+   "premature": 0.0,
+   "premature_ci": [
+    0.0,
+    0.0
+   ],
+   "not_search_answered_pct": 0.0
+  },
+  "eager": {
+   "n": 984,
+   "p50": 291.1,
+   "p50_ci": [
+    261.4,
+    294.5
+   ],
+   "mean": 318.3,
+   "mean_ci": [
+    300.0,
+    339.6
+   ],
+   "p90": 663.0,
+   "premature": 60.6,
+   "premature_ci": [
+    55.6,
+    65.9
+   ],
+   "not_search_answered_pct": 100.0
+  },
+  "eager+arc": {
+   "n": 984,
+   "p50": 332.9,
+   "p50_ci": [
+    319.4,
+    340.0
+   ],
+   "mean": 423.0,
+   "mean_ci": [
+    399.8,
+    450.9
+   ],
+   "p90": 823.1,
+   "premature": 32.1,
+   "premature_ci": [
+    28.7,
+    36.0
+   ],
+   "not_search_answered_pct": 100.0
+  },
+  "eager+gate": {
+   "n": 984,
+   "p50": 528.8,
+   "p50_ci": [
+    466.4,
+    561.9
+   ],
+   "mean": 597.9,
+   "mean_ci": [
+    568.6,
+    626.5
+   ],
+   "p90": 1146.7,
+   "premature": 17.1,
+   "premature_ci": [
+    14.5,
+    19.7
+   ],
+   "not_search_answered_pct": 18.8
+  },
+  "fused logistic": {
+   "n": 984,
+   "p50": 294.8,
+   "p50_ci": [
+    290.1,
+    319.8
+   ],
+   "mean": 365.7,
+   "mean_ci": [
+    345.5,
+    389.8
+   ],
+   "p90": 771.0,
+   "premature": 32.3,
+   "premature_ci": [
+    28.9,
+    36.3
+   ],
+   "not_search_answered_pct": 81.2
+  },
+  "director": {
+   "n": 984,
+   "p50": 256.2,
+   "p50_ci": [
+    250.1,
+    290.0
+   ],
+   "mean": 326.3,
+   "mean_ci": [
+    305.3,
+    351.3
+   ],
+   "p90": 729.6,
+   "premature": 34.5,
+   "premature_ci": [
+    30.5,
+    38.5
+   ],
+   "not_search_answered_pct": 43.8
+  },
+  "paired director - logistic": {
+   "median_ms": 0.0,
+   "ci": [
+    0.0,
+    0.0
+   ]
+  },
+  "frontier": {
+   "5.0": {
+    "logistic": {
+     "thr": [
+      0.925,
+      0.95
+     ],
+     "n": 984,
+     "p50": 642.2,
+     "p50_ci": [
+      614.1,
+      665.8
+     ],
+     "mean": 679.1,
+     "mean_ci": [
+      654.3,
+      707.0
+     ],
+     "p90": 1166.1,
+     "premature": 2.7,
+     "premature_ci": [
+      1.7,
+      3.8
+     ],
+     "not_search_answered_pct": 31.2
+    },
+    "director": {
+     "thr": [
+      0.925,
+      0.925
+     ],
+     "n": 984,
+     "p50": 536.5,
+     "p50_ci": [
+      531.1,
+      574.5
+     ],
+     "mean": 599.1,
+     "mean_ci": [
+      575.6,
+      628.2
+     ],
+     "p90": 1025.8,
+     "premature": 3.2,
+     "premature_ci": [
+      2.1,
+      4.5
+     ],
+     "not_search_answered_pct": 12.5
+    }
+   },
+   "10.0": {
+    "logistic": {
+     "thr": [
+      0.9,
+      0.925
+     ],
+     "n": 984,
+     "p50": 589.2,
+     "p50_ci": [
+      573.0,
+      616.2
+     ],
+     "mean": 628.2,
+     "mean_ci": [
+      607.5,
+      654.9
+     ],
+     "p90": 1125.9,
+     "premature": 6.4,
+     "premature_ci": [
+      5.0,
+      8.0
+     ],
+     "not_search_answered_pct": 68.8
+    },
+    "director": {
+     "thr": [
+      0.85,
+      0.9
+     ],
+     "n": 984,
+     "p50": 414.0,
+     "p50_ci": [
+      376.0,
+      452.8
+     ],
+     "mean": 489.0,
+     "mean_ci": [
+      465.7,
+      518.4
+     ],
+     "p90": 936.4,
+     "premature": 11.4,
+     "premature_ci": [
+      9.1,
+      14.2
+     ],
+     "not_search_answered_pct": 12.5
+    }
+   },
+   "20.0": {
+    "logistic": {
+     "thr": [
+      0.775,
+      0.925
+     ],
+     "n": 984,
+     "p50": 450.3,
+     "p50_ci": [
+      414.5,
+      484.6
+     ],
+     "mean": 514.4,
+     "mean_ci": [
+      493.9,
+      540.0
+     ],
+     "p90": 974.1,
+     "premature": 16.3,
+     "premature_ci": [
+      13.6,
+      19.0
+     ],
+     "not_search_answered_pct": 68.8
+    },
+    "director": {
+     "thr": [
+      0.8,
+      0.875
+     ],
+     "n": 984,
+     "p50": 336.0,
+     "p50_ci": [
+      331.3,
+      372.3
+     ],
+     "mean": 427.0,
+     "mean_ci": [
+      407.0,
+      455.0
+     ],
+     "p90": 881.7,
+     "premature": 16.9,
+     "premature_ci": [
+      14.2,
+      20.4
+     ],
+     "not_search_answered_pct": 25.0
+    }
+   },
+   "30.0": {
+    "logistic": {
+     "thr": [
+      0.65,
+      0.875
+     ],
+     "n": 984,
+     "p50": 332.2,
+     "p50_ci": [
+      303.4,
+      351.1
+     ],
+     "mean": 406.6,
+     "mean_ci": [
+      386.8,
+      428.2
+     ],
+     "p90": 815.1,
+     "premature": 25.9,
+     "premature_ci": [
+      23.0,
+      29.6
+     ],
+     "not_search_answered_pct": 68.8
+    },
+    "director": {
+     "thr": [
+      0.75,
+      0.8
+     ],
+     "n": 984,
+     "p50": 290.2,
+     "p50_ci": [
+      263.5,
+      294.7
+     ],
+     "mean": 350.0,
+     "mean_ci": [
+      330.2,
+      375.4
+     ],
+     "p90": 771.8,
+     "premature": 26.6,
+     "premature_ci": [
+      23.3,
+      30.6
+     ],
+     "not_search_answered_pct": 31.2
+    }
+   }
+  },
+  "by_condition": {
+   "clean": {
+    "n": 566,
+    "eager": {
+     "p50": 281.3,
+     "mean": 307.9,
+     "premature": 51.1
+    },
+    "fused logistic": {
+     "p50": 293.7,
+     "mean": 347.3,
+     "premature": 26.9
+    },
+    "director": {
+     "p50": 241.8,
+     "mean": 287.9,
+     "premature": 31.4
+    }
+   },
+   "device": {
+    "n": 10,
+    "eager": {
+     "p50": 307.5,
+     "mean": 318.5,
+     "premature": 60.0
+    },
+    "fused logistic": {
+     "p50": 310.5,
+     "mean": 315.8,
+     "premature": 40.0
+    },
+    "director": {
+     "p50": 307.5,
+     "mean": 318.5,
+     "premature": 30.0
+    }
+   },
+   "held-out condition": {
+    "n": 125,
+    "eager": {
+     "p50": 309.6,
+     "mean": 384.6,
+     "premature": 69.6
+    },
+    "fused logistic": {
+     "p50": 330.5,
+     "mean": 420.0,
+     "premature": 45.6
+    },
+    "director": {
+     "p50": 300.3,
+     "mean": 395.0,
+     "premature": 40.0
+    }
+   },
+   "noise": {
+    "n": 101,
+    "eager": {
+     "p50": 284.4,
+     "mean": 350.9,
+     "premature": 92.1
+    },
+    "fused logistic": {
+     "p50": 374.0,
+     "mean": 427.7,
+     "premature": 46.5
+    },
+    "director": {
+     "p50": 291.8,
+     "mean": 434.7,
+     "premature": 37.6
+    }
+   },
+   "noise(phase1)": {
+    "n": 137,
+    "eager": {
+     "p50": 251.9,
+     "mean": 231.4,
+     "premature": 60.9
+    },
+    "fused logistic": {
+     "p50": 255.7,
+     "mean": 292.4,
+     "premature": 30.8
+    },
+    "director": {
+     "p50": 214.6,
+     "mean": 259.4,
+     "premature": 41.4
+    }
+   },
+   "phone": {
+    "n": 9,
+    "eager": {
+     "p50": 324.1,
+     "mean": 312.8,
+     "premature": 77.8
+    },
+    "fused logistic": {
+     "p50": 401.6,
+     "mean": 338.3,
+     "premature": 11.1
+    },
+    "director": {
+     "p50": 324.1,
+     "mean": 344.3,
+     "premature": 33.3
+    }
+   },
+   "reverb": {
+    "n": 52,
+    "eager": {
+     "p50": 351.2,
+     "mean": 429.9,
+     "premature": 75.0
+    },
+    "fused logistic": {
+     "p50": 430.0,
+     "mean": 511.7,
+     "premature": 36.5
+    },
+    "director": {
+     "p50": 411.7,
+     "mean": 528.8,
+     "premature": 30.8
+    }
+   }
+  }
+ },
+ "fire": {
+  "hand": {
+   "fires_per_q": 5.54,
+   "useful_per_q": 1.9,
+   "wasted_per_q": 3.63,
+   "q_with_useful_fire_pct": 90.1,
+   "first_useful_lead_ms_p50": 268.0
+  },
+  "director": {
+   "fires_per_q": 3.98,
+   "useful_per_q": 1.87,
+   "wasted_per_q": 2.11,
+   "q_with_useful_fire_pct": 90.5,
+   "first_useful_lead_ms_p50": 227.0
+  }
+ },
+ "draft": {
+  "hand (new meaning, budget 2)": {
+   "drafts_per_q": 1.83,
+   "reusable_per_q": 0.19,
+   "q_with_early_reusable_pct": 12.3,
+   "wasted_per_q": 1.64,
+   "q_with_reusable_pct": 18.8,
+   "first_reusable_lead_ms_p50": -84.0
+  },
+  "director": {
+   "drafts_per_q": 1.69,
+   "reusable_per_q": 1.57,
+   "q_with_early_reusable_pct": 19.5,
+   "wasted_per_q": 0.12,
+   "q_with_reusable_pct": 91.5,
+   "first_reusable_lead_ms_p50": -373.0
+  }
+ },
+ "keep": {
+  "n_words": 146483,
+  "auc_director": 0.973,
+  "auc_content_word_now": 0.9652,
+  "acc_director@0.5": 0.9342,
+  "acc_content_word_now": 0.9598
+ }
+}

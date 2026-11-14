@@ -1,0 +1,1005 @@
+{
+ "run": "runs/sweep5/v2-pros_s0",
+ "addressed": {
+  "director": {
+   "thr": 0.1929,
+   "auc": 0.8829,
+   "addressed_answered_pct": 96.2,
+   "false_respond_pct": 48.3,
+   "false_respond_ci": [
+    42.1766,
+    54.3271
+   ],
+   "by_kind": {
+    "answer_to_person": {
+     "n": 58,
+     "answered_pct": 37.9
+    },
+    "backchannel": {
+     "n": 27,
+     "answered_pct": 74.1
+    },
+    "chitchat": {
+     "n": 72,
+     "answered_pct": 37.5
+    },
+    "exclamation": {
+     "n": 22,
+     "answered_pct": 27.3
+    },
+    "preference": {
+     "n": 3,
+     "answered_pct": 66.7
+    },
+    "reported_speech": {
+     "n": 7,
+     "answered_pct": 42.9
+    },
+    "rhetorical": {
+     "n": 9,
+     "answered_pct": 100.0
+    },
+    "self_talk": {
+     "n": 15,
+     "answered_pct": 40.0
+    },
+    "side_question": {
+     "n": 50,
+     "answered_pct": 68.0
+    },
+    "statement": {
+     "n": 81,
+     "answered_pct": 29.6
+    },
+    "thinking_aloud": {
+     "n": 35,
+     "answered_pct": 57.1
+    },
+    "tv": {
+     "n": 45,
+     "answered_pct": 71.1
+    }
+   },
+   "at_flux_decision_points": {
+    "n": 656,
+    "addressed_answered_pct": 96.4,
+    "false_respond_pct": 46.9
+   },
+   "text_unseen_in_train": {
+    "n": 527,
+    "auc": 0.8646,
+    "addressed_answered_pct": 93.1,
+    "false_respond_pct": 49.2
+   }
+  },
+  "director (first eager)": {
+   "thr": 0.1742,
+   "auc": 0.8875,
+   "addressed_answered_pct": 95.5,
+   "false_respond_pct": 47.2,
+   "false_respond_ci": [
+    41.353,
+    52.9293
+   ],
+   "by_kind": {
+    "answer_to_person": {
+     "n": 58,
+     "answered_pct": 36.2
+    },
+    "backchannel": {
+     "n": 27,
+     "answered_pct": 63.0
+    },
+    "chitchat": {
+     "n": 72,
+     "answered_pct": 34.7
+    },
+    "exclamation": {
+     "n": 22,
+     "answered_pct": 31.8
+    },
+    "preference": {
+     "n": 3,
+     "answered_pct": 66.7
+    },
+    "reported_speech": {
+     "n": 7,
+     "answered_pct": 57.1
+    },
+    "rhetorical": {
+     "n": 9,
+     "answered_pct": 88.9
+    },
+    "self_talk": {
+     "n": 15,
+     "answered_pct": 33.3
+    },
+    "side_question": {
+     "n": 50,
+     "answered_pct": 70.0
+    },
+    "statement": {
+     "n": 81,
+     "answered_pct": 32.1
+    },
+    "thinking_aloud": {
+     "n": 35,
+     "answered_pct": 45.7
+    },
+    "tv": {
+     "n": 45,
+     "answered_pct": 75.6
+    }
+   },
+   "at_flux_decision_points": {
+    "n": 656,
+    "addressed_answered_pct": 95.6,
+    "false_respond_pct": 45.0
+   },
+   "text_unseen_in_train": {
+    "n": 527,
+    "auc": 0.873,
+    "addressed_answered_pct": 93.1,
+    "false_respond_pct": 47.9
+   }
+  },
+  "arc device-directed": {
+   "thr": 0.486,
+   "auc": 0.5528,
+   "addressed_answered_pct": 94.5,
+   "false_respond_pct": 94.1,
+   "false_respond_ci": [
+    91.7275,
+    96.339
+   ],
+   "by_kind": {
+    "answer_to_person": {
+     "n": 58,
+     "answered_pct": 93.1
+    },
+    "backchannel": {
+     "n": 27,
+     "answered_pct": 96.3
+    },
+    "chitchat": {
+     "n": 72,
+     "answered_pct": 93.1
+    },
+    "exclamation": {
+     "n": 22,
+     "answered_pct": 81.8
+    },
+    "preference": {
+     "n": 3,
+     "answered_pct": 100.0
+    },
+    "reported_speech": {
+     "n": 7,
+     "answered_pct": 85.7
+    },
+    "rhetorical": {
+     "n": 9,
+     "answered_pct": 100.0
+    },
+    "self_talk": {
+     "n": 15,
+     "answered_pct": 100.0
+    },
+    "side_question": {
+     "n": 50,
+     "answered_pct": 100.0
+    },
+    "statement": {
+     "n": 81,
+     "answered_pct": 93.8
+    },
+    "thinking_aloud": {
+     "n": 35,
+     "answered_pct": 97.1
+    },
+    "tv": {
+     "n": 45,
+     "answered_pct": 91.1
+    }
+   },
+   "at_flux_decision_points": {
+    "n": 656,
+    "addressed_answered_pct": 94.5,
+    "false_respond_pct": 94.5
+   },
+   "text_unseen_in_train": {
+    "n": 527,
+    "auc": 0.5616,
+    "addressed_answered_pct": 96.6,
+    "false_respond_pct": 94.0
+   }
+  },
+  "tagger device_directed": {
+   "thr": 0.9127,
+   "auc": 0.8061,
+   "addressed_answered_pct": 90.4,
+   "false_respond_pct": 71.5,
+   "false_respond_ci": [
+    65.8688,
+    76.7764
+   ],
+   "by_kind": {
+    "answer_to_person": {
+     "n": 58,
+     "answered_pct": 75.9
+    },
+    "backchannel": {
+     "n": 27,
+     "answered_pct": 88.9
+    },
+    "chitchat": {
+     "n": 72,
+     "answered_pct": 59.7
+    },
+    "exclamation": {
+     "n": 22,
+     "answered_pct": 72.7
+    },
+    "preference": {
+     "n": 3,
+     "answered_pct": 100.0
+    },
+    "reported_speech": {
+     "n": 7,
+     "answered_pct": 42.9
+    },
+    "rhetorical": {
+     "n": 9,
+     "answered_pct": 100.0
+    },
+    "self_talk": {
+     "n": 15,
+     "answered_pct": 86.7
+    },
+    "side_question": {
+     "n": 50,
+     "answered_pct": 78.0
+    },
+    "statement": {
+     "n": 81,
+     "answered_pct": 69.1
+    },
+    "thinking_aloud": {
+     "n": 35,
+     "answered_pct": 60.0
+    },
+    "tv": {
+     "n": 45,
+     "answered_pct": 71.1
+    }
+   },
+   "at_flux_decision_points": {
+    "n": 656,
+    "addressed_answered_pct": 90.9,
+    "false_respond_pct": 71.7
+   },
+   "text_unseen_in_train": {
+    "n": 527,
+    "auc": 0.7892,
+    "addressed_answered_pct": 89.0,
+    "false_respond_pct": 70.9
+   }
+  },
+  "tagger question act": {
+   "thr": 0.0,
+   "auc": 0.8041,
+   "addressed_answered_pct": 100.0,
+   "false_respond_pct": 100.0,
+   "false_respond_ci": [
+    100.0,
+    100.0
+   ],
+   "by_kind": {
+    "answer_to_person": {
+     "n": 58,
+     "answered_pct": 100.0
+    },
+    "backchannel": {
+     "n": 27,
+     "answered_pct": 100.0
+    },
+    "chitchat": {
+     "n": 72,
+     "answered_pct": 100.0
+    },
+    "exclamation": {
+     "n": 22,
+     "answered_pct": 100.0
+    },
+    "preference": {
+     "n": 3,
+     "answered_pct": 100.0
+    },
+    "reported_speech": {
+     "n": 7,
+     "answered_pct": 100.0
+    },
+    "rhetorical": {
+     "n": 9,
+     "answered_pct": 100.0
+    },
+    "self_talk": {
+     "n": 15,
+     "answered_pct": 100.0
+    },
+    "side_question": {
+     "n": 50,
+     "answered_pct": 100.0
+    },
+    "statement": {
+     "n": 81,
+     "answered_pct": 100.0
+    },
+    "thinking_aloud": {
+     "n": 35,
+     "answered_pct": 100.0
+    },
+    "tv": {
+     "n": 45,
+     "answered_pct": 100.0
+    }
+   },
+   "at_flux_decision_points": {
+    "n": 656,
+    "addressed_answered_pct": 100.0,
+    "false_respond_pct": 100.0
+   },
+   "text_unseen_in_train": {
+    "n": 527,
+    "auc": 0.8206,
+    "addressed_answered_pct": 100.0,
+    "false_respond_pct": 100.0
+   }
+  },
+  "rule gate session.open_mic_skip": {
+   "thr": 0.5,
+   "auc": 0.577,
+   "addressed_answered_pct": 97.9,
+   "false_respond_pct": 82.5,
+   "false_respond_ci": [
+    78.2085,
+    86.8548
+   ],
+   "by_kind": {
+    "answer_to_person": {
+     "n": 58,
+     "answered_pct": 87.9
+    },
+    "backchannel": {
+     "n": 27,
+     "answered_pct": 96.3
+    },
+    "chitchat": {
+     "n": 72,
+     "answered_pct": 76.4
+    },
+    "exclamation": {
+     "n": 22,
+     "answered_pct": 81.8
+    },
+    "preference": {
+     "n": 3,
+     "answered_pct": 66.7
+    },
+    "reported_speech": {
+     "n": 7,
+     "answered_pct": 28.6
+    },
+    "rhetorical": {
+     "n": 9,
+     "answered_pct": 88.9
+    },
+    "self_talk": {
+     "n": 15,
+     "answered_pct": 86.7
+    },
+    "side_question": {
+     "n": 50,
+     "answered_pct": 100.0
+    },
+    "statement": {
+     "n": 81,
+     "answered_pct": 76.5
+    },
+    "thinking_aloud": {
+     "n": 35,
+     "answered_pct": 80.0
+    },
+    "tv": {
+     "n": 45,
+     "answered_pct": 77.8
+    }
+   },
+   "at_flux_decision_points": {
+    "n": 656,
+    "addressed_answered_pct": 98.2,
+    "false_respond_pct": 82.7
+   },
+   "text_unseen_in_train": {
+    "n": 527,
+    "auc": 0.5774,
+    "addressed_answered_pct": 97.9,
+    "false_respond_pct": 82.5
+   }
+  },
+  "director AND rule gate": {
+   "thr": 0.1321,
+   "auc": 0.8862,
+   "addressed_answered_pct": 96.9,
+   "false_respond_pct": 49.5,
+   "false_respond_ci": [
+    44.3115,
+    55.3143
+   ],
+   "by_kind": {
+    "answer_to_person": {
+     "n": 58,
+     "answered_pct": 46.6
+    },
+    "backchannel": {
+     "n": 27,
+     "answered_pct": 74.1
+    },
+    "chitchat": {
+     "n": 72,
+     "answered_pct": 34.7
+    },
+    "exclamation": {
+     "n": 22,
+     "answered_pct": 27.3
+    },
+    "preference": {
+     "n": 3,
+     "answered_pct": 66.7
+    },
+    "reported_speech": {
+     "n": 7,
+     "answered_pct": 28.6
+    },
+    "rhetorical": {
+     "n": 9,
+     "answered_pct": 88.9
+    },
+    "self_talk": {
+     "n": 15,
+     "answered_pct": 33.3
+    },
+    "side_question": {
+     "n": 50,
+     "answered_pct": 78.0
+    },
+    "statement": {
+     "n": 81,
+     "answered_pct": 39.5
+    },
+    "thinking_aloud": {
+     "n": 35,
+     "answered_pct": 54.3
+    },
+    "tv": {
+     "n": 45,
+     "answered_pct": 55.6
+    }
+   },
+   "at_flux_decision_points": {
+    "n": 656,
+    "addressed_answered_pct": 97.1,
+    "false_respond_pct": 48.2
+   },
+   "text_unseen_in_train": {
+    "n": 527,
+    "auc": 0.8753,
+    "addressed_answered_pct": 95.9,
+    "false_respond_pct": 50.3
+   }
+  },
+  "always answer (open mic today)": {
+   "addressed_answered_pct": 100.0,
+   "false_respond_pct": 100.0
+  },
+  "n_turns": {
+   "test": 716,
+   "test_addressed": 292,
+   "val": 441
+  }
+ },
+ "route_test": {
+  "director": {
+   "acc_at_50pct_words": 90.5,
+   "acc_at_50pct_ci": [
+    88.6,
+    92.4
+   ],
+   "acc_at_75pct_words": 93.1,
+   "acc_at_75pct_ci": [
+    91.6,
+    94.7525
+   ],
+   "acc_at_100pct_words": 97.3,
+   "acc_at_100pct_ci": [
+    96.1,
+    98.2
+   ],
+   "stays_right_lead_ms_p50": 1727.0,
+   "never_right_pct": 1.4
+  },
+  "router rules": {
+   "acc_at_50pct_words": 89.9,
+   "acc_at_50pct_ci": [
+    88.0,
+    91.9
+   ],
+   "acc_at_75pct_words": 92.2,
+   "acc_at_75pct_ci": [
+    90.4475,
+    93.9
+   ],
+   "acc_at_100pct_words": 96.3,
+   "acc_at_100pct_ci": [
+    95.0,
+    97.4
+   ],
+   "stays_right_lead_ms_p50": 1754.0,
+   "never_right_pct": 2.7
+  },
+  "n_by_route": {
+   "card": 25,
+   "facts": 268,
+   "web": 691,
+   "local": 0,
+   "none": 16
+  },
+  "director_confusion_final": [
+   [
+    23,
+    1,
+    1,
+    0,
+    0
+   ],
+   [
+    0,
+    268,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    691,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    1,
+    11,
+    0,
+    4
+   ]
+  ]
+ },
+ "route_test_v2": {
+  "director": {
+   "acc_at_50pct_words": 80.9,
+   "acc_at_50pct_ci": [
+    78.1579,
+    83.8849
+   ],
+   "acc_at_75pct_words": 85.8,
+   "acc_at_75pct_ci": [
+    83.2895,
+    88.4211
+   ],
+   "acc_at_100pct_words": 90.5,
+   "acc_at_100pct_ci": [
+    88.5526,
+    92.6316
+   ],
+   "stays_right_lead_ms_p50": 1425.0,
+   "never_right_pct": 6.6
+  },
+  "router rules": {
+   "acc_at_50pct_words": 80.3,
+   "acc_at_50pct_ci": [
+    77.4309,
+    83.1579
+   ],
+   "acc_at_75pct_words": 85.1,
+   "acc_at_75pct_ci": [
+    82.6941,
+    87.7007
+   ],
+   "acc_at_100pct_words": 90.1,
+   "acc_at_100pct_ci": [
+    88.2895,
+    92.2368
+   ],
+   "stays_right_lead_ms_p50": 1387.0,
+   "never_right_pct": 6.3
+  },
+  "n_by_route": {
+   "card": 70,
+   "facts": 227,
+   "web": 420,
+   "local": 0,
+   "none": 43
+  },
+  "director_confusion_final": [
+   [
+    58,
+    7,
+    5,
+    0,
+    0
+   ],
+   [
+    0,
+    224,
+    3,
+    0,
+    0
+   ],
+   [
+    0,
+    1,
+    419,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    2,
+    32,
+    0,
+    9
+   ]
+  ]
+ },
+ "route_test_pii": {
+  "director": {
+   "acc_at_50pct_words": 91.5,
+   "acc_at_50pct_ci": [
+    88.1919,
+    94.8339
+   ],
+   "acc_at_75pct_words": 95.2,
+   "acc_at_75pct_ci": [
+    92.6199,
+    97.786
+   ],
+   "acc_at_100pct_words": 98.9,
+   "acc_at_100pct_ci": [
+    97.417,
+    100.0
+   ],
+   "stays_right_lead_ms_p50": 3224.0,
+   "never_right_pct": 1.1
+  },
+  "router rules": {
+   "acc_at_50pct_words": 91.5,
+   "acc_at_50pct_ci": [
+    87.8229,
+    94.8339
+   ],
+   "acc_at_75pct_words": 94.8,
+   "acc_at_75pct_ci": [
+    92.2509,
+    97.417
+   ],
+   "acc_at_100pct_words": 98.2,
+   "acc_at_100pct_ci": [
+    96.31,
+    99.631
+   ],
+   "stays_right_lead_ms_p50": 3266.0,
+   "never_right_pct": 0.7
+  },
+  "n_by_route": {
+   "card": 13,
+   "facts": 36,
+   "web": 222,
+   "local": 0,
+   "none": 0
+  },
+  "director_confusion_final": [
+   [
+    11,
+    2,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    35,
+    1,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    222,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  ]
+ },
+ "pii": {
+  "director": {
+   "precision": 0.82,
+   "recall": 0.813,
+   "f1": 0.816,
+   "f1_ci": [
+    0.7834,
+    0.8438
+   ],
+   "over_hide_mention_words_pct": 14.24,
+   "over_hide_non_pii_lines_pct": 1.87,
+   "by_cat": {
+    "address": {
+     "words": 312,
+     "hidden_pct": 16.7,
+     "f1": 0.528
+    },
+    "card": {
+     "words": 387,
+     "hidden_pct": 52.5,
+     "f1": 0.838
+    },
+    "company": {
+     "words": 242,
+     "hidden_pct": 2.5,
+     "f1": null
+    },
+    "decoy_number": {
+     "words": 184,
+     "hidden_pct": 3.3,
+     "f1": null
+    },
+    "dob": {
+     "words": 258,
+     "hidden_pct": 15.9,
+     "f1": 0.729
+    },
+    "email": {
+     "words": 332,
+     "hidden_pct": 36.7,
+     "f1": 0.733
+    },
+    "gov_id": {
+     "words": 299,
+     "hidden_pct": 49.5,
+     "f1": 0.889
+    },
+    "handle": {
+     "words": 221,
+     "hidden_pct": 11.8,
+     "f1": 0.421
+    },
+    "mixed_entities": {
+     "words": 282,
+     "hidden_pct": 2.8,
+     "f1": null
+    },
+    "mixed_pii": {
+     "words": 306,
+     "hidden_pct": 58.8,
+     "f1": 0.921
+    },
+    "phone": {
+     "words": 383,
+     "hidden_pct": 52.2,
+     "f1": 0.918
+    },
+    "place_only": {
+     "words": 190,
+     "hidden_pct": 0.0,
+     "f1": null
+    },
+    "public_person": {
+     "words": 179,
+     "hidden_pct": 0.0,
+     "f1": null
+    }
+   },
+   "thr": 0.325
+  },
+  "rule frame._pii_hide": {
+   "precision": 0.951,
+   "recall": 0.645,
+   "f1": 0.769,
+   "f1_ci": [
+    0.7044,
+    0.8208
+   ],
+   "over_hide_mention_words_pct": 1.78,
+   "over_hide_non_pii_lines_pct": 0.18,
+   "by_cat": {
+    "address": {
+     "words": 312,
+     "hidden_pct": 10.3,
+     "f1": 0.495
+    },
+    "card": {
+     "words": 387,
+     "hidden_pct": 35.9,
+     "f1": 0.831
+    },
+    "company": {
+     "words": 242,
+     "hidden_pct": 0.8,
+     "f1": null
+    },
+    "decoy_number": {
+     "words": 184,
+     "hidden_pct": 0.0,
+     "f1": null
+    },
+    "dob": {
+     "words": 258,
+     "hidden_pct": 0.0,
+     "f1": 0.0
+    },
+    "email": {
+     "words": 332,
+     "hidden_pct": 30.4,
+     "f1": 0.77
+    },
+    "gov_id": {
+     "words": 299,
+     "hidden_pct": 37.5,
+     "f1": 0.857
+    },
+    "handle": {
+     "words": 221,
+     "hidden_pct": 7.2,
+     "f1": 0.298
+    },
+    "mixed_entities": {
+     "words": 282,
+     "hidden_pct": 0.0,
+     "f1": null
+    },
+    "mixed_pii": {
+     "words": 306,
+     "hidden_pct": 49.0,
+     "f1": 0.945
+    },
+    "phone": {
+     "words": 383,
+     "hidden_pct": 32.9,
+     "f1": 0.76
+    },
+    "place_only": {
+     "words": 190,
+     "hidden_pct": 0.0,
+     "f1": null
+    },
+    "public_person": {
+     "words": 179,
+     "hidden_pct": 0.0,
+     "f1": null
+    }
+   }
+  },
+  "director, entity-mention words kept (unless digits)": {
+   "precision": 0.857,
+   "recall": 0.788,
+   "f1": 0.821,
+   "f1_ci": [
+    0.7838,
+    0.8505
+   ],
+   "over_hide_mention_words_pct": 0.0,
+   "over_hide_non_pii_lines_pct": 1.78,
+   "by_cat": {
+    "address": {
+     "words": 312,
+     "hidden_pct": 12.8,
+     "f1": 0.566
+    },
+    "card": {
+     "words": 387,
+     "hidden_pct": 49.6,
+     "f1": 0.852
+    },
+    "company": {
+     "words": 242,
+     "hidden_pct": 2.5,
+     "f1": null
+    },
+    "decoy_number": {
+     "words": 184,
+     "hidden_pct": 3.3,
+     "f1": null
+    },
+    "dob": {
+     "words": 258,
+     "hidden_pct": 15.1,
+     "f1": 0.745
+    },
+    "email": {
+     "words": 332,
+     "hidden_pct": 30.1,
+     "f1": 0.653
+    },
+    "gov_id": {
+     "words": 299,
+     "hidden_pct": 46.8,
+     "f1": 0.9
+    },
+    "handle": {
+     "words": 221,
+     "hidden_pct": 9.0,
+     "f1": 0.392
+    },
+    "mixed_entities": {
+     "words": 282,
+     "hidden_pct": 2.8,
+     "f1": null
+    },
+    "mixed_pii": {
+     "words": 306,
+     "hidden_pct": 56.9,
+     "f1": 0.937
+    },
+    "phone": {
+     "words": 383,
+     "hidden_pct": 50.7,
+     "f1": 0.932
+    },
+    "place_only": {
+     "words": 190,
+     "hidden_pct": 0.0,
+     "f1": null
+    },
+    "public_person": {
+     "words": 179,
+     "hidden_pct": 0.0,
+     "f1": null
+    }
+   }
+  },
+  "n": {
+   "test_words": 3575,
+   "test_hidden": 1000,
+   "test_lines": 271
+  }
+ }
+}

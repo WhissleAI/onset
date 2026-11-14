@@ -1,0 +1,390 @@
+{
+ "run": "runs/pilot4/v2_s0",
+ "params": 32449,
+ "split": "heldout80",
+ "thr": {
+  "director_eot": [
+   0.575,
+   0.85
+  ],
+  "target_premature_val": 36.4,
+  "lr_eot": [
+   0.725,
+   0.725
+  ],
+  "director_fire": 0.17500000000000004,
+  "director_draft": 0.9000000000000004
+ },
+ "eot": {
+  "EndOfTurn only": {
+   "n": 80,
+   "p50": 652.1,
+   "p50_ci": [
+    543.6,
+    742.7
+   ],
+   "mean": 671.2,
+   "mean_ci": [
+    600.0,
+    748.2
+   ],
+   "p90": 1090.5,
+   "premature": 0.0,
+   "premature_ci": [
+    0.0,
+    0.0
+   ],
+   "not_search_answered_pct": null
+  },
+  "eager": {
+   "n": 80,
+   "p50": 211.6,
+   "p50_ci": [
+    157.9,
+    264.0
+   ],
+   "mean": 241.8,
+   "mean_ci": [
+    190.3,
+    292.3
+   ],
+   "p90": 598.9,
+   "premature": 26.2,
+   "premature_ci": [
+    16.2,
+    38.8
+   ],
+   "not_search_answered_pct": null
+  },
+  "eager+arc": {
+   "n": 80,
+   "p50": 236.8,
+   "p50_ci": [
+    177.5,
+    300.0
+   ],
+   "mean": 287.7,
+   "mean_ci": [
+    234.4,
+    340.6
+   ],
+   "p90": 650.7,
+   "premature": 10.0,
+   "premature_ci": [
+    3.8,
+    17.5
+   ],
+   "not_search_answered_pct": null
+  },
+  "eager+gate": {
+   "n": 80,
+   "p50": 354.1,
+   "p50_ci": [
+    285.2,
+    460.5
+   ],
+   "mean": 430.0,
+   "mean_ci": [
+    353.0,
+    507.4
+   ],
+   "p90": 936.4,
+   "premature": 8.8,
+   "premature_ci": [
+    2.5,
+    17.5
+   ],
+   "not_search_answered_pct": null
+  },
+  "fused logistic": {
+   "n": 80,
+   "p50": 212.9,
+   "p50_ci": [
+    154.9,
+    295.9
+   ],
+   "mean": 271.9,
+   "mean_ci": [
+    210.9,
+    334.0
+   ],
+   "p90": 628.4,
+   "premature": 12.5,
+   "premature_ci": [
+    5.0,
+    21.2
+   ],
+   "not_search_answered_pct": null
+  },
+  "director": {
+   "n": 80,
+   "p50": 174.3,
+   "p50_ci": [
+    127.1,
+    234.8
+   ],
+   "mean": 233.1,
+   "mean_ci": [
+    176.0,
+    288.2
+   ],
+   "p90": 611.0,
+   "premature": 11.2,
+   "premature_ci": [
+    3.8,
+    20.0
+   ],
+   "not_search_answered_pct": null
+  },
+  "paired director - logistic": {
+   "median_ms": 0.0,
+   "ci": [
+    0.0,
+    0.0
+   ]
+  },
+  "frontier": {
+   "5.0": {
+    "logistic": {
+     "thr": [
+      0.925,
+      0.95
+     ],
+     "n": 80,
+     "p50": 613.0,
+     "p50_ci": [
+      458.5,
+      693.6
+     ],
+     "mean": 607.2,
+     "mean_ci": [
+      531.5,
+      684.3
+     ],
+     "p90": 1017.9,
+     "premature": 0.0,
+     "premature_ci": [
+      0.0,
+      0.0
+     ],
+     "not_search_answered_pct": null
+    },
+    "director": {
+     "thr": [
+      0.925,
+      0.95
+     ],
+     "n": 80,
+     "p50": 572.0,
+     "p50_ci": [
+      443.2,
+      657.5
+     ],
+     "mean": 525.9,
+     "mean_ci": [
+      447.7,
+      591.5
+     ],
+     "p90": 935.6,
+     "premature": 0.0,
+     "premature_ci": [
+      0.0,
+      0.0
+     ],
+     "not_search_answered_pct": null
+    }
+   },
+   "10.0": {
+    "logistic": {
+     "thr": [
+      0.9,
+      0.925
+     ],
+     "n": 80,
+     "p50": 543.8,
+     "p50_ci": [
+      414.8,
+      661.4
+     ],
+     "mean": 547.0,
+     "mean_ci": [
+      465.7,
+      622.8
+     ],
+     "p90": 944.7,
+     "premature": 3.8,
+     "premature_ci": [
+      0.0,
+      8.8
+     ],
+     "not_search_answered_pct": null
+    },
+    "director": {
+     "thr": [
+      0.9,
+      0.9
+     ],
+     "n": 80,
+     "p50": 414.2,
+     "p50_ci": [
+      217.9,
+      494.5
+     ],
+     "mean": 385.3,
+     "mean_ci": [
+      317.6,
+      453.5
+     ],
+     "p90": 793.3,
+     "premature": 0.0,
+     "premature_ci": [
+      0.0,
+      0.0
+     ],
+     "not_search_answered_pct": null
+    }
+   },
+   "20.0": {
+    "logistic": {
+     "thr": [
+      0.775,
+      0.925
+     ],
+     "n": 80,
+     "p50": 409.8,
+     "p50_ci": [
+      294.6,
+      464.1
+     ],
+     "mean": 421.7,
+     "mean_ci": [
+      341.8,
+      496.7
+     ],
+     "p90": 850.6,
+     "premature": 3.8,
+     "premature_ci": [
+      0.0,
+      8.8
+     ],
+     "not_search_answered_pct": null
+    },
+    "director": {
+     "thr": [
+      0.85,
+      0.85
+     ],
+     "n": 80,
+     "p50": 213.7,
+     "p50_ci": [
+      171.7,
+      314.5
+     ],
+     "mean": 289.0,
+     "mean_ci": [
+      235.0,
+      350.0
+     ],
+     "p90": 652.9,
+     "premature": 2.5,
+     "premature_ci": [
+      0.0,
+      6.2
+     ],
+     "not_search_answered_pct": null
+    }
+   },
+   "30.0": {
+    "logistic": {
+     "thr": [
+      0.65,
+      0.875
+     ],
+     "n": 80,
+     "p50": 263.6,
+     "p50_ci": [
+      182.5,
+      413.8
+     ],
+     "mean": 330.8,
+     "mean_ci": [
+      265.3,
+      398.8
+     ],
+     "p90": 661.8,
+     "premature": 8.8,
+     "premature_ci": [
+      2.5,
+      15.7
+     ],
+     "not_search_answered_pct": null
+    },
+    "director": {
+     "thr": [
+      0.75,
+      0.825
+     ],
+     "n": 80,
+     "p50": 185.7,
+     "p50_ci": [
+      131.4,
+      262.2
+     ],
+     "mean": 247.1,
+     "mean_ci": [
+      189.1,
+      310.5
+     ],
+     "p90": 626.0,
+     "premature": 8.8,
+     "premature_ci": [
+      3.1,
+      15.0
+     ],
+     "not_search_answered_pct": null
+    }
+   }
+  }
+ },
+ "fire": {
+  "hand": {
+   "fires_per_q": 4.25,
+   "useful_per_q": 1.71,
+   "wasted_per_q": 2.54,
+   "q_with_useful_fire_pct": 100.0,
+   "first_useful_lead_ms_p50": 269.0
+  },
+  "director": {
+   "fires_per_q": 2.69,
+   "useful_per_q": 1.6,
+   "wasted_per_q": 1.09,
+   "q_with_useful_fire_pct": 95.0,
+   "first_useful_lead_ms_p50": 265.0
+  }
+ },
+ "draft": {
+  "hand (new meaning, budget 2)": {
+   "drafts_per_q": 1.94,
+   "reusable_per_q": 0.17,
+   "q_with_early_reusable_pct": 15.0,
+   "wasted_per_q": 1.76,
+   "q_with_reusable_pct": 17.5,
+   "first_reusable_lead_ms_p50": 66.0
+  },
+  "director": {
+   "drafts_per_q": 1.85,
+   "reusable_per_q": 1.85,
+   "q_with_early_reusable_pct": 32.5,
+   "wasted_per_q": 0.0,
+   "q_with_reusable_pct": 100.0,
+   "first_reusable_lead_ms_p50": -324.0
+  }
+ },
+ "keep": {
+  "n_words": 8157,
+  "auc_director": 0.9813,
+  "auc_content_word_now": 0.9613,
+  "acc_director@0.5": 0.9425,
+  "acc_content_word_now": 0.9524
+ }
+}
