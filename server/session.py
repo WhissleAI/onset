@@ -407,10 +407,31 @@ class Session:
             pass
         return pool
 
+    def _sticky(self, f) -> list:
+        """A name fixed while the ear was unsure keeps its fix when a later revision of the same span sounds the same:
+        Flux heard "mari gure" (unsure) -> Marie Curie, then settled on "mari guri" at 0.905 / 1.0. The span's revision
+        history is the evidence (the same reason the fused confidence uses revisions); only a same-phonetic-key
+        revision of an Arc mention qualifies."""
+        out = []
+        if not self.loop_fixed:
+            return out
+        toks = [framemod.norm(w) for w in f.words]
+        for a, b, t in heard._mention_spans(f):
+            for aa, bb in {(a, b), (max(0, a - 1), b), (a, min(len(toks), b + 1))}:
+                said = " ".join(toks[aa:bb])
+                k = heard.pkey(said)
+                for old_said, name in self.loop_fixed:
+                    if len(k) >= 3 and heard.pkey(old_said) == k == heard.pkey(name) and said != old_said:
+                        out.append(heard.Fix(aa, bb, said, name, 1.0, "heard-earlier", t))
+                        break
+                if out:
+                    return out
+        return out
+
     def _loop_fix(self, f):
         """Retrieval in the loop: re-resolve misheard names against what the session already knows (heard.py)."""
         try:
-            fixes = heard.propose(f, list(f.sconf), self._loop_candidates())
+            fixes = heard.propose(f, list(f.sconf), self._loop_candidates()) or self._sticky(f)
             if not fixes:
                 return
             heard.apply(f, fixes)

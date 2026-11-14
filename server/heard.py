@@ -368,6 +368,15 @@ def suspects(f, wconf) -> list[tuple[int, int, str, bool]]:
     return out
 
 
+def _prefix(a: str, b: str) -> int:
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
 def _kind_adj(span_type: str, c: Cand) -> float:
     want = TYPE_KIND.get(span_type, "")
     if not want or not c.kind:
@@ -415,7 +424,9 @@ def propose(f, wconf, pool: Pool | None = None, use_leads: bool = True) -> list[
             if nd > 1 or cs == sp:
                 continue
             cw, sw = set(cs.split()), set(sp.split())
-            if cw <= sw or sw <= cw or letters(cs).rstrip("s") == letters(sp).rstrip("s"):
+            lc, ls_ = letters(cs), letters(sp)
+            if cw <= sw or sw <= cw or lc.rstrip("s") == ls_.rstrip("s") or \
+                    (min(len(lc), len(ls_)) >= 7 and _prefix(lc, ls_) >= 0.85 * min(len(lc), len(ls_))):
                 continue                                 # "nasdaq" vs Nasdaq-100, "birch way" vs Birch: not misheard
             if len(re.sub(r"[^a-z]", "", c.name.lower())) < 3:
                 continue                                 # "8½", "C": nothing to spell against

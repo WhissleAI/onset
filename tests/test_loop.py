@@ -98,12 +98,12 @@ def test_arc_type_conditions_the_match():
     """Arc says person: a person candidate wins over an equally close thing."""
     pool = heard.Pool()
     pool.add("Marie Curie", "spec", "person")
-    pool.add("Mari Gurie", "spec", "place")                       # hypothetical near-identical place name
+    pool.add("Mary Gury", "spec", "place")                          # hypothetical near-identical place name
     f = fr("who was mari guri", [(P, 2, 4)])
     fx = heard.propose(f, [0.99, 0.99, 0.5, 0.5], pool, use_leads=False)
-    assert all(x.name != "Mari Gurie" for x in fx)               # the closer spelling loses: wrong kind
+    assert all(x.name != "Mary Gury" for x in fx)               # the closer spelling loses: wrong kind
     g = fr("who was mari guri", [(PL, 2, 4)])                      # Arc says place: now it wins
-    assert [x.name for x in heard.propose(g, [0.99, 0.99, 0.5, 0.5], pool, use_leads=False)] == ["Mari Gurie"]
+    assert [x.name for x in heard.propose(g, [0.99, 0.99, 0.5, 0.5], pool, use_leads=False)] == ["Mary Gury"]
 
 
 def test_no_ear_confidence_only_tagger_mentions_and_stricter():
@@ -288,3 +288,28 @@ def test_keystone_graph_nodes_are_candidates(monkeypatch):
     f = fr("who was pier guri", [(P, 2, 4)])
     assert [x.name for x in heard.propose(f, [0.99, 0.99, 0.5, 0.6], pool)] == ["Pierre Curie"]
     ks.reset()
+
+
+def test_a_fix_made_while_unsure_sticks_when_the_ear_settles_on_a_same_sound_spelling():
+    """conv21 live: partial "mari gure" (unsure) -> Marie Curie; final "mari guri" at 0.905 / 1.0 keeps the fix."""
+    async def run():
+        ev = []
+        s = Session(ev.append, mode="baseline")
+        try:
+            s.on_partial(_ws("who was mari gure".split(), [0.99, 0.99, 0.6, 0.5]))
+            first = s.frame
+            s.on_partial(_ws("who was mari guri".split(), [0.99, 0.99, 0.905, 1.0]))
+            return first, s.frame
+        finally:
+            s.close()
+    first, last = asyncio.run(run())
+    if not first.resolved:
+        pytest.skip("this tagger build marks no mention on 'mari gure'")
+    assert last.resolved and last.resolved[0]["as"] == "Marie Curie" and last.resolved[0]["src"] == "heard-earlier"
+
+
+def test_truncated_or_extended_word_is_not_a_mishearing():
+    pool = heard.Pool()
+    pool.add("Penicillium", "answer")
+    f = fr("who discovered penicillin", [("entity.mention.work_product", 2, 3)])
+    assert heard.propose(f, [0.99, 0.99, 0.5], pool, use_leads=False) == []
