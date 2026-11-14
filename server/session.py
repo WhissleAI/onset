@@ -947,6 +947,10 @@ class Session:
             docs = [spec.pool[i] for i in spec.used_ids if i in spec.pool] if spec is not None else []
             t = self.mem.observe(f, m.get("answer") or "", ans_spans, docs)
             self.mem.note_used(framemod.norm(f.carried) if f.carried else None)
+            if config.INDEX:                     # Keystone: memory + the answer into the one structure (server/keystone)
+                from .keystone import hook as _ks
+                _ks.note_answer(f, f.query(), m.get("answer") or "")
+                _ks.absorb_memory(self.mem)
             m["memory"] = {"turn": t, "used": f.carried or None, "ref": f.mem_ref or None, "inline": f.inline or None,
                            "user": [k for k, _ in f.user_used]}
             self.emit_memory(why="turn", q=q)

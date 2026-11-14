@@ -263,3 +263,21 @@ def test_hook_persistence_roundtrip_remaps_cell_ids(monkeypatch, tmp_path):
     best = ks2.heuristic(cands, feats)
     assert best is not None and best.path == "key" and "Shakespeare" in " ".join(c.payload for c, _ in best.cells)
     hook.reset()
+
+
+def test_memory_and_answers_fold_into_the_graph(index_on):
+    from server.memory import Memory
+    mem = Memory()
+    f = F("who founded nvidia", slots=[("organization", "nvidia")])
+    fact = Doc("wikidata:Q182477:P112", "Nvidia · Wikidata", "Nvidia (company): founded by: Jensen Huang.", "Wikidata",
+               {"tier": "facts", "fact": {"prop": "founder", "values": ["Jensen Huang"], "item": "Nvidia"}})
+    mem.observe(f, "Nvidia was founded by Jensen Huang.", [{"type": "person", "text": "Jensen Huang"}], [fact])
+    hook.absorb_memory(mem)
+    g = hook.store().g
+    n = g.resolve("nvidia")
+    assert n == "Q182477" and g.lookup("nvidia", "founded_by")[1][0]["value"] == "Jensen Huang"
+    assert g.most_active([f"s:{hook.SCOPE['session']}"]) is not None
+    hook.ingest(f, "who founded nvidia", [fact], {fact.id: vec(90)}, {"tier": "facts"})
+    hook.note_answer(f, "who founded nvidia", "Jensen Huang co-founded Nvidia in 1993.")
+    vals = g.lookup("nvidia", "founded_by")[1]
+    assert any("1993" in v["value"] for v in vals)

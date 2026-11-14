@@ -270,3 +270,67 @@ def health() -> dict:
     if _ks is not None:
         out.update(_ks.stats())
     return {"on": config.INDEX, "serve": config.INDEX_SERVE, **out}
+
+
+def _value_cell(ks, q):
+    from .cells import toks
+    k = q.key.text() if q.key is not None and q.key.complete else ""
+    return ks.cells.by_doc.get(("value:" + k) if k else ("q:" + " ".join(sorted(set(toks(q.text))))))
+
+
+def note_answer(f, query: str, answer: str):
+    """The answer model's answer becomes the question's value-cell payload (the answer span, not the source's key
+    sentences); its typed edge value follows. Cheap; never raises."""
+    if not config.INDEX or f is None or not answer:
+        return
+    try:
+        ks = store()
+        q = q_of(f, query)
+        i = _value_cell(ks, q)
+        if i is None or i not in ks.cells.cells:
+            return
+        c = ks.cells.cells[i]
+        c.payload = answer.strip()[:320]
+        if q.key is not None and q.key.complete:
+            node = ks.g.resolve(q.key.subject)
+            for v in ks.g.edges.get((node, q.key.relation), []) if node else []:
+                if v.get("cell") == i:
+                    v["value"] = c.payload
+    except Exception:  # noqa: BLE001
+        STATS["errors"] += 1
+
+
+_PHRASE_REL = {"founded by": "founded_by", "created by": "creator_of", "written by": "author_of",
+               "directed by": "director_of", "capital": "capital_of", "headquarters": "hq_of", "born in": "born_place",
+               "made by": "manufacturer_of", "chief executive officer": "ceo_of", "spouse": "spouse_of",
+               "discovered / invented by": "discoverer_of", "country": "country_of"}
+
+
+def absorb_memory(mem):
+    """Conversation memory (server/memory.py) into the one structure: its entities become nodes (QIDs kept), its
+    Wikidata / answer edges typed edges, co-mentions co-occurrence, the turns' entities session activation (newest
+    turn strongest), user facts edges from the "you" node. memory.py stays the fallback path. Never raises."""
+    if not config.INDEX or mem is None:
+        return
+    try:
+        ks = store()
+        g = mem.graph()
+        now = time.time()
+        keys = {}
+        for n in g.get("nodes") or []:
+            keys[n["id"]] = ks.g.node(n["label"], qid=n.get("qid"), kind=n.get("kind", ""))
+        last = max((max(n.get("turns") or [0]) for n in g.get("nodes") or []), default=0)
+        for n in g.get("nodes") or []:
+            age = last - max(n.get("turns") or [0])
+            ks.g.activate(f"s:{SCOPE['session']}", keys.get(n["id"]), 0.5 ** age, now)
+        for e in g.get("edges") or []:
+            a, b = keys.get(e.get("a")), keys.get(e.get("b"))
+            rel = _PHRASE_REL.get(e.get("rel") or "")
+            if a and b and rel:
+                ks.g.add_edge(a, rel, ks.g.nodes[b]["name"], t=now, ttl=0.0, prov="memory", value_node=b)
+            elif a and b:
+                ks.g.link(a, b)
+        for u in g.get("user") or []:
+            ks.g.user_fact(SCOPE["user"], u["key"], u["v"], now)
+    except Exception:  # noqa: BLE001
+        STATS["errors"] += 1

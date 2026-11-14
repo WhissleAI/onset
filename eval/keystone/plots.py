@@ -72,9 +72,15 @@ def stream_chart(rep, out, pols=("fresh", "a", "b", "e", "f")):
     style(axs[1, 0], "p50 retrieval latency, ms (rolling 100)")
     style(axs[1, 1], "Correct (keywords or same evidence; rolling 100)")
     axs[0, 0].set_ylim(0, None)
-    axs[1, 0].set_ylim(0, None)
+    axs[1, 0].set_ylim(0, 800)
+    if "oracle" in rep["policies"]:
+        rows = rep["policies"]["oracle"]["rows"]
+        paid = [r["paid"] for r in rows]
+        axs[0, 0].plot(range(1, len(rows) + 1), [sum(paid[:i + 1]) / (i + 1) for i in range(len(paid))],
+                       color=C["oracle"], linewidth=1.2, linestyle="--", label=NAME["oracle"])
     for ax in axs[1]:
         ax.set_xlabel("question # in the stream", fontsize=8.5, color=INK2)
+    axs[1, 1].set_ylim(0.6, 1.0)
     axs[0, 0].legend(fontsize=8, frameon=False, labelcolor=INK)
     fig.tight_layout()
     fig.savefig(out, dpi=130, facecolor=SURF)
