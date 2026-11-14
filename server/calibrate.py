@@ -251,7 +251,7 @@ def reason(x: dict, p: float | None) -> str:
     elif x.get("ks_hit"):
         goods.append("from your earlier answers")
     if x.get("facts"):
-        goods.append("Wikidata agrees")
+        goods.append("from Wikidata")
     if x.get("v_agree"):
         goods.append(f"{max(2, int(x.get('agree_subj') or 2))} sources agree")
     elif x.get("v_supported"):
@@ -262,7 +262,7 @@ def reason(x: dict, p: float | None) -> str:
         return goods[0] if goods else "strong source match"
     if b == "low":
         return doubts[0] if doubts else "check this"
-    return (doubts or goods or ["some doubt"])[0]
+    return (doubts or goods or ["check this"])[0]
 
 
 def assess(feats: dict, stage: str = "post") -> dict:

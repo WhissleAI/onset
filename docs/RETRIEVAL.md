@@ -561,7 +561,7 @@ adds nothing either way):
 | group | features |
 |---|---|
 | sources | Tavily score of the top result and its margin over the rest; newest source age; rerank cosine top-1, top-1 − top-2, mean of top 3; number of sources; how many of the top 3 name the question's subject |
-| router / facts | lane (card / facts / web), the plan's own conf, a Wikidata fact or live card among the sources |
+| router / facts | lane (card / facts / web), the plan's own conf, a Wikidata fact or live card among the sources (reason "from Wikidata" / "live data") |
 | Keystone | an index hit, shared ("verified by Onset users") vs personal, age of the cell |
 | Arc | confidence of the least-sure decisive word (min of ear and fused, `Frame.sconf`; the word goes into the reason), self-correction, follow-up / carried subject, hesitation fillers, a retrieval-in-the-loop rewrite, intent and its probability, length |
 | answer (post only) | verify status (agree / supported / partial / unverified / disagree) and the share of claims found, a "the sources don't say" answer, extractive fallback, citations, length |
@@ -624,3 +624,12 @@ Measured on the test split (`eval/calib_route_eval.py`, re-answering when the to
 The free lookup rarely changes the top 5 (5 of 122) and the extra search buys one net answer for +0.65 paid calls / q,
 so CALIB_ROUTE stays off. The pre-answer signals are the bottleneck; better ones (real ASR confidence, Tavily scores)
 would have to come first.
+
+**Live (real audio, 58 set, Onset arm, parity, Wikipedia lane, `runs/calib/ab_q58_on_r2.json`):** 58 / 58 right, every
+answer carries a conf; conf 0.8+ on 46 (all right), 0.6-0.8 on 12 (all right), none low; Brier 0.037. The model is
+under-confident here: 10 of the 12 middle answers are local-moment questions (the text-path labels have none) and
+the "heard 'three' unclearly" reason fired on local01 (Flux heard "three" at < 0.85). Cost: the model adds 0.04 ms
+before and 0.08 ms after the answer (1,000-call microbenchmark). A paired replay (CALIB on vs off, r1) read +136 ms
+paired median, which that cost cannot explain: the on arm ran first, on a machine shared with three other agents'
+replays; the second pair was stopped when the user started live-testing (load, memory). **Defaults: CALIB=1,
+CALIB_BADGE=1** (compute + badge; the answer path is unchanged), CALIB_ROUTE=0, CALIB_FUSE=0, CALIB_PUBDATE=0.

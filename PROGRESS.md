@@ -1469,3 +1469,36 @@ Read-only audit of main 411a69f against the organizers' 6 problems, 9 tracks and
   load (it showed Speed until the first render after a run).
 - Tests: tests/test_results_view.py (21); full suite 499 passed. Shots (1280x720, light + dark, no console errors, no horizontal scroll):
   scratchpad feature_shots/results/.
+
+## Answer calibration (branch feat/calib; server/calibrate.py, web/confidence.js, docs/RETRIEVAL.md §8)
+One calibrated confidence per answer plus one plain reason, in the metric (`conf`, `conf_band`, `conf_reason`,
+`conf_feats`, `conf_pre`) and as a badge under the answer: "High confidence · 2 sources agree", "Low · sources don't
+say", "Medium · heard 'three' unclearly".
+- **Tavily score kept.** The `sources` event now carries `src_score` (Tavily's relevance) next to `rerank_score`
+  (EmbeddingGemma cosine, which is what ranks). The calibrator reads both. `CALIB_FUSE` (0) puts the Tavily score into
+  the ranking; `CALIB_PUBDATE` (0) sends `include_published_date` and feeds source age. Neither is measured: the
+  recorded `runs/web_cache.json` is Wikipedia, with no Tavily scores. Fitting them needs ~650 Tavily searches (the
+  label questions), est. 650-1,300 credits. Not spent.
+- **Model.** Logistic regression + isotonic, two stages (before the answer: retrieval, router, Keystone, Arc; after:
+  + verify + the answer). Labels: `eval/calib_data.py`, 647 text-path answers on the Wikipedia lane (Keystone families
+  with gold / LLM keywords, 3 surfaces each, + corrections), real answer model, 647 calls, est. $0.13.
+- **Held-out test (186 answers, 30 % of families):**
+
+| score | ECE | Brier | AUC |
+|---|---|---|---|
+| raw rerank cosine | 0.046 | 0.179 | 0.55 |
+| raw router conf | 0.335 | 0.274 | 0.63 |
+| calibrated, before answer | 0.027 | 0.174 | 0.60 |
+| **calibrated badge** | **0.034** | **0.161** | **0.72** |
+
+  Badge bins (conf → accuracy): 0.53 → 0.47 (17), 0.63 → 0.61 (18), 0.75 → 0.71 (28), 0.84 → 0.81 (97),
+  0.91 → 0.96 (26). High band 84.6 % right (123), medium 67.4 % (46), low 47.1 % (17).
+- **Router (CALIB_ROUTE, default OFF).** Medium → one free lookup (Wikidata + leads); low → one more paid search inside
+  the parity budget. Test split: free lookups changed the top 5 on 5 / 122, accuracy 76.9 → 76.3 %, +274 ms p50;
+  paid-for-everything-below-high 76.9 → 77.4 % for 0.83 → 1.48 paid / q. No gain, so off.
+- **Live** (58 set, real audio, parity, Wikipedia): 58 / 58 right, conf ≥ 0.8 on 46, 0.6-0.8 on 12 (local-moment
+  questions, outside the training labels), none low; Brier 0.037. Overhead 0.04 + 0.08 ms per answer. CALIB / CALIB_BADGE
+  default on (compute + badge only, the answer path is unchanged).
+- Open: refit with live rows (they log `conf_feats`; real ASR confidence is missing from the text-path labels), Tavily
+  scores, local-moment labels; LLM-written keywords make the model under-confident on gold questions.
+- Tests: tests/test_calibrate.py (12).
