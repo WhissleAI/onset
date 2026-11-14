@@ -92,7 +92,7 @@
     };
   }
   function startRun(kind, modes) {
-    run = { modes, kind, running: true, clientT0: performance.now(), base: null, q: newQuestion(), prevQ: null, history: [] };
+    run = { rid: ridSeq, modes, kind, running: true, clientT0: performance.now(), base: null, q: newQuestion(), prevQ: null, history: [] };
     paintHistory();
     resetView();
     pipeReset();
@@ -125,7 +125,7 @@
     };
     ws.onclose = () => {
       wsOpen = false; paintStatus(); reconnectBanner(true);
-      if (mic.on) stopMic(false);
+      if (mic.on) stopMic(false, "socket closed");
       if (run) { run.running = false; }
       setTimeout(connect, 1500);
     };
@@ -165,6 +165,7 @@
       if (b) b.hidden = true;
     }
   }
+  let ridSeq = 0;
   function send(obj) {
     if (!ws || ws.readyState !== 1) { toast("Not connected to the server yet", true); return false; }
     // cost mode (web/meter.js toggle: speed | parity) rides on every run start; the server applies it per session
@@ -172,6 +173,9 @@
       const c = window.HSMeter.costMode();
       if (c) obj = { ...obj, cost: c };
     }
+    // every run gets the page's own id; the server echoes it on that run's events, so a late event of an earlier
+    // run (its run_done arrives after the next push-to-talk press started) never ends or repaints the new run
+    if (obj && (obj.t === "start" || obj.t === "replay")) obj = { ...obj, rid: ++ridSeq };
     ws.send(typeof obj === "string" || obj instanceof ArrayBuffer ? obj : JSON.stringify(obj));
     return true;
   }
@@ -249,6 +253,7 @@
 
   // ------------------------------------------------------------------ events
   function onEvent(e) {
+    if (e.rid != null && (!run || e.rid !== run.rid)) return;    // an earlier run's late event (see send)
     if (window.HSFilm) { try { window.HSFilm.event(e); } catch (err) { console.error("film", err); } }
     if (window.HSHears && run) { try { window.HSHears.event(e); } catch (err) { console.error("hears", err); } }
     if (window.HSMeter && run) { try { window.HSMeter.event(e, run); } catch (err) { console.error("meter", err); } }
@@ -573,7 +578,7 @@
   function finishRun() {
     $("#earState").textContent = "done";
     $("#earState").className = "ear";
-    if (mic.on) stopMic(false);
+    if (mic.on) stopMic(false, "run done");
     for (const m of run.modes) paneState(m);
   }
 
@@ -1402,7 +1407,7 @@
     return out;
   }
   async function replayConversation(conv, btn, gapS = 2.5) {
-    if (mic.on) stopMic(true);
+    if (mic.on) stopMic(true, "replay");
     const my = ++streamToken;
     const modes = modesFor(modeSel);
     document.querySelectorAll(".qlist button.on").forEach((n) => n.classList.remove("on"));
@@ -1445,7 +1450,7 @@
   function replay(file, btn) {
     if (!file) return;
     streamToken++;                                            // abort any conversation still streaming
-    if (mic.on) stopMic(true);
+    if (mic.on) stopMic(true, "replay");
     const modes = window.HSFilm && window.HSFilm.active ? ["headstart", "baseline"] : modesFor(modeSel);
     document.querySelectorAll(".qlist button.on").forEach((n) => n.classList.remove("on"));
     if (btn) btn.classList.add("on");
@@ -1464,48 +1469,101 @@
   });
 
   // ------------------------------------------------------------------ microphone
-  const mic = { on: false, ctx: null, stream: null, node: null, buf: [], acc: 0, cnt: 0, frac: 0, ratio: 3, level: 0 };
+  // One capture (stream + AudioContext + worklet) is opened on the first press and kept warm between presses;
+  // a press only gates sending (mic.on). Faster (no getUserMedia/AudioContext per press) and steadier in WKWebView.
+  // The capture is released after MIC_KEEP_MS without a press (the system mic indicator goes off).
+  const MIC_KEEP_MS = 60000;
+  const mic = { on: false, ctx: null, stream: null, src: null, node: null, sink: null, buf: [], acc: 0, cnt: 0, frac: 0, ratio: 3,
+                level: 0, idle: null, st: null };
   const WORKLET = `class Cap extends AudioWorkletProcessor{process(i){const c=i[0]&&i[0][0];if(c)this.port.postMessage(c.slice(0));return true}}registerProcessor('hs-cap',Cap);`;
+  // capture counters for the current press (sent with "stop" and logged by the server; also console.log)
+  const newStats = () => ({ t0: performance.now(), frames: 0, inS: 0, sent: 0, mutes: 0, reused: 0, node: "" });
+
+  function captureLive() {
+    return !!(mic.stream && mic.ctx && mic.ctx.state !== "closed" && mic.stream.getAudioTracks().some((t) => t.readyState === "live"));
+  }
+  async function openCapture() {
+    if (captureLive()) {
+      if (mic.ctx.state !== "running") { try { await mic.ctx.resume(); } catch { /* reported in the stats */ } }
+      return true;
+    }
+    releaseCapture();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(stream);
+    const sink = ctx.createGain();
+    sink.gain.value = 0;
+    sink.connect(ctx.destination);
+    for (const t of stream.getAudioTracks()) {
+      t.addEventListener("mute", () => { if (mic.st) mic.st.mutes++; console.log("[mic] track muted"); });
+      t.addEventListener("unmute", () => console.log("[mic] track unmuted"));
+      t.addEventListener("ended", () => console.log("[mic] track ended"));
+    }
+    ctx.onstatechange = () => console.log("[mic] AudioContext", ctx.state);
+    let node, kind;
+    try {
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+      await ctx.audioWorklet.addModule(url);
+      node = new AudioWorkletNode(ctx, "hs-cap");
+      node.port.onmessage = (e) => pushPcm(e.data);
+      kind = "worklet";
+    } catch {
+      node = ctx.createScriptProcessor(4096, 1, 1);
+      node.onaudioprocess = (e) => pushPcm(e.inputBuffer.getChannelData(0).slice(0));
+      kind = "script";
+    }
+    src.connect(node); node.connect(sink);
+    Object.assign(mic, { ctx, stream, src, node, sink, kind });
+    if (ctx.state !== "running") { try { await ctx.resume(); } catch { /* reported in the stats */ } }
+    return false;
+  }
+  function releaseCapture() {
+    clearTimeout(mic.idle); mic.idle = null;
+    try { mic.node && mic.node.disconnect(); } catch { /* ignore */ }
+    try { mic.src && mic.src.disconnect(); } catch { /* ignore */ }
+    try { mic.stream && mic.stream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+    try { mic.ctx && mic.ctx.state !== "closed" && mic.ctx.close(); } catch { /* ignore */ }
+    Object.assign(mic, { ctx: null, stream: null, src: null, node: null, sink: null });
+  }
+  function nativeMic(on) {         // Mac app: keeps the app out of App Nap while listening
+    const nb = nativeBridge();
+    if (nb) { try { nb.postMessage({ t: "mic", on }); } catch { /* ignore */ } }
+  }
+  function micDebug(why) {
+    const st = mic.st || newStats();
+    const tr = mic.stream && mic.stream.getAudioTracks()[0];
+    return { why, held_s: +((performance.now() - st.t0) / 1000).toFixed(2), frames: st.frames, in_s: +st.inS.toFixed(2),
+             sent_s: +(st.sent / 16000).toFixed(2), node: mic.kind || "", reused: st.reused, ctx: mic.ctx ? mic.ctx.state : "none",
+             rate: mic.ctx ? mic.ctx.sampleRate : 0, track: tr ? tr.readyState : "none", muted: tr ? tr.muted : false,
+             mutes: st.mutes, ws_buf: ws ? ws.bufferedAmount : -1 };
+  }
 
   // open = clicked the mic (it keeps listening: open mic); push-to-talk (Space) is not open
   async function startMic(open = false) {
     streamToken++;
     if (!navigator.mediaDevices?.getUserMedia) { toast("Microphone not available here; use Replay", true); return; }
     if (!wsOpen) { toast("Not connected to the server yet", true); return; }
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-    } catch (err) { toast("Microphone permission denied; use Replay", true); return; }
+    clearTimeout(mic.idle); mic.idle = null;
+    let reused;
+    try { reused = await openCapture(); }
+    catch (err) { releaseCapture(); toast("Microphone permission denied; use Replay", true); return; }
     try { player.pause(); } catch { /* ignore */ }
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = ctx.createMediaStreamSource(stream);
-    const sink = ctx.createGain();
-    sink.gain.value = 0;
-    sink.connect(ctx.destination);
-    Object.assign(mic, { on: true, ctx, stream, buf: [], acc: 0, cnt: 0, frac: 0, ratio: ctx.sampleRate / 16000 });
+    Object.assign(mic, { on: true, buf: [], acc: 0, cnt: 0, frac: 0, ratio: mic.ctx.sampleRate / 16000, st: newStats() });
+    mic.st.reused = reused ? 1 : 0;
     const modes = modesFor(modeSel);
     send({ t: "start", modes, open: !!open });
     startRun("mic", modes);
     document.querySelectorAll(".qlist button.on").forEach((n) => n.classList.remove("on"));
-    try {
-      const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
-      await ctx.audioWorklet.addModule(url);
-      const node = new AudioWorkletNode(ctx, "hs-cap");
-      node.port.onmessage = (e) => pushPcm(e.data);
-      src.connect(node); node.connect(sink);
-      mic.node = node;
-    } catch {
-      const node = ctx.createScriptProcessor(4096, 1, 1);
-      node.onaudioprocess = (e) => pushPcm(e.inputBuffer.getChannelData(0).slice(0));
-      src.connect(node); node.connect(sink);
-      mic.node = node;
-    }
+    nativeMic(true);
+    console.log("[mic] start", { reused, ctx: mic.ctx.state, node: mic.kind });
     paintMic();
   }
 
   // box-filter decimation to 16 kHz (works for 44.1k and 48k), then 100 ms Float32 frames
   function pushPcm(x) {
     if (!mic.on) return;
+    mic.st.frames++;
+    mic.st.inS += x.length / (mic.ctx ? mic.ctx.sampleRate : 48000);
     let sq = 0;
     for (let i = 0; i < x.length; i++) {
       const s = x[i];
@@ -1519,20 +1577,22 @@
     mic.level = 0.8 * mic.level + 0.2 * Math.sqrt(sq / Math.max(1, x.length));
     while (mic.buf.length >= 1600) {
       const f = new Float32Array(mic.buf.splice(0, 1600));
-      if (ws && ws.readyState === 1) ws.send(f.buffer);
+      if (ws && ws.readyState === 1) { ws.send(f.buffer); mic.st.sent += f.length; }
     }
     const ring = $("#micRing");
     ring.style.transform = `scale(${1 + Math.min(0.35, mic.level * 6)})`;
   }
 
-  function stopMic(sendStop = true) {
+  function stopMic(sendStop = true, why = "release") {
     if (!mic.on) return;
     mic.on = false;
-    if (mic.buf.length && ws && ws.readyState === 1) ws.send(new Float32Array(mic.buf.splice(0)).buffer);
-    try { mic.node && mic.node.disconnect(); } catch { /* ignore */ }
-    try { mic.stream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
-    try { mic.ctx.close(); } catch { /* ignore */ }
-    if (sendStop) send({ t: "stop" });
+    if (mic.buf.length && ws && ws.readyState === 1) { mic.st.sent += mic.buf.length; ws.send(new Float32Array(mic.buf.splice(0)).buffer); }
+    const dbg = micDebug(why);
+    console.log("[mic] stop", dbg);
+    if (sendStop) send({ t: "stop", dbg });
+    nativeMic(false);
+    clearTimeout(mic.idle);
+    mic.idle = setTimeout(releaseCapture, MIC_KEEP_MS);
     $("#micRing").style.transform = "";
     paintMic();
   }
@@ -1540,7 +1600,7 @@
     $("#micBtn").classList.toggle("live", mic.on);
     $("#micLabel").textContent = mic.on ? "Stop" : "Ask";
   }
-  $("#micBtn").addEventListener("click", () => (mic.on ? stopMic(true) : startMic(true)));
+  $("#micBtn").addEventListener("click", () => (mic.on ? stopMic(true, "click") : startMic(true)));
   // a clamped answer (results view shows one line) opens in place on click (it used to carry the whole answer as a
   // hover tooltip, which popped up over the strip)
   document.addEventListener("click", (e) => {
@@ -1563,7 +1623,7 @@
       if (!mic.on && !ptt.starting) {
         ptt.starting = true;
         try { await startMic(); } finally { ptt.starting = false; }
-        if (!ptt.held && mic.on) ptt.tail = setTimeout(() => { ptt.tail = null; stopMic(true); }, 500);
+        if (!ptt.held && mic.on) ptt.tail = setTimeout(() => { ptt.tail = null; stopMic(true, "released while starting"); }, 500);
       }
       return;
     }
@@ -1588,7 +1648,7 @@
   addEventListener("blur", () => {           // window lost focus while holding Space: treat as release
     if (!ptt.held) return;
     ptt.held = false;
-    if (mic.on) ptt.tail = setTimeout(() => { ptt.tail = null; stopMic(true); }, 500);
+    if (mic.on) ptt.tail = setTimeout(() => { ptt.tail = null; stopMic(true, "window blur"); }, 500);
   });
 
   // ------------------------------------------------------------------ results (runs/ab_latest.json)
@@ -1710,5 +1770,6 @@
   loadQuestions();
   loadResults();
   setInterval(loadResults, 30000);
-  window.__hs = { get run() { return run; }, get ready() { return wsOpen && warm; }, replay: (f) => replay(f, null) };   // for debugging in the console
+  window.__hs = { get run() { return run; }, get ready() { return wsOpen && warm; }, replay: (f) => replay(f, null),
+                  mic: { start: (open) => startMic(!!open), stop: () => stopMic(true, "automation"), stats: () => micDebug("peek"), get on() { return mic.on; } } };   // for debugging in the console
 })();

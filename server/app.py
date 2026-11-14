@@ -192,6 +192,21 @@ async def audio(name: str):
 _run_ids = itertools.count(1)
 
 
+def _mic_debug(d) -> str:
+    """The page's capture counters on a mic stop (web/app.js micDebug): frames from the capture node, seconds captured
+    and sent, AudioContext state, track state, socket backlog. Logged so a short run shows where the audio stopped."""
+    if not isinstance(d, dict):
+        return ""
+    keep = []
+    for k, v in list(d.items())[:16]:
+        if not isinstance(k, str) or isinstance(v, bool) or not isinstance(v, (int, float, str)):
+            continue
+        if isinstance(v, float):
+            v = round(v, 2)
+        keep.append(f"{k[:24]}={str(v)[:40]}")
+    return " | page: " + " ".join(keep) if keep else ""
+
+
 class Run:
     """One run: an ear feeding one Session per mode, and a sender task draining their events to the socket."""
 
@@ -207,10 +222,12 @@ class Run:
         self._stop: asyncio.Task | None = None
         self.closed = False
         self.samples = 0
+        self.rid = None                  # the page's own id for this run (echoed on every event: late events of an
+                                         # earlier run, e.g. its run_done, must not end the page's next run)
 
     def _emitter(self, mode):
         def emit(e):
-            self.q.put_nowait({**e, "mode": mode})
+            self.q.put_nowait({**e, "mode": mode, **({"rid": self.rid} if self.rid is not None else {})})
             if REQUEST_LOG:
                 try:
                     log_event(e, mode, self.id)
@@ -266,7 +283,7 @@ class Run:
         await asyncio.sleep(0.05)
         for s in self.sessions:
             s.close()
-        self.q.put_nowait({"t": "run_done", "mode": "sys",
+        self.q.put_nowait({"t": "run_done", "mode": "sys", **({"rid": self.rid} if self.rid is not None else {}),
                            "metrics": [s.history for s in self.sessions]})
         await asyncio.sleep(0.2)
         self.sender.cancel()
@@ -439,6 +456,8 @@ async def ws_endpoint(ws: WebSocket):
                 modes = data.get("modes") or ["headstart", "baseline"]
                 run = Run(ws, modes, data.get("domain", "assistant"), cost_mode=costmod.valid(data.get("cost")))
                 run.kind = "mic" if t == "start" else "replay"
+                rid = data.get("rid")
+                run.rid = rid if isinstance(rid, int) and not isinstance(rid, bool) else None
                 rlog(f"run {run.id} start {run.kind}" + (f" {p.name}" if t == "replay" else
                      (" open-mic" if data.get("open") else " push-to-talk")) + f" modes={','.join(modes)} ear={ear.describe().get('ear')}")
                 if t == "start":
@@ -465,7 +484,7 @@ async def ws_endpoint(ws: WebSocket):
                         await r.stop()
                     task = asyncio.create_task(go())
             elif t == "stop":
-                rlog(f"run {run.id if run else '-'} stop (client)")
+                rlog(f"run {run.id if run else '-'} stop (client)" + _mic_debug(data.get("dbg")))
                 await end_run()
     except WebSocketDisconnect:
         pass

@@ -10,6 +10,10 @@ final class Automation {
     private let dir: URL? = UserDefaults.standard.string(forKey: "snapshotDir").map { URL(fileURLWithPath: $0, isDirectory: true) }
     private let replayFile = UserDefaults.standard.string(forKey: "autoReplay")
     private let autoQuit = UserDefaults.standard.bool(forKey: "autoQuit")
+    /// -autoMic "4,0.3,6,14": push-to-talk holds of these seconds through the page's own mic path (same code as Space),
+    /// 1 s apart (the second press starts while the first run is still flushing: the stale run_done race). Each
+    /// release logs the page's capture counters; the server logs them too ("stop (client) | page: ...").
+    private let autoMic = UserDefaults.standard.string(forKey: "autoMic")
     private var splashShot = false
     private var pageDone = false
     private var log: [String] = []
@@ -36,6 +40,10 @@ final class Automation {
         note("page loaded")
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             self.saveWeb(app.web, "02_ui_loaded.png") {
+                if let m = self.autoMic {
+                    let holds = m.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+                    return self.micSequence(holds, index: 0, app: app)
+                }
                 guard let f = self.replayFile else { return self.finish(app) }
                 app.web.evaluateJavaScript("window.__hs && window.__hs.ready") { r, _ in self.note("ready=\(String(describing: r))") }
                 // mic preconditions (the permission prompt itself needs a human click)
@@ -93,6 +101,34 @@ final class Automation {
             }
         }
         poll()
+    }
+
+    private func micSequence(_ holds: [Double], index: Int, app: AppDelegate) {
+        guard index < holds.count else {
+            // let the last run's stale events arrive, then confirm the page is idle
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                app.web.evaluateJavaScript("JSON.stringify(window.__hs.mic.stats())") { r, _ in
+                    self.note("mic final \((r as? String) ?? "?")")
+                    self.finish(app)
+                }
+            }
+            return
+        }
+        let h = holds[index]
+        note("mic press \(index + 1)/\(holds.count) hold \(h) s")
+        app.web.evaluateJavaScript("window.__hs.mic.start(false); true") { _, e in if let e = e { self.note("mic start error \(e)") } }
+        // sample mid-hold too: a capture that stalls shows frames flat while held
+        DispatchQueue.main.asyncAfter(deadline: .now() + h / 2) {
+            app.web.evaluateJavaScript("JSON.stringify(window.__hs.mic.stats())") { r, _ in
+                self.note("mic mid \(index + 1) \((r as? String) ?? "?")")
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + h) {
+            app.web.evaluateJavaScript("(() => { const on = window.__hs.mic.on; const s = window.__hs.mic.stats(); window.__hs.mic.stop(); return JSON.stringify({still_on: on, ...s}) })()") { r, _ in
+                self.note("mic release \(index + 1) hold \(h) s: \((r as? String) ?? "?")")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.micSequence(holds, index: index + 1, app: app) }
+            }
+        }
     }
 
     private func finish(_ app: AppDelegate) {

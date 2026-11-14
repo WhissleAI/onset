@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     var loadedPort = 0
     var loadedGeneration = 0
     var quitting = false
+    var micActivity: NSObjectProtocol?
     static let hidden = UserDefaults.standard.bool(forKey: "hidden")
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -46,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.preferences.setValue(true, forKey: "developerExtrasEnabled")
         // page -> app bridge (window.webkit.messageHandlers.onset): {t: "settings"} from the notice line,
+        // {t: "mic", on} while the page listens (App Nap off),
         // {t: "savePNG", name, data: "data:image/png;base64,..."} from the Results view's "Save as image"
         cfg.userContentController.add(self, name: "onset")
         web = WKWebView(frame: .zero, configuration: cfg)
@@ -176,6 +178,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         switch t {
         case "settings":
             showSettings()
+        case "mic":
+            // listening: keep the app out of App Nap / timer throttling (it may sit behind other windows while held)
+            let on = (body["on"] as? Bool) ?? false
+            if on, micActivity == nil {
+                micActivity = ProcessInfo.processInfo.beginActivity(
+                    options: [.userInitiated, .latencyCritical], reason: "Listening to the microphone")
+            } else if !on, let a = micActivity {
+                ProcessInfo.processInfo.endActivity(a)
+                micActivity = nil
+            }
         case "savePNG":
             guard let s = body["data"] as? String, let comma = s.firstIndex(of: ","), s.hasPrefix("data:image/png;base64"),
                   let png = Data(base64Encoded: String(s[s.index(after: comma)...])) else { return }

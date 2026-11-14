@@ -54,6 +54,22 @@ network client/server). The bundled `python3.11` has `macapp/python.entitlements
 extension modules and libarctag, so library validation is off, and ctypes/torch need writable-executable memory.
 The app is not sandboxed: it runs a child process and reads models from Application Support.
 
+**Keep the mic grant across rebuilds: a stable signing identity.** macOS remembers the microphone (and Keychain)
+grant per code identity. An ad-hoc signature is a new identity on every build, so each rebuild asks again (and a
+stale grant can leave the mic half-working until it is reset). Sign with a real identity instead:
+```sh
+security find-identity -v -p codesigning           # lists usable identities
+ONSET_SIGN_ID="Developer ID Application: <Team> (<TEAMID>)" scripts/build_macapp.sh
+```
+Every Mach-O in the bundle is then signed with that identity (still hardened runtime, no timestamp: local builds).
+The first codesign may ask for the login keychain password ("codesign wants to access key"): click *Always Allow*.
+No identity? Make a local self-signed one (free, this Mac only): Keychain Access > Keychain Access menu > Certificate
+Assistant > Create a Certificate… Name `Onset Local Signing`, Identity Type *Self Signed Root*, Certificate Type
+*Code Signing*, Create. Then `ONSET_SIGN_ID="Onset Local Signing" scripts/build_macapp.sh`. (If
+`find-identity -v` doesn't list it, open the certificate in Keychain Access > Trust > Code Signing: *Always Trust*.)
+The first launch of the newly signed build asks for the microphone once more; later rebuilds keep the grant.
+Without `ONSET_SIGN_ID` the build stays ad-hoc.
+
 ## Models
 `models/manifest.json` lists every model: source, pinned revision, size, sha256 of each file, licence.
 `scripts/fetch_models.py` uses only the standard library. Both the repo setup and the app's first run use it.
@@ -130,12 +146,20 @@ using its own snapshot APIs. It also writes `page_after_replay.txt` and `automat
 preconditions: secure context, getUserMedia, AudioWorklet). `scripts/preflight.py --port <P>` also works against the
 app's server; P is in the first line of server.log.
 
+Mic capture: `-autoMic 4,0.3,6,14,3` (instead of `-autoReplay`) holds push-to-talk for those seconds through the
+page's own mic path, 1 s apart, and logs the page's capture counters at mid-hold and release to `automation.log`
+(frames from the capture node, seconds captured and sent, AudioContext state, track state). The server logs the same
+counters on every mic stop: `run N stop (client) | page: why=release held_s=6.51 frames=2440 in_s=6.51 sent_s=6.51
+…`, next to `run N stopping: 6.5s of audio`. `held_s` and `sent_s` should match (the room's sound is enough). A test
+instance needs its own bundle id for a microphone grant of its own (edit `BUNDLE_ID` in `macapp/app.conf` for that
+build only), so it never touches the installed app's grant.
+
 ## Needs a human
 - **Microphone prompt**: the first Space/Ask shows macOS's "Onset would like to access the microphone". The
   automation checks everything up to that prompt.
 - **Keychain prompt**: saving keys in Settings writes Keychain items owned by the app. An ad-hoc signature changes
   with every build, so after a rebuild macOS may ask "Onset wants to use your confidential information…". Click
-  *Always Allow*. A Developer ID signature removes the prompt.
+  *Always Allow*. A stable signature (`ONSET_SIGN_ID`, above) removes the prompt.
 - Gatekeeper: a downloaded ad-hoc build is quarantined. Right-click > Open, or `xattr -dr com.apple.quarantine Onset.app`.
 
 ## Later: notarization (needs a Developer ID)
