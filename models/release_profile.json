@@ -1,0 +1,17 @@
+{
+ "about": "What the public Mac release bundles from models/manifest.json (scripts/fetch_models.py bundle). A model not named here is bundled whole when required and left out when optional. Every rule says why.",
+ "models": {
+  "arc-v1": {"files": "all", "note": "Whissle's own model (CC BY-NC 4.0); Moonshine tiny inside is MIT. Licence + NOTICE ship in Resources/Licenses."},
+  "arctag": {"files": "all", "note": "Whissle's own model (CC BY-NC 4.0 + Whissle terms)."},
+  "embeddinggemma-2": {"files": "all", "exclude": [".gitattributes"], "note": "Google, Apache 2.0 (model card)."},
+  "index-data": {
+   "include": ["knowledge/"],
+   "note": "Only the Wikipedia leads (CC BY-SA 4.0). The local-moments index (arc/, audio/, docs.jsonl, vectors.npz) is built from third-party recordings that are not ours to redistribute, so the release has no local-moments search."
+  },
+  "demo-audio": {
+   "voices": ["kokoro:"],
+   "questions": ["eval/questions.jsonl", "eval/multipart/questions.jsonl", "eval/showcase/questions.jsonl"],
+   "note": "Only the Replay questions voiced with Kokoro-82M (Apache 2.0). Questions voiced with macOS system voices (licensed for personal, non-commercial use) and the local-moments questions are left out."
+  }
+ }
+}

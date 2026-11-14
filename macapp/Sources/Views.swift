@@ -86,20 +86,13 @@ struct SettingsView: View {
         Form {
             Section(header: Text("API keys").font(.headline)) {
                 ForEach(Keys.all, id: \.self) { k in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(Keys.labels[k] ?? k).font(.callout)
-                        HStack {
-                            SecureField(saved[k] == true ? "saved in Keychain (type to replace)" : "not set",
-                                        text: Binding(get: { entries[k] ?? "" }, set: { entries[k] = $0 }))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(minWidth: 320)
-                            if saved[k] == true {
-                                Button("Remove") { Keys.set(k, nil); refresh(); note = "Removed \(k). Save to restart the server." }
-                            }
-                        }
-                    }
+                    KeyRow(info: KeyInfo.of(k),
+                           entry: Binding(get: { entries[k] ?? "" }, set: { entries[k] = $0 }),
+                           saved: saved[k] == true, compact: true,
+                           onRemove: { Keys.set(k, nil); refresh(); note = "Removed. Save to restart the server." })
+                        .padding(.bottom, 4)
                 }
-                Text("Stored in your login Keychain and passed to the local server as environment variables. Never written to disk or logs.")
+                Text("Web search: Tavily with a Tavily key, else Telem with a Telem key, else Wikipedia (free). Keys are stored only in your login Keychain and passed to the local server as environment variables. Never written to disk or logs.")
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Section(header: Text("Ear").font(.headline).padding(.top, 8)) {
@@ -129,7 +122,7 @@ struct SettingsView: View {
             }.padding(.top, 10)
         }
         .padding(20)
-        .frame(width: 540)
+        .frame(width: 560)
         .onAppear(perform: refresh)
     }
 

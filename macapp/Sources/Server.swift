@@ -63,6 +63,20 @@ final class ServerManager {
         env["MEM_DIR"] = AppInfo.dataDir.appendingPathComponent("memory").path
         // Settings > Improve Onset (default on in this dev build): redacted per-question rows in data/train/
         env["TRAIN_COLLECT"] = (UserDefaults.standard.object(forKey: "trainCollect") as? Bool ?? true) ? "1" : "0"
+        // web lane: Tavily with its key, else Telem with its key, else free Wikipedia; with both, Telem backs Tavily up.
+        // A dev .env that names WEB_BACKEND wins.
+        let tavily = env["TAVILY_API_KEY"] != nil, telem = env["TELEM_API_KEY"] != nil
+        if env["WEB_BACKEND"] == nil { env["WEB_BACKEND"] = ServicePlan.webBackend(tavily: tavily, telem: telem) }
+        if env["WEB_FAILOVER"] == nil, env["WEB_BACKEND"] == "tavily", telem { env["WEB_FAILOVER"] = "telem" }
+        if env["VERIFY_FETCH"] == nil, env["WEB_BACKEND"] == "telem" { env["VERIFY_FETCH"] = "telem" }
+        // the local Wikipedia leads ship with the index (bundled: Resources/models/index-data/knowledge)
+        if env["KNOWLEDGE_DIR"] == nil {
+            env["KNOWLEDGE_DIR"] = AppInfo.modelsDir.appendingPathComponent("index-data/knowledge").path
+        }
+        // build-time server settings (Info.plist HSServerEnv, e.g. ONNX_RUNTIME=1 for the native runtime)
+        if let extra = Bundle.main.object(forInfoDictionaryKey: "HSServerEnv") as? [String: String] {
+            for (k, v) in extra where env[k] == nil { env[k] = v }
+        }
         let ear = UserDefaults.standard.string(forKey: "ear") ?? "auto"
         switch ear {
         case "arc": env["EAR"] = "arc"
@@ -79,30 +93,30 @@ final class ServerManager {
         let p = Process()
         p.executableURL = AppInfo.python
         p.arguments = ["-I", "-B", AppInfo.appRoot.appendingPathComponent("scripts/fetch_models.py").path,
-                       "--dest", AppInfo.modelsDir.path] + args
+                       "--dest", AppInfo.modelsDir.path]
+            + (AppInfo.modelsManifest.map { ["--manifest", $0.path] } ?? []) + args
         p.environment = serverEnvironment()
         p.currentDirectoryURL = AppInfo.appRoot
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = pipe
+        // read on this thread until EOF (no readabilityHandler: its last chunk could race the final read and cut the
+        // one-line JSON status short, which showed as "Could not read the model manifest")
         var all = Data()
         var buf = Data()
-        let lock = NSLock()
-        pipe.fileHandleForReading.readabilityHandler = { h in
+        do { try p.run() } catch { return (-1, "\(error)") }
+        let h = pipe.fileHandleForReading
+        while true {
             let d = h.availableData
-            if d.isEmpty { return }
-            lock.lock(); all.append(d); buf.append(d)
+            if d.isEmpty { break }
+            all.append(d); buf.append(d)
             while let nl = buf.firstIndex(of: 0x0A) {
                 let line = String(data: buf[buf.startIndex..<nl], encoding: .utf8) ?? ""
                 buf.removeSubrange(buf.startIndex...nl)
                 onLine?(line)
             }
-            lock.unlock()
         }
-        do { try p.run() } catch { return (-1, "\(error)") }
         p.waitUntilExit()
-        pipe.fileHandleForReading.readabilityHandler = nil
-        all.append(pipe.fileHandleForReading.readDataToEndOfFile())
         return (p.terminationStatus, String(data: all, encoding: .utf8) ?? "")
     }
 
@@ -110,7 +124,12 @@ final class ServerManager {
         let (_, out) = runPython(["status", "--json"])
         struct S: Decodable { let models: [ModelRow] }
         guard let line = out.split(separator: "\n").last(where: { $0.hasPrefix("{") }),
-              let s = try? JSONDecoder().decode(S.self, from: Data(line.utf8)) else { return [] }
+              let s = try? JSONDecoder().decode(S.self, from: Data(line.utf8)) else {
+            // keep what the model check said, so "see Open Logs" has something to show
+            try? FileManager.default.createDirectory(at: AppInfo.logsDir, withIntermediateDirectories: true)
+            try? out.write(to: AppInfo.logsDir.appendingPathComponent("models.log"), atomically: true, encoding: .utf8)
+            return []
+        }
         return s.models
     }
 
@@ -118,7 +137,9 @@ final class ServerManager {
     func start() {
         q.async {
             self.state = .checkingModels
-            try? FileManager.default.createDirectory(at: AppInfo.modelsDir, withIntermediateDirectories: true)
+            if !AppInfo.hasBundledModels {
+                try? FileManager.default.createDirectory(at: AppInfo.modelsDir, withIntermediateDirectories: true)
+            }
             let rows = self.modelStatus()
             let missing = rows.filter { $0.required && !$0.ok }
             if rows.isEmpty {
