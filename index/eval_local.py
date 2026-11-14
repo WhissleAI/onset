@@ -36,7 +36,9 @@ from server.lanes import LocalIndex  # noqa: E402
 DATA = ROOT / "index" / "data"
 QFILE = ROOT / "index" / "questions_local.jsonl"
 TRACES = ROOT / "sim" / "data" / "ear_traces"
-CACHE = ROOT / "runs" / "local_eval_vecs.pkl"
+import os  # noqa: E402
+CACHE = Path(os.environ.get("LOCAL_EVAL_CACHE", ROOT / "runs" / "local_eval_vecs.pkl"))   # per backend (ONNX_RUNTIME)
+OUT = Path(os.environ["LOCAL_EVAL_OUT"]) if os.environ.get("LOCAL_EVAL_OUT") else None   # default: DATA/retrieval_eval.json
 LEAD = 0.4
 
 
@@ -188,7 +190,7 @@ def main():
            "fuse_ms_222_docs": round(float(np.mean(fuse_ms)), 2),
            "embed_load_s": round(V.load_s, 1), "audio_query_ms": round(audio_ms, 1),
            "per_question": per_q, "date": time.strftime("%Y-%m-%d %H:%M")}
-    (DATA / "retrieval_eval.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
+    (OUT or DATA / "retrieval_eval.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
     show = ["text_text", "strip_text", "text_max", "audio_full", "audio_full_textonly", "lex_only", "fused_tl",
             "fused_ta", "fused_tal"]
     print(f"{'mode':22s} {'r@1':>5s} {'r@4':>5s} {'mrr':>5s} | {'@asr r@1':>8s} {'r@4':>5s} {'mrr':>5s}")

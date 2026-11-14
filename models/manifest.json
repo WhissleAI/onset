@@ -398,6 +398,60 @@
    "size": 1525810627
   },
   {
+   "name": "EmbeddingGemma 2, ONNX (text + audio towers, 8-bit weights; used instead of embeddinggemma-2 when ONNX_RUNTIME=1)",
+   "dir": "embeddinggemma-2-onnx",
+   "required": false,
+   "source": {
+    "type": "local",
+    "note": "Built from embeddinggemma-2 (rev f9972ac) by scripts/native/export_embed.py + scripts/native/quantize_embed.py (MACAPP.md 'Native runtime'); no hosted copy yet. Import a copy: fetch_models.py import embeddinggemma-2-onnx=PATH."
+   },
+   "revision": "export of google/embeddinggemma-2@f9972ac22e696a105c482202646979e33e4b5a1e, MatMulNBits 8-bit block 32 accuracy_level 4 (onnxruntime 1.32.0)",
+   "license": "Apache 2.0 (EmbeddingGemma 2 model card; modified: see NOTICE). Gemma Prohibited Use Policy applies to deployments.",
+   "files": [
+    {
+     "path": "LICENSE",
+     "size": 11358,
+     "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+     "path": "NOTICE",
+     "size": 1139,
+     "sha256": "363cccce1927df693646c717a1d6e5271fc900cd203e3d9979aaefa63cd0718e"
+    },
+    {
+     "path": "audio.onnx",
+     "size": 346234746,
+     "sha256": "8d6ac9b66eea82d6eab5763256d4d6e21dd69ce88e2ee7b4651df5963f6aa8cc"
+    },
+    {
+     "path": "audio_frontend.npz",
+     "size": 266784,
+     "sha256": "e60dc560ca61a2b358fcbb229228151032ea54bdf20106b2a12c29347675983c"
+    },
+    {
+     "path": "config_sentence_transformers.json",
+     "size": 1565,
+     "sha256": "031e56a498d33c349ab489a21885bcfe25b4fcba841149dc99e1e90d4a7c28f5"
+    },
+    {
+     "path": "embed_tokens.npz",
+     "size": 135267060,
+     "sha256": "982c3e23369aa1bc466f18bd86605c2134e07995c5afca48b6a7e78c6fe8b8b2"
+    },
+    {
+     "path": "text.onnx",
+     "size": 155347655,
+     "sha256": "af5a14e6372901010153f494cfdf4bca9fd598f4597966ce5bc19cb38cde5a16"
+    },
+    {
+     "path": "tokenizer.json",
+     "size": 32170510,
+     "sha256": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4"
+    }
+   ],
+   "size": 669300817
+  },
+  {
    "name": "Search director (tiny streaming Mamba-3, numpy int8)",
    "dir": null,
    "required": true,

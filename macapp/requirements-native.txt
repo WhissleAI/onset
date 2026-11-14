@@ -1,0 +1,19 @@
+# The server's runtime dependencies with ONNX_RUNTIME=1 once every model runs on ONNX Runtime / C (MACAPP.md
+# "Native runtime"): no torch, transformers, sentence-transformers, safetensors, scipy, scikit-learn, pillow,
+# torchvision, accelerate. Same pins as requirements.txt for what is shared.
+# NOT yet sufficient on its own: the Arc ear (arc_audio) still imports torch + transformers (open item), so the app
+# keeps requirements.txt until that port lands. Measured size of this set: MACAPP.md.
+onnxruntime==1.32.0      # 8-bit MatMulNBits (EmbeddingGemma 2 int8 graphs) needs a recent ORT; 1.20 has 4-bit only
+tokenizers==0.23.3
+numpy==1.26.4
+soundfile==0.14.0
+rapidfuzz==3.14.5
+jellyfish==1.0.1
+fastapi==0.123.10
+starlette==0.50.0
+uvicorn==0.38.0
+pydantic==2.12.4
+httpx==0.28.1
+h2==4.2.0
+anthropic==0.84.0
+websockets==15.0.1
