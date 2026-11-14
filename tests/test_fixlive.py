@@ -159,3 +159,94 @@ def test_guard_times_out_to_no_sources_not_the_wrong_ones(monkeypatch):
     monkeypatch.setattr(coverage, "WAIT_S", 0.3)
     m, _ = _final(monkeypatch, 3.0, FRANCE)
     assert m["cover_guard"]["covered"] is False and not any("France" in s for s in m["sources"])
+
+
+# ----------------------------------------------------------------------------- relative references (server/ellipsis.py)
+def _president():
+    c = Conv()
+    c.ask("who is the president of usa", [(PL, 5, 6)],
+          "Donald Trump is the president of the United States, in his second term.",
+          [("person", "Donald Trump"), ("place", "United States")])
+    return c
+
+
+@pytest.mark.parametrize("said,ref", [
+    ("you know the old one", "the old one"), ("and the old one?", "the old one"),
+    ("what about the other one", "the other one"), ("who was before him", "before him"),
+    ("the previous one", "the previous one"), ("the one before", "the one before"),
+    ("and the former one", "the former one"),
+])
+def test_old_one_is_the_president_before_the_answer(said, ref):
+    f = _president().ask(said)
+    want = "who was the previous president of usa before the current president donald trump"
+    assert f.inline == want and f.mem_ref == ref
+    assert f.query() == "previous president usa before current donald trump" and router.plan(f).lane in ("web", "facts")
+    assert want in f.resolved_text
+    assert coverage.key_terms(f) == []        # the answer is a new entity: the guard must not demand "donald trump"
+
+
+def test_first_and_next_one():
+    assert _president().ask("the first one").inline == "who was the first president of usa"
+    assert _president().ask("and the next one").inline == \
+        "who will be the next president of usa after the current president donald trump"
+
+
+def test_ordinal_among_several_subjects_stays_memory_pick():
+    c = Conv()
+    c.ask("who founded nvidia", [(O, 2, 3)], "Jensen Huang.", [("person", "Jensen Huang")])
+    c.ask("and amd", [(O, 1, 2)], "Jerry Sanders.", [("person", "Jerry Sanders")])
+    assert c.ask("going back to the first one when was it founded").carried == "nvidia"
+    assert c.ask("and the other one").carried == "amd"
+
+
+@pytest.mark.parametrize("said,marks", [
+    ("what is the capital of france", [(PL, 5, 6)]),
+    ("what are some good restaurants in san jose", [(PL, 6, 8)]),
+    ("give me one good reason to learn french", []),
+    ("what is one plus one", []),
+    ("one of the best pizza places in chicago", [(PL, 7, 8)]),
+])
+def test_no_relative_reference_no_rewrite(said, marks):
+    f = _president().ask(said, marks)
+    assert not f.rewritten and "trump" not in f.query() and "president" not in f.query()
+
+
+def test_stale_turn_is_not_referenced():
+    from server import ellipsis
+    prev = {"question": "who is the president of usa", "answers": ["donald trump"], "age_s": 3600, "n_subjects": 1}
+    assert ellipsis.resolve("the old one".split(), prev) is None
+    assert ellipsis.resolve("the old one".split(), {**prev, "age_s": 30})["inline"].endswith("current president donald trump")
+
+
+def test_head_of_parses_the_previous_question():
+    from server import ellipsis
+    assert ellipsis.head_of("who is the president of usa") == ("president", "usa")
+    assert ellipsis.head_of("what is the capital of france") == ("capital", "france")
+    assert ellipsis.head_of("who is the current ceo of apple") == ("ceo", "apple")
+    assert ellipsis.head_of("who won the world cup") is None
+    assert ellipsis.head_of("who was the previous president of usa before the current president donald trump") == \
+        ("president", "usa")
+
+
+def test_llm_rewrite_gate_timeout_and_result(monkeypatch):
+    from types import SimpleNamespace as NS
+    from server import answer, ellipsis
+    assert ellipsis.LLM is False                           # off by default (measured TTFT > the 400 ms budget)
+    assert ellipsis.needs_llm(fr("who did he run against")) and not ellipsis.needs_llm(fr("what is the capital of france", [(PL, 5, 6)]))
+    assert not ellipsis.needs_llm(_president().ask("the old one"))     # the rules already rewrote it
+    delay = {"s": 0.0}
+
+    class Msgs:
+        async def create(self, **kw):
+            await asyncio.sleep(delay["s"])
+            return NS(content=[NS(text="who did donald trump run against in 2024")],
+                      usage=NS(input_tokens=141, output_tokens=12))
+    monkeypatch.setattr(answer, "client", lambda: NS(messages=Msgs()))
+    ctx = "Q: who is the president of usa\nA: Donald Trump."
+    f, m = fr("who did he run against"), {}
+    assert asyncio.run(ellipsis.llm_rewrite(f, ctx, m)) and f.inline.startswith("who did donald trump run against")
+    assert m["result"] == "rewritten" and f.followup_of == "who is the president of usa" and "trump" in f.query()
+    delay["s"] = 1.0
+    monkeypatch.setattr(ellipsis, "LLM_TIMEOUT_S", 0.05)
+    g, m2 = fr("who did he run against"), {}
+    assert not asyncio.run(ellipsis.llm_rewrite(g, ctx, m2)) and m2["result"] == "timeout" and not g.inline

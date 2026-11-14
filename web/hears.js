@@ -486,6 +486,7 @@
     if (fresh) out.push(chip("fresh", "fresh", fresh + (r.when_text ? ` (“${r.when_text}”)` : ""), "freshness chosen from what was said"));
     if (f.route) out.push(chip("route", "route", f.route, "web or the local moments index"));
     if (f.carried) out.push(chip("mem", "memory", `→ ${f.carried}`, "resolved from the previous turn"));
+    else if (f.memory && f.memory.ref && f.memory.inline) out.push(chip("mem", "memory", `“${f.memory.ref}” → ${f.memory.inline}`, "rewritten from the previous question and its answer"));
     if (r.redacted && r.redacted.length) out.push(chip("priv", "🔒", r.redacted.join(", ") + " kept on device", "personal data never goes into the web query"));
     if (r.jailbreak) out.push(chip("warn", "⚠", "prompt injection: no early search", "safety.jailbreak.attempt"));
     if (a.for_me != null) out.push(chip(a.for_me >= 0.5 ? "arc" : "warn", "Arc audio", a.for_me >= 0.5 ? `to the assistant ${a.for_me.toFixed(2)}` : `not to the assistant ${a.for_me.toFixed(2)}`, "Arc audio head: device-directed"));

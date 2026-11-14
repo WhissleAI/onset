@@ -1585,3 +1585,28 @@ say", "Medium · heard 'three' unclearly".
 - Open: refit with live rows (they log `conf_feats`; real ASR confidence is missing from the text-path labels), Tavily
   scores, local-moment labels; LLM-written keywords make the model under-confident on gold questions.
 - Tests: tests/test_calibrate.py (12).
+
+## Fix/ellipsis: "the old one" and other relative references (branch fix/ellipsis; server/ellipsis.py, tests/test_fixlive.py)
+Live (Mac app, real Tavily): turn 1 "who is the president of usa" (Donald Trump, second term), turn 2 "you know the old
+one". Onset searched "old one" (idioms.thefreedictionary.com) and answered "the sources don't identify a specific 'old
+one'". Root cause: nothing handled noun-phrase ellipsis. "old" is a content word, so the turn wasn't an ellipsis; "one"
+isn't a pronoun, so memory had nothing to resolve; memory's ordinal picks only knew first/second/other/previous one
+among SUBJECTS ("usa"). Not caused by fix/live (its opener rule only covers turns with no content word).
+- server/ellipsis.py (ELLIPSIS_RULES=1, default on; rules, ~0.05 ms): "one(s)" as a pro-form for the previous question's
+  head noun ("president" of "president of usa"), its modifier relative to the previous ANSWER entity: old / previous /
+  former / last / earlier / "the one before" / "before him" -> "who was the previous president of usa before the current
+  president donald trump"; next / new / after -> the next one; first / original -> "who was the first president of usa"
+  (only while the conversation has one subject; with several, memory's ordinal pick as before); "the other one" -> the
+  previous one with one subject, memory's pick with several. Only within 10 minutes of the previous turn, never when the
+  turn names an entity of its own (topic-switch protections unchanged), never for "one of the ...", "one day", "one plus
+  one". The answer model gets the rewrite plus the words as said. The coverage guard is idle for a rewrite (its answer
+  is a new entity).
+- Wording measured end to end (real Tavily, 2 credits): "... before donald trump" made the answer model say Barack
+  Obama (before Trump's first term); "... previous president ... before the current president donald trump" -> Joe Biden.
+- Tests: 575 passed (full suite). Follow-up set, text-level replay (21 conversations, 57 turns, real Arc Tagger + Memory):
+  final frames identical to main on 57/57, so the 32/34 follow-up score cannot move from this change.
+- UI: the hears strip shows the rewrite as a memory chip: “the old one” → who was the previous president of ...
+- Model rewrite (ELLIPSIS_LLM, default OFF): for a short anaphoric turn the rules left alone, one answer-model call
+  (system prompt ~60 tokens, 140 in / 5-25 out), hard timeout ELLIPSIS_LLM_TIMEOUT_S=0.4, the words as said on timeout.
+  Measured latency 775 / 832 / 2558 ms (claude-haiku-5-5), so at 0.4 s it would almost always time out: off until the
+  answer model's time to first token is under the budget.
