@@ -56,6 +56,8 @@ def repaired_text(f: Frame) -> str:
     """The question as meant, with a spoken correction put back IN PLACE: "When was Google founded, no wait, I mean
     Apple" -> "When was Apple founded" (Frame.clean_text drops Google but leaves Apple at the end, which breaks
     "when was X founded"-style patterns). Falls back to clean_text when there is nothing to splice."""
+    if config.MEM_INLINE and getattr(f, "inline", "") and not f.dropped:
+        return f.inline        # conversation memory resolved the reference in place: "when was nvidia founded"
     if not f.dropped:
         return f.clean_text
     cue = set(f.cue)

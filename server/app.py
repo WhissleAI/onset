@@ -7,6 +7,10 @@ Client -> server
                                     request gets a "heard" event instead of a search + answer; push-to-talk omits it
   {"t":"stop"}                        flush the ear (closes the open utterance) and end the run
   {"t":"replay","file":"q01.wav","modes":[...]}   server streams eval/audio/<file> through the ear in real time
+  {"t":"hello","client":"<random id>"}  this browser's id (localStorage): its memory is kept in runs/memory/ across
+                                    reconnects (server/memory.py Store; TTLs MEM_CONV_TTL_S / MEM_USER_TTL_S)
+  {"t":"forget"}                      clear this browser's memory (conversation + user facts), here and on disk
+  "fresh": true on start              a scripted conversation: start a new conversation (user facts are kept)
 Server -> client: JSON events, each with "mode" ("headstart" | "baseline" | "ear" | "sys"):
   sys    {"t":"ready"}, {"t":"error","error"}, {"t":"run_done"}
   ear    {"t":"ear","kind":"partial|final|arc_command_complete|connected|fallback|warning|error","ear":"arc|deepgram",...}
@@ -29,6 +33,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import answer, config, embed, ear, lanes
+from . import memory as memmod
 from .session import Session
 
 ROOT = config.ROOT
@@ -242,6 +247,28 @@ async def ws_endpoint(ws: WebSocket):
             pass
 
     memory: dict = {}          # per mode: conversation memory carried across mic runs on this connection
+    client = {"id": None}      # this browser's id ("hello"): memory persists across reconnects
+    store = memmod.Store()
+
+    def persist():
+        """Save the browser's memory (the first mode's: both modes hear the same words)."""
+        if client["id"] and memory:
+            m = next(iter(memory.values())).get("mem")
+            if m is not None:
+                store.save(client["id"], memmod.Memory.from_json(m))
+
+    def stored_memory(fresh: bool = False) -> dict | None:
+        """This connection's memory, else the browser's stored one (a reconnect). fresh: user facts only."""
+        mem = None
+        if client["id"]:
+            mem = {"mem": store.load(client["id"]).to_json(), "at": 0}
+        if fresh:
+            if mem:
+                m = memmod.Memory.from_json(mem["mem"])
+                m.clear(user=False)
+                mem = {"mem": m.to_json(), "at": 0}
+            return mem
+        return mem
 
     async def end_run():
         """Stop the current run: the replay feeding it first (so nothing is fed into a flushed ear), then the run."""
@@ -254,6 +281,7 @@ async def ws_endpoint(ws: WebSocket):
             if getattr(r, "kind", "") == "mic":
                 for s in r.sessions:
                     memory[s.mode] = s.export_memory()
+                persist()
 
     await send({"t": "ready", "mode": "sys", **status_payload()})
     try:
@@ -278,6 +306,22 @@ async def ws_endpoint(ws: WebSocket):
                 await send({"t": "error", "mode": "sys", "error": f"bad message: {e}"[:200]})
                 continue
             t = data.get("t")
+            if t == "hello":
+                cid = data.get("client")
+                client["id"] = cid if memmod.Store.valid(cid) else None
+                await send({"t": "memory", "mode": "sys", "persist": bool(client["id"] and config.MEM_PERSIST),
+                            "graph": store.load(cid).graph() if client["id"] else None})
+                continue
+            if t == "forget":
+                memory.clear()
+                if client["id"]:
+                    store.forget(client["id"])
+                if run is not None:
+                    for s in run.sessions:
+                        s.mem.clear()
+                        s.carry, s.context, s.carry_pool = {}, "", {}
+                await send({"t": "memory", "mode": "sys", "forgot": True, "graph": memmod.Memory().graph()})
+                continue
             if t in ("start", "replay"):
                 await end_run()
                 if t == "replay":
@@ -289,12 +333,19 @@ async def ws_endpoint(ws: WebSocket):
                 run = Run(ws, modes, data.get("domain", "assistant"))
                 run.kind = "mic" if t == "start" else "replay"
                 if t == "start":
+                    fresh = bool(data.get("fresh"))
+                    if fresh:
+                        memory.clear()                # a scripted conversation starts a new one (user facts stay)
                     for s in run.sessions:            # push-to-talk: follow-ups keep the conversation
-                        s.import_memory(memory.get(s.mode))
+                        s.import_memory(memory.get(s.mode) or stored_memory(fresh))
+                        if s.mem:
+                            s.emit_memory(why="restored")
                         # open mic (clicked, keeps listening; not push-to-talk): statements are heard, not answered
                         s.open_mic = bool(data.get("open"))
                 else:
-                    memory.clear()                    # a replay starts a fresh conversation
+                    memory.clear()                    # a replay starts a fresh conversation (user facts stay)
+                    for s in run.sessions:
+                        s.import_memory(stored_memory(fresh=True))
                 if t == "replay":
                     async def go(r=run, p=p):
                         await replay(r, p)

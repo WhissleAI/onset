@@ -272,3 +272,23 @@ METER_CREDITS_PER_CALL = float(os.environ.get("METER_CREDITS_PER_CALL", "1"))
 METER_MODEL_PRICES = {"claude-haiku-5-5": (0.10, 0.50)}
 METER_ANSWER_IN_USD_MTOK = os.environ.get("METER_ANSWER_IN_USD_MTOK")
 METER_ANSWER_OUT_USD_MTOK = os.environ.get("METER_ANSWER_OUT_USD_MTOK")
+
+# ---------------------------------------------------------------------------------------------------- session memory
+# server/memory.py: entity memory across a conversation's turns, user facts, a local per-browser store, the
+# knowledge-graph panel. Measured with eval/run_conv.py (PROGRESS.md "Memory v2").
+MEM_V2 = os.environ.get("MEM_V2", "1") == "1"                       # multi-turn entity memory (else one turn back)
+MEM_INLINE = os.environ.get("MEM_INLINE", "1") == "1"              # resolve the pronoun IN the words for the router
+MEM_HOLD = os.environ.get("MEM_HOLD", "1") == "1"                  # no speculation on an unresolved pronoun
+MEM_PREWARM = os.environ.get("MEM_PREWARM", "1") == "1"            # free Wikidata pre-warm of likely follow-ups
+MEM_PREWARM_TIMEOUT_S = float(os.environ.get("MEM_PREWARM_TIMEOUT_S", "4.0"))
+# end of turn for a follow-up whose pronoun memory resolved: the director / fused score was trained on standalone
+# questions and reads "when was it founded" as unfinished; with the referent known the bar is lower (eager, update)
+MEM_EOT = os.environ.get("MEM_EOT", "1") == "1"
+MEM_EOT_THR = [float(x) for x in os.environ.get("MEM_EOT_THR", "0.4,0.7").split(",")]
+MEM_MAX_TURNS = int(os.environ.get("MEM_MAX_TURNS", "24"))
+MEM_LOOKBACK = int(os.environ.get("MEM_LOOKBACK", "8"))            # turns a reference may reach back
+MEM_PERSIST = os.environ.get("MEM_PERSIST", "1") == "1"            # runs/memory/<client hash>.json (git-ignored)
+MEM_DIR = Path(os.environ.get("MEM_DIR", ROOT / "runs/memory"))
+MEM_CONV_TTL_S = float(os.environ.get("MEM_CONV_TTL_S", "1800"))    # conversation entities survive a reconnect this long
+MEM_USER_TTL_S = float(os.environ.get("MEM_USER_TTL_S", str(30 * 86400)))   # user facts ("I live in Denver")
+MEM_USER_FACTS = os.environ.get("MEM_USER_FACTS", "1") == "1"      # learn + use simple facts the user says

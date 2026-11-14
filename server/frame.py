@@ -159,6 +159,12 @@ class Frame:
     wconf: tuple = ()                # fused per-word confidence (server/confidence.py), when the ear gives word conf
     director: dict | None = None     # the search director's latest outputs (server/director.py), DIRECTOR=on
     convert: tuple = ()              # (amount as said, from unit, to unit): "a hundred us dollars", "dollars", "euros"
+    # conversation memory (server/memory.py): the question with its reference resolved IN PLACE ("when was it founded"
+    # -> "when was nvidia founded"; the router parses it like a standalone question), the reference phrase memory
+    # resolved ("that company", "the first one"), and the user facts the query used ("home": "denver")
+    inline: str = ""
+    mem_ref: str = ""
+    user_used: tuple = ()
 
     @property
     def n(self):
@@ -200,6 +206,8 @@ class Frame:
     def resolved_text(self) -> str:
         """The question with its carried referent spelled out, for ranking and for the answer model."""
         t = self.clean_text
+        if self.user_used:
+            t = f"{t} ({', '.join(v for _, v in self.user_used)})"
         if self.followup_of:
             return f"{t} (follow-up to: {self.followup_of})"
         return f"{t} ({self.carried})" if self.carried else t
@@ -287,7 +295,14 @@ class Frame:
                 "command_complete": self.command_complete, "readout": self.readout(),
                 # per-token read-out for the annotated transcript (indices into words)
                 "content_idx": list(self.content_idx), "dropped": sorted(self.dropped), "cue": sorted(self.cue),
-                "redact": sorted(self.redact_tok), **self._conf_json()}
+                "redact": sorted(self.redact_tok), **self._mem_json(), **self._conf_json()}
+
+    def _mem_json(self) -> dict:
+        if not (self.inline or self.mem_ref or self.user_used):
+            return {}
+        from .memory import user_label
+        return {"memory": {"inline": self.inline, "ref": self.mem_ref,
+                           "user": [user_label(k, v) for k, v in self.user_used]}}
 
     def _conf_json(self) -> dict:
         if not self.wconf:
@@ -332,7 +347,11 @@ _DANGLE_OK = {("it", "is"), ("he", "is"), ("she", "is"), ("that", "is"), ("this"
               ("turned", "on"), ("go", "on"), ("goes", "on"), ("carry", "on"), ("hold", "on"), ("talk", "to"),
               ("listen", "to"), ("go", "to"), ("looking", "for"), ("in", "on"), ("come", "on"), ("log", "in"),
               ("sign", "in"), ("plug", "in"), ("check", "in"), ("go", "with"), ("goes", "with"), ("made", "of"),
-              ("think", "of"), ("afraid", "of"), ("used", "to")}
+              ("think", "of"), ("afraid", "of"), ("used", "to"), ("born", "in"), ("live", "in"), ("located", "in"),
+              ("based", "in")}
+# a pronoun before a stranded preposition ends a question: "which museum is it in", "what team does he play for"
+_DANGLE_OK |= {(p, q) for p in ("it", "he", "she", "they", "them", "him", "her", "that", "this", "one")
+               for q in ("in", "on", "for", "with", "to", "of")}
 
 
 def dangling_end(toks: list[str]) -> bool:
@@ -488,6 +507,67 @@ def _cls(s: dict) -> str:
     return "mention" if s["type"].startswith("entity.mention") else s["type"]
 
 
+MODIFIERS = set("""today tomorrow tonight yesterday weekend morning afternoon evening night winter summer spring fall
+autumn monday tuesday wednesday thursday friday saturday sunday january february march april may june july august
+september october november december week month year next last this""".split())
+TIME_WORDS = MODIFIERS - {"next", "last", "this", "week", "month", "year"}
+_POSS = {"its", "his", "their", "her"}
+_REF_PRONOUN = ["it", "he", "she", "him", "they", "them", "its", "his", "her", "their", "it's", "there", "that", "this"]
+
+
+def _inline(toks: list[str], name: str, span, prev, prev_q: list[str], only_ref: bool, skip=frozenset(),
+            place: bool = False) -> str:
+    """The question with its reference replaced in place: "when was it founded" -> "when was nvidia founded", "where
+    is its headquarters" -> "where is the headquarters of sony", "what is the population there" -> "... in canberra",
+    "who founded that company" -> "who founded nvidia". A reference with nothing else said ("go back to the first
+    one") -> the previous question about the referent. "" when there is nothing to replace."""
+    t = [w for i, w in enumerate(toks) if w and i not in skip]
+    if only_ref and prev_q:
+        olds = sorted((prev or {}).get("entities") or [], key=len, reverse=True)
+        q = f" {' '.join(prev_q)} "
+        for o in olds:
+            if f" {o} " in q:
+                return q.replace(f" {o} ", f" {name} ").strip()
+        return ""
+    if span is not None:
+        a, b = span
+        return " ".join([w for w in toks[:a] if w] + [name] + [w for w in toks[b:] if w])
+    for p in (["there"] if place else []) + _REF_PRONOUN:
+        if p in t:
+            i = t.index(p)
+            nxt = t[i + 1] if i + 1 < len(t) else ""
+            if p in _POSS and nxt and nxt not in STOP:
+                rep, j = f"the {nxt} of {name}", i + 2
+            elif p == "there":
+                rep, j = f"in {name}", i + 1
+            elif p == "it's":
+                rep, j = f"{name} is", i + 1
+            else:
+                rep, j = name, i + 1
+            return " ".join(t[:i] + [rep] + t[j:])
+    return ""
+
+
+def _apply_user(f: Frame, toks: list[str], content: list, user: dict, ent) -> list:
+    """User facts (server/memory.py) fill what the question leaves out: no place in a weather / time / "near me"
+    question -> the user's home; a food question -> their diet. Only the resolved word reaches the query."""
+    from .memory import _FOOD, _NEAR, _TIME_PLACE, _WEATHER
+    used = []
+    home, diet = user.get("home"), user.get("diet")
+    low = " ".join(toks)
+    has_place = any(t == "place" for t, _ in f.slots) or (ent is not None and ent[0] == "place")
+    if home and not has_place and (set(toks) & _WEATHER or _NEAR.search(low) or _TIME_PLACE.search(low)):
+        used.append(("home", home))
+        f.slots = tuple(sorted(set(f.slots) | {("place", home)}))
+        content = content + [w for w in home.split() if w not in content]
+    if diet and set(toks) & _FOOD and diet not in toks:
+        used.append(("diet", diet))
+        content = content + [diet]
+    if used:
+        f.user_used = tuple(used)
+    return content
+
+
 def build(words: list[str], spans: list[dict], current: dict | None, events_seen: set | None = None,
           prev_intent: tuple | None = None, local_ok: bool = True, carry: dict | None = None) -> Frame:
     toks = [norm(w) for w in words]
@@ -526,7 +606,10 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
 
     # slots: entity mentions + typed numbers (drop the generic entity.numeral duplicate)
     slot_spans = [s for s in spans if s.get("family") in ("entity", "number") and s["type"] != "entity.numeral"
-                  and s["end"] <= len(toks) and not set(range(s["start"], s["end"])) & redact_tok]
+                  and s["end"] <= len(toks) and not set(range(s["start"], s["end"])) & redact_tok
+                  # a time word the tagger read as a mention ("in winter" -> place) is not a subject
+                  and not (s["type"].startswith("entity.mention") and toks[s["start"]:s["end"]]
+                           and all(t in MODIFIERS for t in toks[s["start"]:s["end"]]))]
     cut = _correction_at(toks)
     drop_tok = set()
     cue_tok = _cue_tokens(toks, cut)
@@ -619,31 +702,64 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
     strong = any(t in PRONOUNS - WEAK_PRONOUNS for t in toks)
     weak = any(t in WEAK_PRONOUNS for t in toks) and len(content) <= 2
     ent = None
-    if carry and not has_mention and (strong or weak):
+    pick = (carry or {}).get("pick") if not has_mention else None
+    span = None
+    if pick and pick.get("ent"):
+        # an explicit reference memory resolved: "that company", "go back to the first one" (server/memory.py)
+        ent = tuple(pick["ent"])
+        a, b = pick.get("span") or (0, 0)
+        if b > a:
+            span = (a, b)
+            keep = [(w, i) for w, i in zip(content, content_idx) if not a <= i < b]
+            content, content_idx = [w for w, _ in keep], [i for _, i in keep]
+            f.content_idx = tuple(content_idx)
+        f.mem_ref = pick.get("why", "")
+    elif carry and not has_mention and (strong or weak):
         # he/she → a person (often named only in the previous ANSWER: "relativity?" → "Einstein" → "where was he
         # born"); it/they/there → the thing the previous question was about, else any entity
         personal = any(t in PERSONAL for t in toks)
         order = ["person", "thing"] if personal else ["thing", "person"]
         for k in order:
             if carry.get(k):
-                ent = carry[k][0]
+                ent = tuple(carry[k][0])
                 break
     # elliptical follow-ups with no pronoun: "and when?", "what about Nvidia?", "how about in 2020?", "and the CEO?"
     prev = (carry or {}).get("prev")
     head2 = toks[:2]
     elliptic = bool(prev) and (toks[:1] in (["and"], ["also"]) or head2 in (["what", "about"], ["how", "about"])
                                or (len(content) == 0 and len(toks) <= 4))
+    prev_q = [norm(w) for w in ((prev or {}).get("inline") or (prev or {}).get("question", "")).split() if norm(w)]
     if elliptic and not ent:
         pc = list(prev.get("content") or [])
         pents = [w for e in prev.get("entities") or [] for w in e.split()]
         swap = head2 in (["what", "about"], ["how", "about"])
         wh = None if swap else next((t for t in toks if t in ("when", "where", "who", "why", "how", "which", "whom",
                                                                "whose")), None)
-        if has_mention or (swap and content):
+        modifier = bool(content) and all(w in MODIFIERS or w.isdigit() for w in content)
+        if modifier:
+            # "what about tomorrow?", "how about in winter?": the same question and subject, at another time
+            # a new day / season replaces the one the previous question named ("today" -> "tomorrow")
+            new_t = [w for w in content if w in TIME_WORDS]
+            pc = [w for w in pc if not (new_t and w in TIME_WORDS)]
+            content = pc + [w for w in content if w not in pc]
+            if prev.get("entities"):
+                f.carried = prev["entities"][0]
+                f.phrases = (prev["entities"][0],)
+            tail = [t for t in toks[2 if swap else 1:] if t]
+            if prev_q and new_t and any(w in TIME_WORDS for w in prev_q):
+                i = next(i for i, w in enumerate(prev_q) if w in TIME_WORDS)
+                f.inline = " ".join(prev_q[:i] + [w for w in tail if w not in ("in", "on", "at")] + prev_q[i + 1:])
+            else:
+                f.inline = " ".join(prev_q + tail) if prev_q else ""
+        elif has_mention or (swap and content):
             # "what about Nvidia": same question, new subject → swap the previous entity for the new one (the words
             # after "about" are the new subject even when the tagger doesn't mark them in so short a phrase)
             base = [w for w in pc if w not in pents]
             content = base + [w for w in content if w not in base]
+            new = f.phrases[-1] if f.phrases else " ".join(w for w in content if w not in base)
+            old = next((e for e in prev.get("entities") or [] if f" {e} " in f" {' '.join(prev_q)} "), "")
+            if old and new:
+                f.inline = f" {' '.join(prev_q)} ".replace(f" {old} ", f" {new} ").strip()
         else:
             # "and when?": the previous question's subject and verb + the new question word
             content = pc + [w for w in content if w not in pc]
@@ -659,9 +775,12 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
         f.carried = ent[1]
         f.phrases = (ent[1],)
         f.slots = tuple(sorted(set(f.slots) | {ent}))
-        if prev and not content:
-            # "and when was that?": a pronoun AND nothing else said → the previous question's meaning + question word
-            content = [w for w in (prev.get("content") or [])]
+        only_ref = prev and not content
+        if only_ref:
+            # "and when was that?" / "go back to the first one": a reference AND nothing else said → the previous
+            # question's meaning (its subject swapped for the referent) + question word
+            pents = {w for e in prev.get("entities") or [] for w in e.split()} - set(ent[1].split())
+            content = [w for w in (prev.get("content") or []) if w not in pents]
             wh = next((t for t in toks if t in ("when", "where", "who", "why", "how", "which")), None)
             if wh and wh not in content:
                 content.append(wh)
@@ -669,6 +788,11 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
         for w in reversed(ent[1].split()):
             if w not in content:
                 content.insert(0, w)
+        f.inline = _inline(toks, ent[1], span, prev, prev_q, bool(only_ref), drop_tok | redact_tok,
+                           place=ent[0] == "place")
+    user = (carry or {}).get("user")
+    if user:
+        content = _apply_user(f, toks, content, user, ent)
     f.content = tuple(content)
 
     low = " " + " ".join(toks) + " "

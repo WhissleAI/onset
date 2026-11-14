@@ -100,6 +100,7 @@
     if (window.HSFilm) window.HSFilm.start(kind, modes);
     if (window.HSHears) window.HSHears.start();
     if (window.HSMeter) window.HSMeter.start(run);
+    if (window.HSGraph) window.HSGraph.start(kind, modes);
   }
   const primary = () => (run ? run.modes[0] : "headstart");
   function serverNow() {
@@ -118,7 +119,10 @@
     const proto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${proto}://${location.host}/ws`);
     ws.binaryType = "arraybuffer";
-    ws.onopen = () => { wsOpen = true; paintStatus(); };
+    ws.onopen = () => {
+      wsOpen = true; paintStatus();
+      if (window.HSGraph) { try { window.HSGraph.connected(send); } catch (err) { console.error("graph", err); } }
+    };
     ws.onclose = () => {
       wsOpen = false; paintStatus();
       if (mic.on) stopMic(false);
@@ -180,6 +184,7 @@
     if (window.HSFilm) { try { window.HSFilm.event(e); } catch (err) { console.error("film", err); } }
     if (window.HSHears && run) { try { window.HSHears.event(e); } catch (err) { console.error("hears", err); } }
     if (window.HSMeter && run) { try { window.HSMeter.event(e, run); } catch (err) { console.error("meter", err); } }
+    if (window.HSGraph) { try { window.HSGraph.event(e); } catch (err) { console.error("graph", err); } }
     if (e.mode === "sys") {
       if (e.t === "ready") {
         if (e.warm !== undefined) warm = !!e.warm;
@@ -1266,7 +1271,7 @@
     let pcm;
     try { pcm = await Promise.all(conv.files.map(decode16k)); } catch (err) { toast("Could not load conversation audio: " + err.message, true); return; }
     if (my !== streamToken) return;
-    if (!send({ t: "start", modes })) return;
+    if (!send({ t: "start", modes, fresh: true })) return;     // a new conversation (the user's own facts stay)
     startRun("conversation", modes);
     run.history = [];
     paintHistory();
