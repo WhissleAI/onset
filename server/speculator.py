@@ -536,6 +536,8 @@ class Speculator:
             since = self.part_since.setdefault(text, now)
             settled = (part.closed or (now - since) * 1000 >= config.SPEC_SETTLE_MS
                        or (self.eot_p is not None and self.eot_p >= config.SPEC_EOT_FIRE))
+            if self.prof.final_eot is not None:
+                settled = self._meaning_final(f, now)    # parity: the parts are searched once the question is final
             if settled:
                 self._part_fire(part, text, f, final=False)
         self._plan_emit()
