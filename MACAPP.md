@@ -191,6 +191,16 @@ handler with its traceback. If the user reports "stuck after N questions", the l
 never reached an endpoint (the ear), never finished (the lanes/answer) or the socket closed. `REQUEST_LOG=0` turns
 it off.
 
+## Training rows (Settings > Improve Onset, `TRAIN_COLLECT`)
+**On by default in this dev build.** Settings > Improve Onset > "Use my questions to improve the models" (sets
+`TRAIN_COLLECT=1`/`0` for the server; a dev `.env` can set it too). When on, each answered question adds one line to
+`~/Library/Application Support/Onset/data/train/rows.jsonl` (server/trainlog.py): timings, route and tiers, paid /
+free calls, verify / re-check outcome, calibration features and confidence, endpoint trigger, ear, and the question
+and query with personal data masked (5+ digit numbers, emails, handles, birth years, the tagger's redacted words).
+No audio, no answer text (its word count only), no keys; the browser's client id is stored only as a salted hash
+(salt in `data/train/.salt`, per install). Nothing is uploaded. The training loop (`scripts/train_cycle.sh`,
+PROGRESS.md "Continuous training") reads the file locally. To delete the rows: remove `data/train/`.
+
 ## Troubleshooting
 - **Stuck on "Models needed"**: `python3 scripts/fetch_models.py status`. Import the local-only models; a link
   pointing at an incomplete copy has to be removed before Download can fill the folder.

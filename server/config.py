@@ -267,6 +267,9 @@ ROUTER_CARD_ANSWER = os.environ.get("ROUTER_CARD_ANSWER", "1") == "1"  # a fitti
 # PII_YEARS=1: a spoken birth year is hidden like a digit one ("nineteen eighty five"), inside the tagger's
 # date_of_birth span and next to a birth cue ("born", "birthday") when the tagger gave no span (server/frame.py)
 PII_YEARS = os.environ.get("PII_YEARS", "1") == "1"
+# TRAIN_COLLECT=1 (default on in this dev build): one redacted metric row per answered question goes to
+# <data dir>/train/rows.jsonl for the training loop (server/trainlog.py, scripts/train_cycle.sh). Local only; no audio.
+TRAIN_COLLECT = os.environ.get("TRAIN_COLLECT", "1") == "1"
 ROUTER_LOOSE = os.environ.get("ROUTER_LOOSE", "1") == "1"   # wider card detection: "how hot is it in X", "what time was it in X" (needs an Arc place / intent)
 ROUTER_LEADS = os.environ.get("ROUTER_LEADS", "1") == "1"              # local Wikipedia lead index (if built)
 ROUTER_LEADS_STRONG = float(os.environ.get("ROUTER_LEADS_STRONG", "0.76"))   # lead cosine that counts as an answer (calibrated on the eval factoids)

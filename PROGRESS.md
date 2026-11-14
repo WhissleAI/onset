@@ -1786,3 +1786,34 @@ the same value for over an hour), so the per-call numbers are the ledger.
   install the site into the Mac app with `HEADSTART_DATA_DIR=<app data dir> .venv/bin/python index/build_site.py
   --rebuild` (or copy `runs/sites/docs.tavily.com`), not done while the user was testing; scoped questions add one
   query embedding (~40 ms idle, up to the 800 ms cap under load) to their paid-lane fallback.
+## Continuous training (branch feat/trainer; scripts/train_cycle.sh, eval/train/, tests/test_train_loop.py)
+A background loop retrains the learned parts on new real + synthetic data and promotes a model only when it beats the
+current one on fixed held-out sets. `scripts/train_cycle.sh start | stop | status | once | dry-run`; log
+runs/train/cycle.log; everything it writes (data, candidates, versions) stays in git-ignored runs/train and runs/models.
+Model versions: search director v000 (2026-11-13) · Keystone director v000 (2026-11-14) · calibrator v000 (2026-11-14) · TTLs v000 (2026-11-14)
+- **Real data** (eval/train/collect.py): the Mac app's per-question rows (`TRAIN_COLLECT=1`, default on in this dev
+  build, Settings > Improve Onset; server/trainlog.py: timings, route, tiers, paid / free, verify / re-check,
+  calibration features, endpoint trigger, ear; question / query with PII masked by the PII_YEARS rules + 5+ digit runs,
+  emails, handles; no audio, no answer text, salted client-id hash), the app's request log, and every agent's eval
+  replays (runs/**.json rows). De-duplicated by content hash; local only.
+- **Synthetic data** (eval/train/synth.py, seeds in eval/train/seeds/sessions.json): spoken sessions for topic switch
+  (France -> San Jose restaurants), elliptical follow-ups ("you know the old one" -> the previous president),
+  self-corrections, open-mic chatter, multi-part, live data. Gold from Wikidata (SPARQL per relation), Haiku
+  paraphrases (token usage x listed price, capped at $2 / cycle), `say` voices (16, 150-215 wpm), babble + pink noise
+  at 8-25 dB on ~40 %, Flux-style word timings; real Flux traces for the director (capped at 10 audio min / cycle).
+- **Per cycle** (eval/train/cycle.py): calibrator refit on base + labelled synthetic rows (eval/calib_data.py
+  pipeline); Keystone director: one DAgger round under the current policy + tree refit + R re-picked on dev replays;
+  TTLs (every 6th cycle): Wikidata statement histories, 1/5 held out; Mamba director: recipe train.py (shipped v2_s0
+  recipe) + the new traces as extra train, recipe evaluate / evaluate2 / eot_loss / export.
+- **Gates** (eval/train/gates.py, one per model, both models measured on the same fixed sets): calibrator: test Brier
+  -0.002, ECE / AUC no worse (186 held-out answers + live rows); kdir: paid/q -0.003 on the kdir test streams (2,000 +
+  800 q) with regret, accuracy and replay p50 no worse; TTLs: held-out log-likelihood up, test-stream replay no worse;
+  director: test_v2 eot BCE -0.002, test BCE no worse, endpoint p50 (val thresholds, @10, @20 premature) no worse on
+  test / test_v2 / heldout80, premature +1 at most, addressed AUC no worse. Then install + regression suites (fixlive,
+  persona, calibrate, kdir, director_v2, train_loop pytest) and, with `TRAIN_E2E=1`, the 58-set real-audio replay with
+  the model's flag on (no accuracy loss, p50 within 25 ms). Any failure rolls back
+  (`.venv/bin/python eval/train/registry.py rollback <model>`).
+- **Scheduling**: `nice -n 10`, one model-loading step at a time, no new heavy step while `runs/.quiet` exists in the
+  main checkout or swap used > 16 GB; a cycle every 75 min (`TRAIN_EVERY_MIN`).
+- **Results**: runs/train/latest.json every cycle; after a promotion a "Training cycle N" section here and the Results
+  view's "Model versions · last trained" line (server/scorecard.json "models"), in the same step.

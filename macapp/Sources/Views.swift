@@ -78,6 +78,7 @@ struct SettingsView: View {
     @State private var entries: [String: String] = [:]
     @State private var saved: [String: Bool] = [:]
     @State private var ear: String = UserDefaults.standard.string(forKey: "ear") ?? "auto"
+    @State private var collect: Bool = UserDefaults.standard.object(forKey: "trainCollect") as? Bool ?? true
     @State private var note = ""
     var onSave: () -> Void
 
@@ -108,6 +109,11 @@ struct SettingsView: View {
                     Text("Deepgram Flux (cloud; falls back to Arc)").tag("flux")
                 }.pickerStyle(.radioGroup).labelsHidden()
             }
+            Section(header: Text("Improve Onset").font(.headline).padding(.top, 8)) {
+                Toggle("Use my questions to improve the models", isOn: $collect)
+                Text("Saves timings, routes and outcomes of each question on this Mac, with personal data masked. No audio. Never uploaded.")
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             HStack {
                 Text(note).font(.caption).foregroundColor(.secondary)
                 Spacer()
@@ -115,6 +121,7 @@ struct SettingsView: View {
                     for (k, v) in entries where !v.trimmingCharacters(in: .whitespaces).isEmpty { Keys.set(k, v) }
                     entries = [:]
                     UserDefaults.standard.set(ear, forKey: "ear")
+                    UserDefaults.standard.set(collect, forKey: "trainCollect")
                     refresh()
                     note = "Saved."
                     onSave()

@@ -61,6 +61,8 @@ final class ServerManager {
         if env["CACHE_PERSIST"] == nil { env["CACHE_PERSIST"] = "1" }
         env["CACHE_PATH"] = AppInfo.dataDir.appendingPathComponent("search_cache.json").path
         env["MEM_DIR"] = AppInfo.dataDir.appendingPathComponent("memory").path
+        // Settings > Improve Onset (default on in this dev build): redacted per-question rows in data/train/
+        env["TRAIN_COLLECT"] = (UserDefaults.standard.object(forKey: "trainCollect") as? Bool ?? true) ? "1" : "0"
         let ear = UserDefaults.standard.string(forKey: "ear") ?? "auto"
         switch ear {
         case "arc": env["EAR"] = "arc"

@@ -38,5 +38,6 @@
      "big": "16/16", "unit": "live-data questions right", "vs": "5/16 from a web page",
      "source": {"doc": "docs/ARC_VALUE.md", "section": "11. Onset under Parity", "date": "2026-11-14", "quote": "| live data (with the section-10 router fix) | 13/16 | **16/16** | 5/16 |",
                 "note": "weather, exchange rates, clock, units vs ground truth; 15 of 16 by a card"}}
-  ]
+  ],
+  "models": {"line": "Model versions · last trained 2026-11-14", "by_model": {"director": {"name": "search director", "version": "v000", "trained": "2026-11-13", "cycle": null}, "kdir": {"name": "Keystone director", "version": "v000", "trained": "2026-11-14", "cycle": null}, "calib": {"name": "calibrator", "version": "v000", "trained": "2026-11-14", "cycle": null}, "ttl": {"name": "TTLs", "version": "v000", "trained": "2026-11-14", "cycle": null}}, "source": {"doc": "PROGRESS.md", "section": "Continuous training", "date": "2026-11-14", "quote": "Model versions: search director v000 (2026-11-13) · Keystone director v000 (2026-11-14) · calibrator v000 (2026-11-14) · TTLs v000 (2026-11-14)"}}
 }
