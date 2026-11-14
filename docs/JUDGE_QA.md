@@ -1,4 +1,4 @@
-# Head Start: hard questions, grounded answers
+# Onset: hard questions, grounded answers
 
 **Sources.** Numbers come from these files:
 - **[AB]** `runs/ab_full5.json` (the same file as `runs/ab_latest.json`): the final A/B, 58 spoken questions,
@@ -16,7 +16,7 @@ Code references point into `server/`.
 ---
 
 ### 1. Is the speedup real, or did you tune the baseline to be slow?
-The baseline differs from Head Start only in timing. Both use the same Arc ear, the same lanes, the same
+The baseline differs from Onset only in timing. Both use the same Arc ear, the same lanes, the same
 EmbeddingGemma 2 reranker, the same answer model, and the same hedged answer request (`HEDGE_MS`, "both modes",
 `server/config.py`). In `mode="baseline"`, `server/speculator.py` waits for the endpoint, then searches, reranks and
 answers.
@@ -26,11 +26,11 @@ Latency is measured from the ASR timestamp of the last spoken word to the first 
 endpoint lag (513 ms at p50) is Arc's own pause rule, not an added delay.
 
 Results [AB]:
-- p50: 1538 ms (baseline) vs 1160 ms (Head Start).
+- p50: 1538 ms (baseline) vs 1160 ms (Onset).
 - p90: 2126 vs 1763 ms.
-- Paired median saving: 348 ms. Head Start was faster on 44 of 58 questions.
+- Paired median saving: 348 ms. Onset was faster on 44 of 58 questions.
 
-### 2. Where does Head Start lose?
+### 2. Where does Onset lose?
 It was slower on 14 of 58 questions [AB]:
 - 12 were speculative misses: what was searched early did not match the final question.
 - 1 was a reused draft (q06) and 1 was a speculative hit (q29).
@@ -50,7 +50,7 @@ accuracy 80/82 vs 79/82 [TAV]. Mid-sentence only free lanes run (cards, Wikidata
 search goes out when the meaning is final, and a second only on a meaning change (`COST_MODE=parity`). The rest of
 this answer describes the earlier speed budget, which is still available as `COST_MODE=speed`.
 
-In the earlier build, Head Start made 2.38 web calls per question against 0.66 for the baseline [AB]. The baseline is lower because local
+In the earlier build, Onset made 2.38 web calls per question against 0.66 for the baseline [AB]. The baseline is lower because local
 questions never touch the web. Both are capped:
 - **Web calls:** at most 6 speculative calls plus 1 final per question (`WEB_BUDGET`). The most any question used
   in the final run was 6 [AB].
@@ -84,9 +84,9 @@ When the key word never comes through, neither mode can recover. ASR is the larg
 others. It also covers the cues as the ASR actually hears them: "Sari, I mean", "no weight", "I met". The corrected
 entity replaces the old one before the query is built.
 
-On q27, Head Start fired "capital canada", "capital make", "capital turnover" and "capital turkey". The first three
+On q27, Onset fired "capital canada", "capital make", "capital turnover" and "capital turkey". The first three
 went stale, and the answer came from a reused draft: 1213 vs 1555 ms [AB]. q33 ("president of France, no wait, of
-the United States") is now right in both modes, and Head Start answered it in 1139 vs 2070 ms [AB].
+the United States") is now right in both modes, and Onset answered it in 1139 vs 2070 ms [AB].
 
 Across all 8 correction questions: 1228 vs 1599 ms at p50, 100 % accurate in both modes [AB].
 
@@ -113,7 +113,7 @@ The gate was tightened after review. That is why semantic endpoints dropped from
 ### 8. Does it survive a noisy room?
 Mostly, and we can show where it doesn't [ROB]:
 
-| condition | Head Start faster | median saved | accuracy (baseline / Head Start) |
+| condition | Onset faster | median saved | accuracy (baseline / Onset) |
 |---|---|---|---|
 | 20 dB babble (other people's voices, a busy hackathon room) | 35 of 48 | 440 ms | 77.1 % / 77.1 % |
 | speech 1.21× faster | 16 of 20 | 388 ms | equal |
@@ -124,7 +124,7 @@ At 20 dB the noise raises Arc's word error rate from 4 % to 15 %. Accuracy drops
 noise hurts the ear, not the speculation.
 
 10 dB is the weak point. The energy VAD never hears silence, so the semantic endpoint almost never fires (2 of 48).
-In noise, Head Start also answered neighbours' chatter more often (9 of 48 vs 2 of 48, inside continuous noise at
+In noise, Onset also answered neighbours' chatter more often (9 of 48 vs 2 of 48, inside continuous noise at
 20 dB). Fixes are in the code: ASR word-gap silence when the room is noisy, and a chatter guard that skips early
 answers for utterances 12 dB quieter than the last question. Neither has been re-measured yet [PROG]. For the
 demo, a close mic keeps us at 20 dB or better.

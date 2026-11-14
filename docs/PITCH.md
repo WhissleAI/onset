@@ -1,6 +1,6 @@
-# Head Start: pitch
+# Onset: pitch
 
-**One line:** Head Start searches while you are still talking, so the answer is ready when you stop.
+**One line:** Onset searches while you are still talking, so the answer is ready when you stop.
 
 Every number below comes from a file in this repo. Source key:
 - **[AB]** `runs/ab_full5.json`, identical to `runs/ab_latest.json` (chart: `runs/ab_latest.png`). This is the final
@@ -66,7 +66,7 @@ mic → ear: Arc (on-device streaming ASR, self-revising words) · or Deepgram (
 ## Slide 4: Evidence (real audio, controlled A/B) [AB]
 "Same ear, same search, same reranker, same answer model. The only difference is *when* we start."
 
-| 58 spoken questions, 13 voices | Baseline | **Head Start** |
+| 58 spoken questions, 13 voices | Baseline | **Onset** |
 |---|---|---|
 | p50 time to answer (from last spoken word) | 1538 ms | **1160 ms** |
 | mean | 1622 ms | **1247 ms** |
@@ -75,18 +75,18 @@ mic → ear: Arc (on-device streaming ASR, self-revising words) · or Deepgram (
 | answer correct (keyword-scored) | 96.6 % | 96.6 % |
 | web calls per question | 0.66 | 2.38 |
 
-- **Paired:** Head Start was faster on **44 of 58** questions. Median saving **348 ms**, mean **375 ms**.
+- **Paired:** Onset was faster on **44 of 58** questions. Median saving **348 ms**, mean **375 ms**.
   Accuracy is equal: 55 questions were correct in both modes, and each mode got 1 right that the other missed.
   The 38 web questions are 100 % correct in both modes; the 20 local questions are 90 % in both.
 - **Where it shines:** questions with fillers ("um, I forget…"), p50 **1094 vs 1854 ms**. Self-corrections,
   **1228 vs 1599 ms**. Factoids, **1173 vs 1562 ms**.
 - **How the answers were produced:** 31 reused a draft, 11 were speculative hits and 16 were speculative misses.
-- **It holds in a noisy room [ROB]:** with 20 dB babble (other people's voices), Head Start was faster on **35 of
+- **It holds in a noisy room [ROB]:** with 20 dB babble (other people's voices), Onset was faster on **35 of
   48** questions and saved **440 ms** at the median. Accuracy was the same in both modes (77.1 %). Noise hurts the
   ear, not the speculation.
-- **Speaking rate doesn't matter [ROB]:** at 1.21× speed Head Start won 16 of 20 and saved 388 ms. At 0.85× it won
+- **Speaking rate doesn't matter [ROB]:** at 1.21× speed Onset won 16 of 20 and saved 388 ms. At 0.85× it won
   15 of 20 and saved 486 ms. Accuracy was equal in both modes each time.
-- **Follow-ups with memory [CONV]:** Head Start answered the second turn in **0.82–1.34 s**, the baseline in
+- **Follow-ups with memory [CONV]:** Onset answered the second turn in **0.82–1.34 s**, the baseline in
   **1.15–3.01 s**.
 - **The policy is simulated before we spend real calls [PROG]:** a virtual-clock simulator replays 51 recorded Arc
   traces through the real speculator. It predicted the real p50 to within **3.9 %** (45 ms), and its paired saving
@@ -98,7 +98,7 @@ mic → ear: Arc (on-device streaming ASR, self-revising words) · or Deepgram (
   - `conv01_memory_chip.jpg`: memory "it → Nvidia", 1.13 vs 1.48 s.
   - `local05_moment_chips.jpg`: 0.70 vs 1.42 s, with ▶ mm:ss moment chips.
 
-  These are single live replays, not the benchmark. Repeated replays varied: across 8 replays, Head Start was
+  These are single live replays, not the benchmark. Repeated replays varied: across 8 replays, Onset was
   behind twice and roughly tied twice. See the limitations below.
 
 ## Slide 5: Why now, and the impact
@@ -146,7 +146,7 @@ stronger ASR can be swapped in [PROG].
 
 **3. "How is this different from a streaming answer model or voice-to-voice?"**
 Those stream the *output*. We start the *input side* early: retrieval and grounding. A voice-to-voice model still
-waits for the end of the turn before it can search, or it answers from memory without sources. Head Start answers
+waits for the end of the turn before it can search, or it answers from memory without sources. Onset answers
 with citations, and its sources are ready at 650 vs 880 ms (p50) [AB]. It sits *in front of* any answer model or
 voice stack, so it adds to them rather than replacing them.
 
@@ -174,11 +174,11 @@ voice stack, so it adds to them rather than replacing them.
   machine at load average 31-41, so absolute times are inflated and only the paired gain should be quoted).
 - **Deepgram ear:** it is built and tested against a fake websocket server, but has never run against real Deepgram
   [PROG].
-- **Head Start is slower on 14 of 58 questions [AB].** 12 of the 14 are speculative misses (the other two are a
+- **Onset is slower on 14 of 58 questions [AB].** 12 of the 14 are speculative misses (the other two are a
   reused draft, q06, and a speculative hit, q29), and 8 of them are local-moments questions. On local questions the p50 gain is small: 1316 vs 1348 ms.
 - **Loud hall (10 dB SNR):** the gain shrinks to 173 ms at the median (32 of 48 faster), because the energy VAD never
   hears silence, so the semantic endpoint never fires [ROB]. A fix is in the code (ASR word-gap silence and a chatter
-  guard), but it has **not been re-measured** [PROG]. In noise, Head Start also answered neighbours' chatter more
+  guard), but it has **not been re-measured** [PROG]. In noise, Onset also answered neighbours' chatter more
   often (at 20 dB, inside continuous noise: 9 of 48 vs 2 of 48) [ROB]. The chatter guard targets this, also not yet re-measured.
   For the demo we use a close mic.
 - **Accuracy is keyword-scored** (`eval/run_ab.py`), with stems and number words allowed. 19 of the 225 wrong rows in
@@ -186,7 +186,7 @@ voice stack, so it adds to them rather than replacing them.
   The claim is accuracy *parity*, not an accuracy gain.
 - **Small, synthetic eval:** 58 questions spoken by TTS voices (Kokoro and macOS `say`), plus 6 two-turn
   conversations. The ASR heard 39 of 58 exactly; mean WER was 5.3 % [AB].
-- **Memory follow-ups:** with keyword scoring, Head Start got 3 of 5 scored follow-ups and the baseline 2 of 5
+- **Memory follow-ups:** with keyword scoring, Onset got 3 of 5 scored follow-ups and the baseline 2 of 5
   [CONV]. "There" in conv04 resolved to Australia, not Canberra, which is a known resolution gap [ERR].
 - **Browser mic path:** a human has not yet tested it. Replays and the server-side mic path are verified [PROG].
 - **Licences:**
@@ -197,10 +197,10 @@ voice stack, so it adds to them rather than replacing them.
 - **One machine:** every timing comes from a single M3 Pro laptop, with the two modes run in alternating order for
   each question.
 - **Live replays vary more than the benchmark.** On the final code (20:20), I ran 8 Race replays:
-  - Head Start won 4 clearly.
+  - Onset won 4 clearly.
   - 2 were dead heats: q01 at 1.98 vs 1.93 s, and q27 at 1.57 vs 1.63 s.
-  - Head Start lost 2: q27 at 2.23 vs 1.88 s, and conv01 at 1.49 vs 1.33 s.
+  - Onset lost 2: q27 at 2.23 vs 1.88 s, and conv01 at 1.49 vs 1.33 s.
 
-  In both losses, the answer model's first token took longer on the Head Start side (+1583 ms and +880 ms). In those
+  In both losses, the answer model's first token took longer on the Onset side (+1583 ms and +880 ms). In those
   replays the answer started only at Arc's endpoint, because the semantic endpoint did not fire. If a replay ties on
   stage, replay it again, or use local_05, which won by 0.71 s.
