@@ -113,12 +113,19 @@ Cost: the answer notes average 13.5 est. tokens per question (most questions get
 0.6 % of the ~2,100-token prompt; answer input tokens per question were 2,057 on vs 2,111 off (source sets differ).
 The sense search is one free Wikipedia request, in parallel; it never calls Tavily.
 
-Latency, showcase (`eval/showcase/questions.jsonl`, `eval/run_ab.py --modes headstart`, the shared run_ab lock held
-per replay, `nice -n 10`, off / on / on / off): SHOWCASE
+Latency: on the persona set, p50 2,373 ms on vs 2,505 off (ab4) and 1,995 vs 1,961 (ab3): no regression visible
+within that noise. Per question, persona adds no network wait (the sense search runs in parallel with the lane call
+and is only issued with a recent category) and microseconds of CPU (the category of each pool source is one 42 x 768
+dot product, cached). **The showcase replay (`eval/showcase/questions.jsonl`) was not measured**: it was queued
+behind the shared run_ab lock and stopped under the round's memory budget. To run it:
+`PERSONA=0|1 nice -n 10 .venv/bin/python eval/run_ab.py --questions eval/showcase/questions.jsonl --modes headstart
+--no-latest --wait-lock 5400 --out runs/ab_persona_sc_<arm>.json` (alternate the arms, RUN_AB_LOCK = main's lock).
 
 ## Default
 
-RESULTS-DEFAULT
+**Off.** The persona-set A/B is positive (sense 6 → 8 / 9, style 7 → 11 / 12, judge 3.78 → 3.98, content equal) but
+it is one repetition on 41 turns, and the showcase p50 check the brief requires before a default-on was not run.
+Turn it on with `PERSONA=1` (sub-switches: `PERSONA_STYLE`, `PERSONA_SENSE`, `PERSONA_BIAS`).
 
 ## Open issues
 
