@@ -57,6 +57,10 @@ def load(path: Path = MODEL_PATH) -> VOI | None:
 
 def choose(model: VOI, cands: list, feats: dict, theta: float | None = None):
     """The candidate with the highest p(correct), if it clears theta; else None (pay for the web)."""
+    for c in cands:
+        if c.path == "shared":          # a verified typed edge (exact subject + relation) is served as is
+            c.p = 1.0
+            return c
     best, bp = None, -1.0
     for c in cands:
         p = model.p(vector(feats, c))

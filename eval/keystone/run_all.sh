@@ -24,4 +24,6 @@ PYEOF
 $PY eval/keystone/replay.py --out runs/index/replay.json ${EMB:+--embed-ms $EMB} > runs/index/replay.log 2>&1
 $PY eval/keystone/replay.py --stream runs/index/stream_s2.jsonl --out runs/index/replay_dev.json --anytime none ${EMB:+--embed-ms $EMB} > runs/index/replay_dev.log 2>&1
 $PY eval/keystone/replay.py --sweep --out runs/index/voi_sweep.json ${EMB:+--embed-ms $EMB} > runs/index/voi_sweep.log 2>&1
+$PY eval/keystone/replay.py --policies fresh,a,fu,fs,f --anytime none --out runs/index/replay_network.json ${EMB:+--embed-ms $EMB} > runs/index/replay_network.log 2>&1
+$PY eval/keystone/plots.py
 echo done

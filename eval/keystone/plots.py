@@ -18,10 +18,11 @@ RUNS = ROOT / "runs/index"
 IMG = ROOT / "docs/img"
 SURF, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 C = {"fresh": "#8a8984", "a": "#2a78d6", "b": "#eb6834", "c": "#1baf7a", "e": "#eda100", "f": "#6250d6",
-     "oracle": "#e87ba4"}
+     "oracle": "#e87ba4", "fu": "#eb6834", "fs": "#1baf7a"}
 NAME = {"fresh": "no reuse", "a": "(a) today: search cache", "b": "(b) + memory cells", "c": "(c) + Arc-keyed edges",
         "d": "(d) + equivalence verifier/hash", "e": "(e) + activation, one structure", "f": "(f) + VOI gate",
-        "oracle": "oracle (full information)"}
+        "oracle": "oracle (full information)", "fu": "per-user Keystone (each user alone)",
+        "fs": "per-user + shared verified edges", "f_pool": "one pooled Keystone (all public answers shared)"}
 
 
 def style(ax, title=None):
@@ -58,7 +59,7 @@ def stream_chart(rep, out, pols=("fresh", "a", "b", "e", "f")):
         x = list(range(1, len(rows) + 1))
         paid = [r["paid"] for r in rows]
         cum = [sum(paid[:i + 1]) / (i + 1) for i in range(len(paid))]
-        loc = [1.0 if r["path"] in ("key", "hash", "qnn", "dense") or r["path"].startswith("cache") else 0.0
+        loc = [1.0 if r["path"] in ("key", "hash", "qnn", "dense", "shared") or r["path"].startswith("cache") else 0.0
                for r in rows]
         lat = [r["lat_ms"] for r in rows]
         acc = [None if r["correct"] is None else float(r["correct"]) for r in rows]
@@ -190,6 +191,30 @@ def ann_chart(ann, out):
     plt.close(fig)
 
 
+def network_chart(rep, out):
+    """The network effect: paid calls per question as total usage (all users) grows."""
+    fig, axs = plt.subplots(1, 2, figsize=(11, 4.2), facecolor=SURF)
+    for p, lab in (("fresh", NAME["fresh"]), ("a", NAME["a"]), ("fu", NAME["fu"]), ("fs", NAME["fs"]),
+                   ("f", NAME["f_pool"])):
+        if p not in rep["policies"]:
+            continue
+        rows = rep["policies"][p]["rows"]
+        paid = [r["paid"] for r in rows]
+        x = list(range(1, len(rows) + 1))
+        kw = dict(color=C[p], linewidth=2 if p in ("fs", "f") else 1.4, label=lab)
+        axs[0].plot(x, [sum(paid[:i + 1]) / (i + 1) for i in range(len(paid))], **kw)
+        axs[1].plot(x, rolling(paid, 150), **kw)
+    style(axs[0], "Paid calls per question (cumulative) vs total questions asked")
+    style(axs[1], "Paid calls per question (rolling 150) vs total questions asked")
+    for ax in axs:
+        ax.set_xlabel("total questions asked across 30 users", fontsize=8.5, color=INK2)
+        ax.set_ylim(0, None)
+    axs[0].legend(fontsize=7.5, frameon=False)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130, facecolor=SURF)
+    plt.close(fig)
+
+
 def main():
     IMG.mkdir(parents=True, exist_ok=True)
     rep = json.loads((RUNS / "replay.json").read_text())
@@ -198,6 +223,8 @@ def main():
     voi_chart(ld("voi_sweep.json"), ld("voi_sweep_dev.json"), ld("voi_fit.json"), IMG / "keystone_voi.png")
     eq_chart(ld("ahash_eval.json"), IMG / "keystone_equivalence.png")
     ann_chart(ld("ann_bench.json"), IMG / "keystone_ann.png")
+    if (RUNS / "replay_network.json").exists():
+        network_chart(ld("replay_network.json"), IMG / "keystone_network.png")
     print("charts ->", IMG)
 
 

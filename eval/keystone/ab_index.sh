@@ -4,6 +4,7 @@
 # runs/index/warm_store: other users asked related questions before). 58-question set + showcase.
 # Takes the shared run_ab lock (same file + format as run_ab.py) for each timed run only, polling every second.
 cd "$(dirname "$0")/../.."
+SETS=${SETS:-"q58 showcase"}; VARIANTS=${VARIANTS:-"off cold warm"}; SUF=${SUF:-}
 PY=.venv/bin/python
 export WEB_BACKEND=wikipedia
 LOCK=${RUN_AB_LOCK:-../headstart/runs/.run_ab.lock}
@@ -27,11 +28,11 @@ run() {   # run <name> "<VAR=x ...>" [run_ab args...]
   rel
 }
 WARM=$(mktemp -d "${TMPDIR:-/tmp}/ks_warm.XXXX")
-for set in q58 showcase; do
+for set in $SETS; do
   Q=(); [ "$set" = showcase ] && Q=(--questions eval/showcase/questions.jsonl)
-  run ${set}_off "INDEX=0" "${Q[@]}"
-  run ${set}_cold "INDEX=1 INDEX_PERSIST=0" "${Q[@]}"
+  [[ " $VARIANTS " == *" off "* ]] && run ${set}_off$SUF "INDEX=0" "${Q[@]}"
+  [[ " $VARIANTS " == *" cold "* ]] && run ${set}_cold$SUF "INDEX=1 INDEX_PERSIST=0" "${Q[@]}"
   rm -rf "$WARM"; cp -R runs/index/warm_store "$WARM"
-  run ${set}_warm "INDEX=1 INDEX_PERSIST=1 INDEX_RESET=never KEYSTONE_DIR=$WARM" "${Q[@]}"
+  [[ " $VARIANTS " == *" warm "* ]] && run ${set}_warm$SUF "INDEX=1 INDEX_PERSIST=1 INDEX_RESET=never KEYSTONE_DIR=$WARM" "${Q[@]}"
 done
 echo done

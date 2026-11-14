@@ -82,8 +82,9 @@ def _vclass_ttl(tier: str, live: bool, key: RelKey | None, source: str) -> tuple
 
 class Keystone:
     def __init__(self, flags: Flags | None = None, model: ah.AHash | None = None, max_cells: int = 20000,
-                 fp_dim: int = 256, fp_quant: str = "int8"):
+                 fp_dim: int = 256, fp_quant: str = "fp32", shared=None):
         self.f = flags or Flags()
+        self.shared = shared                              # keystone/shared.py SharedKeystone (cross-user), or None
         self.cells = CellStore(fp_dim=fp_dim, fp_quant=fp_quant, max_cells=max_cells)
         self.g = Graph()
         self.model = model if model is not None else (ah.AHash.load() if self.f.hash else None)
@@ -140,6 +141,13 @@ class Keystone:
                         vnode = self.g.node(vn) if RELATIONS[rel][0] in ("person", "place", "org", "thing") else None
                         self.g.add_edge(item, rel, val, cell=i, t=now, ttl=TTL_S[RELATIONS[rel][1]], prov="Wikidata",
                                         value_node=vnode)
+                        if self.shared is not None:           # public, verified-by-source: shareable
+                            from .shared import SharedEdge
+                            self.shared.publish(SharedEdge(fact.get("item", ""), rel, val, "wikidata", "wikidata",
+                                                           now, TTL_S[RELATIONS[rel][1]], qid=m.group(1),
+                                                           source="Wikidata", url=d.url))
+                            if key is not None and key.complete and not key.subject.startswith("@"):
+                                self.shared.alias(key.subject, fact.get("item", ""))
                     fact_vals.append(d.text)
         # the value cell: this question's answer (typed when the question has a key)
         if ids:
@@ -180,7 +188,7 @@ class Keystone:
         feats: dict = {"live": float(q.live), "n_cells": math.log1p(len(self.cells)), "key_hit": 0.0,
                        "key_known": float(q.key is not None and q.key.complete), "hash_ham": 64.0,
                        "hash_cos": 0.0, "qnn_cos": 0.0, "dense_top": 0.0, "dense_gap": 0.0, "bm25_top": 0.0,
-                       "ent_cov": 0.0, "act": 0.0, "age_frac": 1.0, "subj_known": 0.0}
+                       "ent_cov": 0.0, "act": 0.0, "age_frac": 1.0, "subj_known": 0.0, "shared_hit": 0.0}
         cands: list[Cand] = []
         key = q.key if self.f.key else None
         # (1) typed key
@@ -201,6 +209,18 @@ class Keystone:
                     feats["key_hit"] = 1.0
                     feats["age_frac"] = min(1.0, (now - best_t) / ttl)
                     cands.append(Cand("key", _dedup(cells), 1.0, best_t))
+        # (1b) the shared store (other users' verified typed edges), only when the personal overlay has no key hit
+        if self.shared is not None and key is not None and key.complete and not key.subject.startswith("@") \
+                and not any(c.path == "key" for c in cands):
+            edges = self.shared.get(key.subject, key.relation, now)
+            if edges:
+                e = edges[0]
+                c = Cell(id=-1, kind="value", title=key.text(), payload="; ".join(x.value for x in edges[:3])[:320],
+                         source=e.source or "Onset users", url=e.url, key=key.text(), t=e.as_of, ttl=e.ttl,
+                         arc={"shared": True, "verify": e.verify, "contributions": e.contributions,
+                              "prov": e.prov}, doc_id=f"shared:{key.text()}")
+                feats["shared_hit"] = 1.0
+                cands.append(Cand("shared", [(c, 1.0)], 1.0, e.as_of))
         # (2) learned answer-equivalence hash / (3) question NN
         if q.qvec is not None:
             if self.f.hash and self.model is not None and self.codes:
@@ -295,6 +315,8 @@ class Keystone:
             return c.eq_p < 0 or c.eq_p >= 0.5
         if "key" in by and eq_ok(by["key"]):
             return by["key"]
+        if "shared" in by:                  # verified typed edge from another user: exact (subject, relation) match
+            return by["shared"]
         if "hash" in by and feats["hash_ham"] <= self.f.hash_r and feats["hash_cos"] >= self.f.hash_cos and \
                 eq_ok(by["hash"]):
             return by["hash"]
@@ -306,7 +328,8 @@ class Keystone:
 
     def served(self, cand: Cand, now: float | None = None):
         for c, _ in cand.cells[:1]:
-            self.cells.hit(c.id)
+            if c.id >= 0:
+                self.cells.hit(c.id)
 
     def touch(self, q: Q, now: float):
         """A question served locally still activates its entities (memory)."""

@@ -949,7 +949,7 @@ class Session:
             self.mem.note_used(framemod.norm(f.carried) if f.carried else None)
             if config.INDEX:                     # Keystone: memory + the answer into the one structure (server/keystone)
                 from .keystone import hook as _ks
-                _ks.note_answer(f, f.query(), m.get("answer") or "")
+                _ks.note_answer(f, f.query(), m.get("answer") or "", (m.get("verify") or {}).get("status"))
                 _ks.absorb_memory(self.mem)
             m["memory"] = {"turn": t, "used": f.carried or None, "ref": f.mem_ref or None, "inline": f.inline or None,
                            "user": [k for k, _ in f.user_used]}

@@ -319,3 +319,83 @@ def test_endpoint_lookup_reuses_the_speculators_query_embedding(index_on, monkey
     r, m = asyncio.run(go())
     assert not calls and m.get("index_qvec") == "shared"
     hook._QV.clear()
+
+
+# ------------------------------------------------------------------------------------------------- shared store
+from server.keystone.shared import SharedEdge, SQLiteShared, admit  # noqa: E402
+
+
+def test_shared_allowlist_refuses_personal_and_unverified():
+    now = time.time()
+    ok = SharedEdge("nvidia", "founded_by", "Jensen Huang", "verified", "supported", now, 86400.0)
+    assert admit(ok) is None
+    bad = [SharedEdge("you:local", "born_place", "Denver", "verified", "supported", now, 0.0),     # the "you" node
+           SharedEdge("nvidia", "home", "Denver", "user", "supported", now, 0.0),                # a user fact
+           SharedEdge("nvidia", "founded_by", "Jensen", "memory", "supported", now, 0.0),         # memory edge
+           SharedEdge("nvidia", "founded_by", "Jensen", "verified", "unverified", now, 0.0),      # not verified
+           SharedEdge("nvidia", "founded_by", "Jensen", "verified", "disagree", now, 0.0),        # sources disagree
+           SharedEdge("my dentist", "hq_of", "Main St", "verified", "supported", now, 0.0),       # personal subject
+           SharedEdge("acme", "ceo_of", "jane@acme.com", "verified", "supported", now, 0.0),      # an email
+           SharedEdge("chicago", "weather_in", "rain", "verified", "supported", now, 86400.0)]    # live, long TTL
+    for e in bad:
+        assert admit(e) is not None, e
+
+
+def test_a_user_fact_can_never_reach_the_shared_store(index_on):
+    from server.memory import Memory
+    sh = SQLiteShared()
+    ks = hook.reset(Keystone(Flags(hash=False), shared=sh))
+    mem = Memory()
+    mem.learn_user("i live in denver".split())
+    f = F("who founded nvidia", slots=[("organization", "nvidia")])
+    fact = Doc("wikidata:Q182477:P112", "Nvidia · Wikidata", "Nvidia: founded by: Jensen Huang.", "Wikidata",
+               {"tier": "facts", "fact": {"prop": "founder", "values": ["Jensen Huang"], "item": "Nvidia"}})
+    mem.observe(f, "Nvidia was founded by Jensen Huang.", [{"type": "person", "text": "Jensen Huang"}], [fact])
+    assert mem.user                                          # the fact was learned (memory.py keeps it)
+    hook.absorb_memory(mem)
+    hook.ingest(f, "who founded nvidia", [fact], {fact.id: vec(1)}, {"tier": "facts"})
+    hook.note_answer(f, "who founded nvidia", "Jensen Huang founded Nvidia; you live in Denver.", "supported")
+    rows = sh.dump()
+    assert rows                                              # the public fact + the verified answer went in
+    flat = " ".join(" ".join(map(str, r)) for r in rows).lower()
+    assert "you:" not in flat and not any(r[1] in ("home", "diet", "allergy") for r in rows)
+    assert all(r[3] in ("wikidata", "verified") for r in rows)
+    assert not any(k.startswith("you") for k in ks.g.nodes) and not any(s.startswith("you") for s, _ in ks.g.edges)
+
+
+def test_shared_edges_answer_another_user_labelled(index_on):
+    sh = SQLiteShared()
+    a = Keystone(Flags(hash=False), shared=sh)               # user A's personal store
+    f = F("who wrote one hundred years of solitude", slots=[("work_product", "one hundred years of solitude")])
+    d = Doc("u", "One Hundred Years of Solitude", "One Hundred Years of Solitude is a novel by Gabriel García Márquez.")
+    hook.reset(a)
+    hook.ingest(f, "q", [d], {"u": vec(5)}, {"tier": "web"})
+    hook.note_answer(f, "q", "Gabriel García Márquez wrote it.", "supported")
+    assert sh.stats()["edges"] == 1
+    hook.note_answer(f, "q", "Someone else wrote it.", "unverified")      # unverified: never published
+    assert sh.stats()["edges"] == 1
+    b = hook.reset(Keystone(Flags(hash=False), shared=sh))                # user B: empty personal overlay
+    b.cells.add(Cell(id=-1, kind="passage", title="x", payload="x", t=time.time(), ttl=60, doc_id="x"), vec(6))
+    r = asyncio.run(hook.local_first(F("who is the author of one hundred years of solitude",
+                                       slots=[("work_product", "one hundred years of solitude")]), "q"))
+    assert r is not None and r.path == "shared" and "Márquez" in r.docs[0].text
+    assert r.docs[0].meta["snapshot"].startswith("verified by Onset users · as of")
+
+
+def test_a_corrected_subject_writes_nothing_for_the_abandoned_one(index_on):
+    words = "when was google founded no wait i mean apple".split()
+    f = Frame(words=words, intent="discourse.intent.qa_factoid", intent_p=0.9,
+              slots=(("organization", "google"), ("organization", "apple")), dropped=frozenset({2, 4, 5, 6, 7}),
+              cue=frozenset({4, 5, 6, 7}))
+    q = hook.q_of(f, "q")
+    assert q.key.text() == "inception(apple)" and all(v != "google" for _, v in q.slots)
+    hook.ingest(f, "q", [Doc("a", "Apple Inc.", "Apple was founded in 1976.")], {"a": vec(7)}, {"tier": "web"})
+    g = hook.store().g
+    assert g.resolve("apple") and not g.resolve("google")
+
+
+def test_side_talk_is_never_written(index_on):
+    f = F("who founded nvidia", slots=[("organization", "nvidia")])
+    f.directed = 0.1                                          # Arc: not addressed to the assistant
+    hook.ingest(f, "q", [Doc("n", "Nvidia", "Nvidia was founded in 1993.")], {"n": vec(8)}, {"tier": "web"})
+    assert len(hook.store().cells) == 0

@@ -333,5 +333,7 @@ INDEX_SPEC_EMBED = os.environ.get("INDEX_SPEC_EMBED", "0") == "1"   # embedding 
 INDEX_HASH = os.environ.get("INDEX_HASH", "1") == "1"              # learned answer-equivalence hash (candidate source)
 GRAPH_KEY = os.environ.get("GRAPH_KEY", "1") == "1"                # Arc-keyed typed edges (subject, relation)
 GRAPH_ACT = os.environ.get("GRAPH_ACT", "1") == "1"                # activation (session / user memory) ranking bias
+INDEX_SHARED = os.environ.get("INDEX_SHARED", "1") == "1"          # cross-user store of verified public typed edges
+KEYSTONE_SHARED = Path(os.environ.get("KEYSTONE_SHARED", DATA_DIR / "keystone" / "shared.sqlite"))
 VOI = os.environ.get("VOI", "1") == "1"                            # calibrated gate (else the hand gate)
 VOI_THETA = float(os.environ["VOI_THETA"]) if os.environ.get("VOI_THETA") else None   # override the fitted theta

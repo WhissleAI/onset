@@ -106,6 +106,9 @@ _CUES = [
     (r"\bhow old\b|\bage\b", {}, "age_of"),
 ]
 _CUES = [(re.compile(p), m, d) for p, m, d in _CUES]
+_CLIMATE = re.compile(r"\b(?:climate|average (?:low |high |daily )?(?:temperature|rainfall|snowfall|low|high)|"
+                      r"typical (?:weather|temperature)|(?:coldest|hottest|wettest|driest|rainiest) month|"
+                      r"usually (?:rain|snow)|best time (?:of year )?to visit)\b")
 _EVENT_VERBS = re.compile(r"\b(?:land(?:ed)?|fall|fell|happen(?:ed)?|end(?:ed)?|begin|began|start(?:ed)?|sink|sank|"
                           r"collapse(?:d)?|signed|launch(?:ed)?|release(?:d)?|come out|came out|open(?:ed)?|built|"
                           r"invented|discovered|win|won|take place|took place|first (?:flown|released|published))\b")
@@ -184,6 +187,8 @@ def answer_type(low: str) -> str:
 def relation_of(low: str, intent: str = "", subj_type: str = "") -> tuple[str, int] | tuple[None, int]:
     """(relation, character offset of its cue) or (None, -1)."""
     at = answer_type(low)
+    if _CLIMATE.search(low):              # "average low in Atlanta in January" is climate (stable), not the forecast
+        return "climate_of", _CLIMATE.search(low).start()
     if intent in LIVE_INTENTS and intent != "discourse.intent.qa_currency":
         m = None
         for rx, mp, d in _CUES:

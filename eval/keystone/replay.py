@@ -55,7 +55,10 @@ POLICIES = {
     "e": dict(cells=True, key=True, hash=True, act=True, qnn=True),
     "f": dict(cells=True, key=True, hash=True, act=True, qnn=True),
     "oracle": dict(cells=True, key=True, hash=True, act=True, qnn=True),
+    "fu": dict(cells=True, key=True, hash=True, act=True, qnn=True),     # per-user stores (no pooling at all)
+    "fs": dict(cells=True, key=True, hash=True, act=True, qnn=True),     # per-user + the shared verified store
 }
+PER_USER = {"fu", "fs"}
 
 
 class Data:
@@ -70,7 +73,8 @@ class Data:
         self.text_fid: dict = {}
         for it in self.stream:
             self.text_fid.setdefault(it["query"], it["fid"])
-            self.fam_ids.setdefault(it["fid"], set()).update(d["id"] for d in self.fx[it["query"]]["docs"][:3])
+            top = self.fx[it["query"]]["docs"][:3]
+            self.fam_ids.setdefault(it["fid"], set()).update([d["id"] for d in top] + [d["url"] for d in top if d["url"]])
         from replay_frames import frame_for
         self.frames = {}
         for it in self.stream:
@@ -215,12 +219,21 @@ class MiniCache:
 def run(data: Data, policy: str, emb_ms: float, voi_model=None, log_feats=False, theta=0.5, fold_models=None,
         anytime=False):
     ks = None
-    if policy in POLICIES:
+    users: dict = {}
+    sh = None
+    if policy == "fs":
+        from server.keystone.shared import SQLiteShared
+        sh = SQLiteShared()
+    if policy in POLICIES and policy not in PER_USER:
         ks = Keystone(Flags(**POLICIES[policy]))
     cache = MiniCache() if policy in ("a", "b", "c", "d") else None
     rows, feat_rows = [], []
     for it in data.stream:
         now = T0 + it["t"]
+        if policy in PER_USER:
+            ks = users.get(it["user"])
+            if ks is None:
+                ks = users[it["user"]] = Keystone(Flags(**POLICIES[policy]), shared=sh)
         fx = data.fx[it["query"]]
         q = make_q(data, it)
         f = data.frames[it["query"]]
@@ -253,7 +266,7 @@ def run(data: Data, policy: str, emb_ms: float, voi_model=None, log_feats=False,
                     best = next((c for c in cands if _noregret(correct(it, _served_text(c), {x.doc_id for x, _ in
                                                                                              c.cells}, fresh_ids,
                                                                        _origins(data, c)), fresh_ok)), None)
-                elif policy == "f" and voi_model is not None:
+                elif policy in ("f", "fu", "fs") and voi_model is not None:
                     m = (fold_models or {}).get(it["fid"], voi_model) if fold_models else voi_model
                     best = voi.choose(m, cands, feats, theta)
                 else:
@@ -276,7 +289,7 @@ def run(data: Data, policy: str, emb_ms: float, voi_model=None, log_feats=False,
             lat += overhead
         if local is not None:
             st = _served_text(local)
-            ids = {c.doc_id for c, _ in local.cells}
+            ids = {c.doc_id for c, _ in local.cells} | {c.url for c, _ in local.cells if c.url}
             origins = _origins(data, local)
             row["as_of_age_s"] = round(now - local.as_of)
         else:
@@ -294,12 +307,31 @@ def run(data: Data, policy: str, emb_ms: float, voi_model=None, log_feats=False,
         if local is None and path in ("web", "facts", "card"):
             if ks is not None:
                 ks.write(q, fresh_docs, data.dvec, tier=tier, now=now)
+                if sh is not None and q.key is not None and q.key.complete and not q.key.subject.startswith("@"):
+                    _publish_verified(sh, q, fresh_docs, now)
             if cache is not None and path == "web" and fx["plan"]["lane"] == "web" and fresh_docs and \
                     q.qvec is not None:
                 cache.put(searchcache.qkey(f), fresh_docs, q.qvec, now, it["fid"])
     stats = ks.stats() if ks is not None else {}
+    if sh is not None:
+        stats = {**stats, "shared": sh.stats(), "users": len(users)}
     LAST["ks"] = ks
     return rows, feat_rows, stats
+
+
+def _publish_verified(sh, q, docs, now):
+    """Stand-in for the live path (answer model + server/verify.py): the value is the question's key sentences from
+    its top source; it is shared only if verify.check finds its claims (numbers / years / names) in >= 1 source."""
+    from server import verify
+    from server.keystone.cells import key_sentences, toks
+    from server.keystone.shared import SharedEdge
+    if not docs:
+        return
+    payload = key_sentences(docs[0].text, toks(q.text))
+    v = verify.check(payload, docs[:3], q.text)
+    if v["status"] in ("supported", "agree"):
+        sh.publish(SharedEdge(q.key.subject, q.key.relation, payload, "verified", v["status"], now, q.key.ttl_s,
+                              source=docs[0].source, url=docs[0].url))
 
 
 def _noregret(ok, fresh_ok):
@@ -328,7 +360,7 @@ def summarize(rows, window=100):
     def agg(rs):
         acc_e = [r["correct"] for r in rs if r["has_expect"] and r["correct"] is not None]
         acc_s = [r["correct"] for r in rs if not r["has_expect"] and r["correct"] is not None]
-        loc = [r for r in rs if r["path"] in ("key", "hash", "qnn", "dense") or r["path"].startswith("cache")]
+        loc = [r for r in rs if r["path"] in ("key", "hash", "qnn", "dense", "shared") or r["path"].startswith("cache")]
         lat = [r["lat_ms"] for r in rs]
         return {"n": len(rs), "paid_per_q": round(sum(r["paid"] for r in rs) / len(rs), 4),
                 "local_hit_rate": round(len(loc) / len(rs), 4),

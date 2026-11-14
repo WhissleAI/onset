@@ -50,10 +50,27 @@ def store() -> Keystone:
     with _lock:
         if _ks is None:
             _ks = Keystone(Flags(key=config.GRAPH_KEY, act=config.GRAPH_ACT, hash=config.INDEX_HASH),
-                           max_cells=config.INDEX_MAX_CELLS, fp_dim=config.INDEX_FP_DIM)
+                           max_cells=config.INDEX_MAX_CELLS, fp_dim=config.INDEX_FP_DIM, shared=shared_store())
             if config.INDEX_PERSIST:
                 _load(_ks)
         return _ks
+
+
+_shared = None
+
+
+def shared_store():
+    """The cross-user store (keystone/shared.py): a local SQLite file behind the SharedKeystone API, or None."""
+    global _shared
+    if not config.INDEX_SHARED:
+        return None
+    if _shared is None:
+        from .shared import SQLiteShared
+        try:
+            _shared = SQLiteShared(config.KEYSTONE_SHARED if config.INDEX_PERSIST else ":memory:")
+        except Exception:  # noqa: BLE001
+            return None
+    return _shared
 
 
 def reset(ks: Keystone | None = None):
@@ -139,9 +156,32 @@ def q_of(f, query: str, qvec=None) -> Q:
     k = key_of_frame(f) if config.GRAPH_KEY else None
     live = is_live(f)
     text = getattr(f, "inline", "") or getattr(f, "resolved_text", "") or query
-    return Q(text=text, words=list(f.words), slots=tuple(f.slots), intent=f.intent, acts=tuple(f.acts), live=live,
-             qvec=qvec, key=k, arc=ah.arc_of(f.words, f.intent, f.slots, f.acts, live, k), user=SCOPE["user"],
+    slots = live_slots(f)
+    return Q(text=text, words=list(f.words), slots=slots, intent=f.intent, acts=tuple(f.acts), live=live,
+             qvec=qvec, key=k, arc=ah.arc_of(f.words, f.intent, slots, f.acts, live, k), user=SCOPE["user"],
              session=SCOPE["session"])
+
+
+def live_slots(f) -> tuple:
+    """The frame's typed spans minus any the speaker corrected away ("when was Google founded, no wait, Apple": the
+    Google span is dropped), so an abandoned subject never gets a node, an edge, activation or a cell."""
+    dropped = getattr(f, "dropped", frozenset())
+    if not dropped:
+        return tuple(f.slots)
+    kept = {w.lower().strip(".,?!'") for i, w in enumerate(f.words) if i not in dropped}
+    gone = {w.lower().strip(".,?!'") for i, w in enumerate(f.words) if i in dropped} - kept
+    return tuple((t, v) for t, v in f.slots if not (set(str(v).lower().split()) & gone))
+
+
+def addressed(f) -> bool:
+    """Arc's addressedness (discourse.assistant.device_directed) and dialogue act: only questions / requests to the
+    assistant write into the store (side talk, TV audio and statements never do)."""
+    d = getattr(f, "directed", None)
+    if d is not None and d < 0.3:
+        return False
+    acts = set(getattr(f, "acts", ()) or ())
+    return not acts or bool(acts & {"question", "command_request"}) or getattr(f, "intent", "").startswith(
+        ("discourse.intent.", "intent.request"))
 
 
 def _docs(cand, now: float) -> list:
@@ -153,9 +193,12 @@ def _docs(cand, now: float) -> list:
         if c.kind == "value" and c.links:
             text = c.payload                       # the answer itself; its source passages follow
         src = c.source or "web"
-        out.append(Doc(id=f"index:{c.doc_id or c.id}", title=c.title, text=text, url=c.url, source=f"Onset index · {src}",
-                       score=float(s), meta={"tier": "index", "snapshot": f"from your Onset index · as of {as_of}",
-                                             "as_of": as_of, "index_path": cand.path, "index_cell": c.id}))
+        shared = cand.path == "shared"
+        label = (f"verified by Onset users · as of {as_of}" if shared else f"from your Onset index · as of {as_of}")
+        out.append(Doc(id=f"index:{c.doc_id or c.id}", title=c.title, text=text, url=c.url,
+                       source=f"{'Onset users' if shared else 'Onset index'} · {src}", score=float(s),
+                       meta={"tier": "index", "snapshot": label, "as_of": as_of, "index_path": cand.path,
+                             "index_cell": c.id, "index_scope": "shared" if shared else "personal"}))
     return out
 
 
@@ -176,7 +219,7 @@ async def local_first(f, query: str, meter: dict | None = None, final: bool = Tr
         now = time.time()
         # (1) the typed key alone: no embedding
         cands, feats = ks.lookup(q, now)
-        best = ks.heuristic([c for c in cands if c.path == "key"], feats) if cands else None
+        best = ks.heuristic([c for c in cands if c.path in ("key", "shared")], feats) if cands else None
         if best is None:
             if not final and not config.INDEX_SPEC_EMBED:
                 STATS["misses"] += 1
@@ -268,12 +311,12 @@ def wrap_web(web_fn, f, query: str, meter: dict, final: bool = True):
 
 def ingest(f, query: str, docs, vecs: dict, meter: dict | None = None):
     """After a fire's docs were embedded (speculator). Cheap (no network, no embedding); never raises."""
-    if not config.INDEX or f is None or not docs:
+    if not config.INDEX or f is None or not docs or not addressed(f):
         return
     meter = meter or {}
     try:
         fresh = [d for d in docs if (d.meta or {}).get("tier") != "index" and not (d.meta or {}).get("cached")
-                 and d.id in vecs]
+                 and d.source != "local" and d.id in vecs]     # local moments have their own index: never copied
         if not fresh:
             return
         tier = meter.get("tier") or ("card" if any((d.meta or {}).get("card") for d in fresh) else "web")
@@ -326,9 +369,10 @@ def _value_cell(ks, q):
     return ks.cells.by_doc.get(("value:" + k) if k else ("q:" + " ".join(sorted(set(toks(q.text))))))
 
 
-def note_answer(f, query: str, answer: str):
+def note_answer(f, query: str, answer: str, verify: str | None = None):
     """The answer model's answer becomes the question's value-cell payload (the answer span, not the source's key
-    sentences); its typed edge value follows. Cheap; never raises."""
+    sentences); its typed edge value follows. When server/verify.py found the answer in >= 1 cited source
+    (status supported / agree), the typed edge is published to the shared store. Cheap; never raises."""
     if not config.INDEX or f is None or not answer:
         return
     try:
@@ -344,6 +388,10 @@ def note_answer(f, query: str, answer: str):
             for v in ks.g.edges.get((node, q.key.relation), []) if node else []:
                 if v.get("cell") == i:
                     v["value"] = c.payload
+            if ks.shared is not None and verify in ("supported", "agree") and not q.key.subject.startswith("@"):
+                from .shared import SharedEdge
+                ks.shared.publish(SharedEdge(q.key.subject, q.key.relation, c.payload, "verified", verify, time.time(),
+                                             q.key.ttl_s, source=c.source, url=c.url))
     except Exception:  # noqa: BLE001
         STATS["errors"] += 1
 
@@ -378,8 +426,8 @@ def absorb_memory(mem):
                 ks.g.add_edge(a, rel, ks.g.nodes[b]["name"], t=now, ttl=0.0, prov="memory", value_node=b)
             elif a and b:
                 ks.g.link(a, b)
-        for u in g.get("user") or []:
-            ks.g.user_fact(SCOPE["user"], u["key"], u["v"], now)
+        # user facts ("I live in Denver") stay in memory.py's per-browser store: the process-wide graph is shared by
+        # every client of this server, so they are never copied here (and never reach the shared store)
     except Exception:  # noqa: BLE001
         STATS["errors"] += 1
 
