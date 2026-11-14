@@ -298,7 +298,6 @@ every Mach-O is signed with the Developer ID and a timestamp, and the DMG is not
 
 ```sh
 ONSET_SIGN_ID="Developer ID Application: Whissle LLC (XXK95K57U5)" NOTARY_PROFILE=<profile> \
-PY_ENTITLEMENTS=macapp/python.release.entitlements \
   nice -n 10 scripts/build_macapp.sh --release
 # -> dist/release/Onset.app, dist/release/Onset-<version>-arm64.dmg (+ .sha256), notarize-*.json (submission ids)
 ```

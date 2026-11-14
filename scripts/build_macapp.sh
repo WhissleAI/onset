@@ -199,7 +199,7 @@ fi
 
 SIGN="${ONSET_SIGN_ID:--}"   # "-" = ad-hoc: a new identity every build, so macOS asks for the mic again (MACAPP.md)
 TS="--timestamp=none"; case "$SIGN" in "Developer ID Application:"*) TS="--timestamp" ;; esac   # notarization needs a timestamp
-PY_ENT="${PY_ENTITLEMENTS:-macapp/python.entitlements}"
+PY_ENT="${PY_ENTITLEMENTS:-$( [ "$RELEASE" = 1 ] && echo macapp/python.release.entitlements || echo macapp/python.entitlements )}"
 step "Codesign ($([ "$SIGN" = - ] && echo "ad-hoc" || echo "$SIGN"), hardened runtime, $TS)"
 # every Mach-O in the bundle, found by its header (not its name), inside-out: libraries + helper executables, then the
 # Python executable with its own entitlements, then the app. Models (Resources/models) hold no code.
