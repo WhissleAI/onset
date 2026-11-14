@@ -493,7 +493,8 @@ async def ws_endpoint(ws: WebSocket):
                 rid = data.get("rid")
                 run.rid = rid if isinstance(rid, int) and not isinstance(rid, bool) else None
                 rlog(f"run {run.id} start {run.kind}" + (f" {p.name}" if t == "replay" else
-                     (" open-mic" if data.get("open") else " push-to-talk")) + f" modes={','.join(modes)} ear={ear.describe().get('ear')}")
+                     (" open-mic" if data.get("open") else " push-to-talk")) + f" modes={','.join(modes)} ear={ear.describe().get('ear')}"
+                     + (f" arcstate=on keyterms={len(kt or [])}" if rstate is not None else ""))
                 if t == "start":
                     fresh = bool(data.get("fresh"))
                     if fresh:

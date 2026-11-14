@@ -104,8 +104,15 @@ class ArcMeta:
             a = arc()
         # fallback=None: external mode must not quietly run Arc's builtin decoder as a name fallback
         kw = {"diarization": "voice"} if voice else {}     # ArcState: Arc's voice embedding per frame (arcstate.Tap)
-        self.stream = a.stream(domain=domain, transcript="external", name_source="word", interim_source="deepgram",
-                               partials=False, fallback=None, **kw)
+        try:
+            self.stream = a.stream(domain=domain, transcript="external", name_source="word", interim_source="deepgram",
+                                   partials=False, fallback=None, **kw)
+        except Exception:  # noqa: BLE001 (a model without the voice head: metadata as before, no voice state)
+            if not kw:
+                raise
+            voice = False
+            self.stream = a.stream(domain=domain, transcript="external", name_source="word",
+                                   interim_source="deepgram", partials=False, fallback=None)
         self.tap = None
         if voice:
             try:
