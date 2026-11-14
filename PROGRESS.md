@@ -1610,3 +1610,34 @@ among SUBJECTS ("usa"). Not caused by fix/live (its opener rule only covers turn
   (system prompt ~60 tokens, 140 in / 5-25 out), hard timeout ELLIPSIS_LLM_TIMEOUT_S=0.4, the words as said on timeout.
   Measured latency 775 / 832 / 2558 ms (claude-haiku-5-5), so at 0.4 s it would almost always time out: off until the
   answer model's time to first token is under the budget.
+
+## Keystone director v1 (branch feat/kdir; server/keystone/kdir.py, docs/RETRIEVAL.md §5, tests/test_kdir.py)
+A learned policy over the answer graph in place of the VOI gate, behind `KDIR=1` (**default off**; any failure or a
+missing model falls back to the VOI gate). All numbers: text-level replays, WEB_BACKEND=wikipedia, no Tavily spend.
+
+- **Workload:** 11,000 questions in three disjoint streams (held-out users and question families) from 10,232 real
+  pool questions (director route labels, open-mic addressed questions, the 669 rich families). Every distinct question
+  (5,626) recorded once for every action: today's path, the paid lane alone, the free lanes alone. Answer-model use:
+  paraphrases for 1,404 families, 49,397 in + 297,690 out tokens.
+- **Actions:** pay / local / local + background re-check (free lanes; a caught error is "corrected", not regret) /
+  free-first. Expected-cost rule over calibrated gradient-boosted trees (80 inputs: lookup features, graph state,
+  question-pair features, Arc read-out; director signals tried and dropped). 225 KB model, 1-2 ms decisions (numpy).
+  R chosen by real dev replays.
+- **Result (paid / q · regret):** dev s2 0.350 → **0.335** · 0.25 % (same), new dev 0.479 → **0.426** · 0.05 % (VOI
+  0.10 %); test s1 0.371 → 0.341 but **1.25 %** (VOI 0.75 %), held-out test 0.513 → 0.490 but **0.75 %** (VOI 0.40 %).
+  Closes 36 % / 24 % of the gap to the local oracle on test, at higher regret: **bar not met**. Imitation of the
+  oracle: worse. Re-check / free-first: chosen on 1-2 % of questions; even the oracle gains only 0.015 paid/q from them.
+- **Feedback loop:** cell trust from re-checks + simulated spoken corrections, online refit every 500 q: test 0.490 →
+  0.486, p50 186 → 163 ms (only 11 feedback rows arrive). Per-domain / per-family trust for a future Tavily
+  include/exclude-domains parameter: computed, not wired to the paid lane.
+- **Learned TTLs** (`ttl_model.json`, Wikidata statement histories + 75 live questions re-asked at +15 / +60 min):
+  stable 365 d, population 99 d, area 83 d, weather 5 min, prices 6 min, news unchanged (unobservable here). The replay
+  cannot measure their effect (3-4 day streams). `KDIR_TTL`.
+- **Wider shared store** (`KDIR_SHARED_CELLS`, default off): verified public question → answer cells behind an
+  allowlist + privacy test. s1 per-user 0.489 → shared edges 0.466 → + shared cells 0.465 (VOI) / 0.439 (KDIR); test
+  0.746 → 0.727 → 0.721 / 0.679.
+- **Real audio** (58 set, parity, warm store, one pair before the memory budget / quiet window): VOI 1,939 ms p50,
+  56/58; KDIR 2,255 ms, 57/58; paired median **+281 ms** on a swapping machine. Showcase pair not run.
+- **Wait-one-more-word** (per-update GBDT and a GRU over the frozen director + prefix graph state): commits 75-79 % of
+  key-path questions early (0.76 s median lead on test) at 92-94 % precision vs 100 % at end of turn; not shipped.
+- Charts: `docs/img/keystone_kdir_curve.png`, `keystone_kdir_stream.png`, `keystone_kdir_network.png`.

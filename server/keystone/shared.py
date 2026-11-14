@@ -152,3 +152,128 @@ class SQLiteShared(SharedKeystone):
         """Every row (tests / audits: prove what is in the shared store)."""
         with self.lock:
             return self.db.execute("SELECT * FROM edges").fetchall()
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# The wider allowlist (KDIR step 6): verified question -> answer cells, so the network effect also covers questions
+# that are not single-relation factoids. Same boundary discipline as edges: `admit_cell` is the allowlist.
+#   allowed : a PUBLIC question (no first / second person, no personal-looking value, not a follow-up that leans on a
+#             conversation) whose answer passed server/verify.py against at least one cited source (supported / agree),
+#             with its public source URL; live questions only with their live TTL (minutes)
+#   refused : anything personal (my / I / you / emails / phones / handles / house numbers), unverified answers, user
+#             facts and activation (they never reach this API at all), local-moment / private-corpus sources
+# A cell stores: the question text, its query vector (float16, 768), its Arc signature (answer type, relation,
+# subject, intent), the answer payload, source + URL, as-of, TTL, contributions. No user id.
+_PRIVATE_SRC = re.compile(r"\b(?:local|moments?|transcript|memory|onset index)\b", re.I)
+_PERSONAL_Q = re.compile(r"\b(?:my|mine|our|ours|i|i'm|i've|me|we|us|you|your|yours)\b|@|\d{3}[ -.]?\d{3}[ -.]?\d{4}"
+                         r"|\b\d{1,5}\s+[a-z]+\s+(?:street|st|avenue|ave|road|rd|lane|ln|drive|dr)\b", re.I)
+
+
+@dataclass
+class SharedCell:
+    question: str
+    payload: str
+    verify: str                # supported | agree
+    as_of: float
+    ttl: float
+    source: str = ""
+    url: str = ""
+    arc: dict | None = None
+    contributions: int = 1
+
+
+def admit_cell(c: SharedCell) -> str | None:
+    if c.verify not in ("supported", "agree"):
+        return f"verify status {c.verify!r} not shareable"
+    if not c.url or _PRIVATE_SRC.search(c.source or ""):
+        return "no public cited source"
+    if _PERSONAL_Q.search(c.question or ""):
+        return "personal question"
+    if _PERSONAL.search((c.payload or "").lower()[:320]):
+        return "looks personal"
+    if (c.arc or {}).get("live") and c.ttl > TTL_S["live"]:
+        return "live question with a long TTL"
+    return None
+
+
+class SharedCells:
+    """In-memory (or SQLite-backed) store of admitted question -> answer cells with a vector index. lookup() returns
+    a keystone Cand on the 'shared_q' path (question NN + the Arc answer-equivalence verifier)."""
+
+    def __init__(self, path: Path | str = ":memory:", min_cos: float = 0.80):
+        import numpy as np
+        self.np = np
+        self.cells: list[SharedCell] = []
+        self.vecs = np.zeros((0, 768), np.float32)
+        self.fids: list[str] = []
+        self.refused = 0
+        self.min_cos = min_cos
+        self.hits = 0
+
+    def publish(self, c: SharedCell, qvec, fid: str = "") -> str | None:
+        why = admit_cell(c)
+        if why:
+            self.refused += 1
+            return why
+        np = self.np
+        v = np.asarray(qvec, np.float32)[:768]
+        if len(self.cells):
+            s = self.vecs @ v
+            j = int(np.argmax(s))
+            if s[j] >= 0.985 and self.cells[j].payload == c.payload:        # the same question again: a contribution
+                self.cells[j].contributions += 1
+                self.cells[j].as_of = max(self.cells[j].as_of, c.as_of)
+                return None
+        self.cells.append(c)
+        self.vecs = np.vstack([self.vecs, v[None, :]])
+        self.fids.append(fid)
+        return None
+
+    def publish_verified(self, q, docs, now: float, fid: str = "") -> str | None:
+        """The replay's stand-in for the live path (answer model + verify): the answer is the question's key
+        sentences from its top source; shared only when verify.check finds its claims in >= 1 source."""
+        from .. import verify
+        from .cells import key_sentences, toks
+        if not docs or q.qvec is None:
+            return "no docs"
+        payload = key_sentences(docs[0].text, toks(q.text))
+        v = verify.check(payload, docs[:3], q.text)
+        ttl = TTL_S["live"] if q.live else (q.key.ttl_s if q.key is not None else 30 * 86400.0)
+        arc = dict(q.arc or {})
+        arc["live"] = bool(q.live)
+        return self.publish(SharedCell(q.text, payload, v["status"], now, ttl, docs[0].source, docs[0].url, arc),
+                            q.qvec, fid)
+
+    def lookup(self, q, now: float):
+        from .cells import Cell
+        from .core import Cand
+        from . import verify_eq
+        np = self.np
+        if not len(self.cells) or q.qvec is None:
+            return None
+        s = self.vecs @ np.asarray(q.qvec, np.float32)[:768]
+        for j in np.argsort(-s)[:3]:
+            c = self.cells[int(j)]
+            if s[j] < self.min_cos:
+                return None
+            if now - c.as_of > c.ttl:
+                continue
+            cell = Cell(id=-1, kind="value", title=c.question[:120], payload=c.payload, source=c.source or "Onset users",
+                        url=c.url, question=c.question, arc={"shared": True, "verify": c.verify,
+                                                             "contributions": c.contributions},
+                        t=c.as_of, ttl=c.ttl, doc_id=f"sharedq:{int(j)}")
+            cand = Cand("shared_q", [(cell, float(s[j]))], float(s[j]), c.as_of)
+            ver = verify_eq.load()
+            if ver is not None:
+                cand.eq_p = ver.p(verify_eq.pair_features(float(s[j]), q.arc, c.arc or {}, q.key, None))
+            cand.fid = self.fids[int(j)]
+            self.hits += 1
+            return cand
+        return None
+
+    def stats(self) -> dict:
+        return {"cells": len(self.cells), "contributions": sum(c.contributions for c in self.cells),
+                "refused": self.refused, "lookups_served": self.hits}
+
+    def dump(self) -> list:
+        return [(c.question, c.payload, c.verify, c.source, c.url) for c in self.cells]

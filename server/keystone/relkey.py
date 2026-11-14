@@ -164,7 +164,16 @@ class RelKey:
 
     @property
     def ttl_s(self) -> float:
-        return TTL_S.get(self.vclass, TTL_S["slow"])
+        fixed = TTL_S.get(self.vclass, TTL_S["slow"])
+        if LEARNED_TTL[0]:
+            from . import kdir
+            return kdir.learned_ttl(self.relation, self.vclass, fixed)
+        return fixed
+
+
+# KDIR_TTL=1 (with KDIR=1): relation TTLs learned from data (eval/keystone/fit_ttl.py -> kdir.TTL_PATH) replace the
+# fixed volatility classes; set by server.config at import.
+LEARNED_TTL = [False]
 
 
 def _norm_words(words) -> list[str]:

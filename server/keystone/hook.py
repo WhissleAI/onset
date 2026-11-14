@@ -47,6 +47,8 @@ class LocalResult:
 
 def store() -> Keystone:
     global _ks
+    from . import relkey
+    relkey.LEARNED_TTL[0] = bool(config.KDIR and config.KDIR_TTL)
     with _lock:
         if _ks is None:
             _ks = Keystone(Flags(key=config.GRAPH_KEY, act=config.GRAPH_ACT, hash=config.INDEX_HASH),
@@ -193,7 +195,7 @@ def _docs(cand, now: float) -> list:
         if c.kind == "value" and c.links:
             text = c.payload                       # the answer itself; its source passages follow
         src = c.source or "web"
-        shared = cand.path == "shared"
+        shared = cand.path in ("shared", "shared_q")
         label = (f"verified by Onset users · as of {as_of}" if shared else f"from your Onset index · as of {as_of}")
         out.append(Doc(id=f"index:{c.doc_id or c.id}", title=c.title, text=text, url=c.url,
                        source=f"{'Onset users' if shared else 'Onset index'} · {src}", score=float(s),
@@ -250,11 +252,25 @@ async def local_first(f, query: str, meter: dict | None = None, final: bool = Tr
                 return None
             q.qvec = qv
             cands, feats = ks.lookup(q, now)
-            model = voimod.load() if config.VOI else None
-            if model is not None:
-                best = voimod.choose(model, cands, feats, config.VOI_THETA)
+            if config.KDIR and config.KDIR_SHARED_CELLS and not any(c.path in ("key", "shared") for c in cands):
+                sc = shared_cells().lookup(q, now)
+                if sc is not None:
+                    cands.append(sc)
+            dec = kdir_decide(f, q, ks, cands, feats, now, meter) if config.KDIR else None
+            if dec is not None:
+                act, best = dec
+                if act == "free":
+                    meter["kdir_action"] = "free"
+                    STATS["misses"] += 1
+                    return None
+                if act == "pay":
+                    best = None
             else:
-                best = ks.heuristic(cands, feats)
+                model = voimod.load() if config.VOI else None
+                if model is not None:
+                    best = voimod.choose(model, cands, feats, config.VOI_THETA)
+                else:
+                    best = ks.heuristic(cands, feats)
         ms = (time.perf_counter() - t0) * 1000
         STATS["ms"] = (STATS["ms"] + [ms])[-200:]
         meter["index_ms"] = round(ms, 1)
@@ -272,6 +288,8 @@ async def local_first(f, query: str, meter: dict | None = None, final: bool = Tr
         ks.served(best, now)
         ks.touch(q, now)
         p = float(getattr(best, "p", 1.0 if best.path == "key" else 0.0))
+        if meter.get("kdir_action") == "local_rc":
+            _spawn_recheck(f, q, best)
         return LocalResult(_docs(best, now), best.path, p, best.as_of, "Onset index")
     except Exception as e:  # noqa: BLE001
         STATS["errors"] += 1
@@ -299,6 +317,10 @@ def wrap_web(web_fn, f, query: str, meter: dict, final: bool = True):
     async def go():
         lr = await local_first(f, query, meter, final)
         if lr is None:
+            if meter.get("kdir_action") == "free":
+                res = await free_first(f, query, meter)
+                if res is not None:
+                    return res
             return await web_fn()
         from ..lanes import WebResult
         res = WebResult(lr.docs)
@@ -391,6 +413,12 @@ def note_answer(f, query: str, answer: str, verify: str | None = None):
                 from .shared import SharedEdge
                 ks.shared.publish(SharedEdge(q.key.subject, q.key.relation, c.payload, "verified", verify, time.time(),
                                              q.key.ttl_s, source=c.source, url=c.url))
+        if config.KDIR_SHARED_CELLS and verify in ("supported", "agree") and ks.cells.has_q[i]:
+            from .shared import SharedCell
+            arc = dict(q.arc or {})
+            arc["live"] = bool(q.live)
+            shared_cells().publish(SharedCell(q.text, c.payload, verify, time.time(), c.ttl, c.source, c.url, arc),
+                                   ks.cells.qv[i])
     except Exception:  # noqa: BLE001
         STATS["errors"] += 1
 
@@ -467,3 +495,131 @@ def absorb_wikidata(subject: str, ks: Keystone | None = None) -> int:
     except Exception:  # noqa: BLE001
         STATS["errors"] += 1
         return 0
+
+
+# ---------------------------------------------------------------------------------------------------- KDIR (v1)
+def kdir_decide(f, q, ks, cands, feats, now: float, meter: dict):
+    """The Keystone director's action for this question (server/keystone/kdir.py), or None (the VOI gate decides).
+    Runs only at the paid lane (the router's free lanes already ran or were not planned), so paying costs 1. Never
+    raises; < 2 ms (tiny trees in numpy)."""
+    from . import kdir
+    t0 = time.perf_counter()
+    try:
+        pol = kdir.load()
+        if pol is None:
+            return None
+        if config.KDIR_R is not None:
+            pol.R = config.KDIR_R
+        from .. import router
+        p = router.plan(f)
+        lof = bool(q.live or getattr(f, "when", ""))
+        plan = {"lane": p.lane, "conf": p.conf}
+        qx = kdir.question_vec(q, f, plan, ks, feats, cands, kdir.leads_signal(q.qvec), kdir.director_signal(f))
+        cx = [kdir.cand_vec(c, feats, ks, cands, now, q) for c in cands]
+        free_ok_q = p.lane in ("web", "wait") and not lof
+        pol.allow_free = config.KDIR_FREE
+        act, best, info = pol.decide(qx, cands, cx, 1, free_ok_q)
+        if act == "local_rc" and not config.KDIR_RECHECK:
+            act = "local"
+        if act in ("local", "local_rc") and best is not None and q.live and best.path == "dense":
+            act, best = "pay", None
+        meter.update(kdir_action=act, kdir_p=info.get("p_ok"), kdir_ms=round((time.perf_counter() - t0) * 1000, 3))
+        return act, best
+    except Exception as e:  # noqa: BLE001
+        meter["kdir_error"] = f"{type(e).__name__}: {e}"[:120]
+        return None
+
+
+async def free_first(f, query: str, meter: dict):
+    """KDIR's free-first action for a web-planned question: the local leads index + the Wikipedia summary of the
+    frame's entity (both free). Strong -> served, labelled as a free lane (paid 0); weak / timeout -> None (pay)."""
+    from .. import knowledge, router
+    from ..lanes import WebResult
+    t0 = time.perf_counter()
+    try:
+        async def run():
+            ent = f.entity_query() if hasattr(f, "entity_query") else ""
+            ld, ws = await asyncio.gather(knowledge.leads(router.text_of(f), 3),
+                                          knowledge.wiki_summary(ent) if ent else asyncio.sleep(0, result=[]),
+                                          return_exceptions=True)
+            ld = [] if isinstance(ld, BaseException) else ld
+            ws = [] if isinstance(ws, BaseException) else ws
+            seen = {d.url for d in ws}
+            return list(ws) + [d for d in ld if d.url not in seen]
+        docs = await asyncio.wait_for(run(), config.KDIR_FREE_TIMEOUT_S)
+    except Exception as e:  # noqa: BLE001
+        meter.update(kdir_free="error", kdir_free_ms=round((time.perf_counter() - t0) * 1000))
+        meter["kdir_error"] = f"{type(e).__name__}: {e}"[:120]
+        return None
+    meter["kdir_free_ms"] = round((time.perf_counter() - t0) * 1000)
+    if not any((d.meta or {}).get("strong") for d in docs):
+        meter["kdir_free"] = "weak"
+        return None
+    meter["kdir_free"] = "served"
+    res = WebResult(docs)
+    res.backend = "kdir-free"
+    meter.update(backend="kdir-free", credits=0.0)
+    return res
+
+
+_RC_TASKS: set = set()
+
+
+def _spawn_recheck(f, q, cand):
+    try:
+        t = asyncio.get_running_loop().create_task(recheck_cell(f, q, cand))
+        _RC_TASKS.add(t)
+        t.add_done_callback(_RC_TASKS.discard)
+    except RuntimeError:
+        pass
+
+
+async def recheck_cell(f, q, cand) -> str:
+    """KDIR's background re-check of a locally served cell against the free sources (after the answer is out):
+    server/verify.py's claim check of the served payload on the free docs. Supported -> the cell's trust rises;
+    a conflict -> trust falls (the feedback loop, kdir.feedback) and the outcome is logged for labels. The visible
+    correction of the answer itself is the existing VERIFY_RESEARCH path (server/recheck.py)."""
+    from .. import verify
+    from . import kdir
+    out = "none"
+    try:
+        top = cand.cells[0][0]
+        res = await free_first(f, q.text, {})
+        if res is None or not len(res):
+            out = "no_free_source"
+        else:
+            v = verify.check(top.payload, list(res)[:3], q.text)
+            if v.get("status") in ("supported", "agree"):
+                out = "confirm"
+            elif any(c.get("conflict") for c in v.get("claims") or []):
+                out = "caught"
+            if out != "none" and top.id >= 0:
+                fam = q.key.relation if q.key is not None else (getattr(f, "intent", "") or "")
+                kdir.feedback(store(), top.id, out, top.url, fam)
+        RECHECKS.append({"t": time.time(), "cell": top.id, "outcome": out, "q": q.text[:80]})
+        del RECHECKS[:-200]
+    except Exception:  # noqa: BLE001
+        out = "error"
+    return out
+
+
+RECHECKS: list = []
+_SHARED_CELLS = None
+
+
+def shared_cells():
+    """The wider shared allowlist's question -> answer cells (KDIR_SHARED_CELLS=1; in-process)."""
+    global _SHARED_CELLS
+    if _SHARED_CELLS is None:
+        from .shared import SharedCells
+        _SHARED_CELLS = SharedCells()
+    return _SHARED_CELLS
+
+
+def spoken_correction(cell_id: int):
+    """A spoken correction of an answer served from cell `cell_id` ("no, that's wrong"): trust falls (feedback loop)."""
+    from . import kdir
+    try:
+        kdir.feedback(store(), cell_id, "correction")
+    except Exception:  # noqa: BLE001
+        pass
