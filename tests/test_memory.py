@@ -335,3 +335,11 @@ def test_untagged_subject_and_incidental_people():
               [("organization", "MoMA"), ("place", "New York"), ("person", "Edvard Munch")])
     assert f.carried == "starry night"
     assert c.ask("when did he die").carried == "vincent van gogh"    # not Munch, only mentioned in passing
+
+
+def test_superlative_question_it_is_the_answer():
+    c = Conv()
+    c.ask("what is the tallest mountain in the world", [(PL, 7, 8)], "Mount Everest is the tallest mountain.",
+          [("place", "Mount Everest")])
+    f = c.ask("how tall is it")
+    assert f.carried == "mount everest" and router.plan(f).vertical == "wikidata"

@@ -102,7 +102,9 @@ def names_thing(toks: list[str]) -> bool:
     s = " ".join(toks)
     m = re.search(r"\b(?:which|what) (\w+)", s)
     return bool((m and m.group(1) in TYPE_NOUNS and TYPE_NOUNS[m.group(1)] != "person")
-                or re.search(r"\bwho (?:makes|made|manufactures|produces|owns)\b|\bcapital (?:city )?of\b", s))
+                or re.search(r"\bwho (?:makes|made|manufactures|produces|owns)\b|\bcapital (?:city )?of\b", s)
+                # "what is the tallest mountain in the world": the answer is the thing a later "it" means
+                or re.search(r"\b(?:what|which)(?: is| was|'s)? the (?:\w+est|biggest|most \w+|first|largest) \b", s))
 
 
 def asked_kind(toks: list[str]) -> str | None:
