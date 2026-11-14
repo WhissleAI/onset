@@ -140,8 +140,9 @@ def _docs(cand, now: float) -> list:
     return out
 
 
-async def local_first(f, query: str, meter: dict | None = None) -> LocalResult | None:
-    """See module doc. Never raises."""
+async def local_first(f, query: str, meter: dict | None = None, final: bool = True) -> LocalResult | None:
+    """See module doc. Never raises. A speculative call (final=False) only tries the typed key: no query embedding
+    mid-sentence (the embedding pool is shared with the endpoint's query vector; INDEX_SPEC_EMBED=1 allows it)."""
     meter = meter if meter is not None else {}
     if not config.INDEX or f is None:
         return None
@@ -158,6 +159,10 @@ async def local_first(f, query: str, meter: dict | None = None) -> LocalResult |
         cands, feats = ks.lookup(q, now)
         best = ks.heuristic([c for c in cands if c.path == "key"], feats) if cands else None
         if best is None:
+            if not final and not config.INDEX_SPEC_EMBED:
+                STATS["misses"] += 1
+                meter["index_why"] = "speculative: key only"
+                return None
             if not ks.plausible(q):
                 STATS["misses"] += 1
                 return None
@@ -200,13 +205,13 @@ async def local_first(f, query: str, meter: dict | None = None) -> LocalResult |
         return None
 
 
-def wrap_web(web_fn, f, query: str, meter: dict):
+def wrap_web(web_fn, f, query: str, meter: dict, final: bool = True):
     """router.route's paid web lane with the local tier in front of it."""
     if not config.INDEX:
         return web_fn
 
     async def go():
-        lr = await local_first(f, query, meter)
+        lr = await local_first(f, query, meter, final)
         if lr is None:
             return await web_fn()
         from ..lanes import WebResult

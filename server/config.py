@@ -328,6 +328,7 @@ KEYSTONE_DIR = Path(os.environ.get("KEYSTONE_DIR", DATA_DIR / "keystone"))
 INDEX_MAX_CELLS = int(os.environ.get("INDEX_MAX_CELLS", "20000"))
 INDEX_FP_DIM = int(os.environ.get("INDEX_FP_DIM", "256"))          # first-pass Matryoshka dims (runs/index/ann_bench.json)
 INDEX_TIMEOUT_MS = float(os.environ.get("INDEX_TIMEOUT_MS", "80")) # local lookup budget (embedding included)
+INDEX_SPEC_EMBED = os.environ.get("INDEX_SPEC_EMBED", "0") == "1"   # embedding lookups on speculative calls too
 INDEX_HASH = os.environ.get("INDEX_HASH", "1") == "1"              # learned answer-equivalence hash (candidate source)
 GRAPH_KEY = os.environ.get("GRAPH_KEY", "1") == "1"                # Arc-keyed typed edges (subject, relation)
 GRAPH_ACT = os.environ.get("GRAPH_ACT", "1") == "1"                # activation (session / user memory) ranking bias

@@ -313,7 +313,7 @@ async def route(query: str, f: Frame, *, final: bool, meter: dict, web_fn):
         # Keystone (server/keystone/): the local tier in front of the paid web lane (typed key / answer-equivalent
         # question / passages, behind the value-of-information gate). Free; labelled "from your Onset index".
         from .keystone import hook
-        web_fn = hook.wrap_web(web_fn, f, query, meter)
+        web_fn = hook.wrap_web(web_fn, f, query, meter, final)
     p = plan(f) if f.route != "local" else Plan("web", "", 0.0, {}, "local corpus question")
     meter.update(route=p.lane, route_vertical=p.vertical, route_conf=round(p.conf, 2), route_why=p.why[:80])
     if p.lane == "wait":
