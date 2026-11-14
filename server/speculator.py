@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, confidence, config, director, embed, lanes, narrow, rerank, searchcache
+from . import answer, confidence, config, director, embed, lanes, meter, narrow, rerank, searchcache
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
@@ -128,6 +128,10 @@ class Speculator:
         self.cheap_sigs: set = set()             # router plans (vertical + args) already looked up speculatively
         self.sig_fire: dict = {}                 # plan sig -> the speculative cheap lookup for it
         self.cheap_parent: dict[str, Fire] = {}  # query -> the cheap lookup of the same plan (drafts borrow it)
+        self.streams: list = []                  # meter: every answer stream of this question (drafts, soft, final)
+        self.meter_used = None                   # meter: the stream that answered (last finalize)
+        self.meter_metric: dict | None = None
+        self.usage_sent = False
 
     # ------------------------------------------------------------------ helpers
     def ms(self, t=None):
@@ -753,6 +757,7 @@ class Speculator:
                 if not own & {d.id for d in top}:
                     return                          # don't draft from other questions' results
                 st = answer.Stream(f.resolved_text, top, tag="draft", context=self.context, hint=f.answer_hint())
+                self.streams.append(st)
                 d = Draft(id=f"d{next(_ids)}", meaning_sig=f.meaning_sig, question=f.text, qvec=qvec, stream=st,
                           t_start=time.perf_counter(), doc_ids=tuple(x.id for x in top), content=f.content,
                           cover=cov.to_json() if cov is not None else None)
@@ -926,6 +931,7 @@ class Speculator:
         else:
             docs = [d for d, _ in ranked]
             st = answer.Stream(qtext, docs, tag="final", context=self.context, hint=f.answer_hint())
+            self.streams.append(st)
             if alt is not None:
                 st = answer.Race(st, alt)
         t_sources = time.perf_counter()
@@ -984,6 +990,8 @@ class Speculator:
             "sources": [d.title for d in docs],
             "error": st.error,
         })
+        self.meter_used, self.meter_metric = st, m
+        m.update(meter.fields(self.streams, st, m))     # answer-model tokens (used + wasted) and est. $
         emit({"t": "metric", **{k: v for k, v in m.items() if k != "answer"}})
         return m
 
@@ -1172,3 +1180,21 @@ class Speculator:
                 x.task.cancel()
         for d in self.drafts:
             d.stream.cancel()
+        self._usage_final()
+
+    def _usage_final(self):
+        """Meter: the question's final token tally once every stream is stopped (drafts still running when the metric
+        went out, a superseded soft answer). Emitted once; the client replaces the metric's token / $ fields with it.
+        A question that never got a metric (superseded) still reports its tokens: they were spent."""
+        if self.usage_sent or not self.streams:
+            return
+        self.usage_sent = True
+        try:
+            spec = [x for x in self.fires if not x.lane.startswith("final")]
+            f = meter.fields(self.streams, self.meter_used, self.meter_metric or {
+                "paid_calls": self._paid(), "spec_fires": len(spec), "spec_used": 0})
+            if self.meter_metric is not None:
+                self.meter_metric.update(f)            # session.history / eval rows carry the final tally too
+            self.emit({"t": "usage", **f, "answered": self.meter_metric is not None, "mode": self.mode})
+        except Exception:
+            pass
