@@ -1126,6 +1126,6 @@ Tests: tests/test_cost.py (13: presets, parity holds the paid call until the mea
 end-to-end parity <= baseline, meaning change gets one more call, multi-part within the plan cap, correction, no draft
 for a meaning being answered, parity drafts only a final meaning, parity waits for a slow free fact lookup, cached
 system prompt, meter prices cache hits / writes and splits them by answer / waste). tests/conftest.py pins
-COST_MODE=speed for the older speculation tests. Full suite 333 passed.
+COST_MODE=speed for the older speculation tests. Full suite 350 passed (rebased on main 9d06c14).
 Tools: eval/run_ab.py rows carry cost_mode + cache tokens, summaries mean_usd_llm / mean_usd_web, traces keep the
 end-of-turn score (COST_TRACE_EOT=1 emits it per update, eval only).
