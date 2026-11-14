@@ -324,6 +324,7 @@ VERIFY_TOL = float(os.environ.get("VERIFY_TOL", "0.01"))         # relative tole
 INDEX = os.environ.get("INDEX", "0") == "1"                        # ingest + local tier (default from the A/B)
 INDEX_SERVE = os.environ.get("INDEX_SERVE", "1") == "1"            # 0 = shadow: ingest + decide, never serve
 INDEX_PERSIST = os.environ.get("INDEX_PERSIST", "1") == "1"
+INDEX_SAVE_S = float(os.environ.get("INDEX_SAVE_S", "60"))         # persist at most this often (background thread)
 KEYSTONE_DIR = Path(os.environ.get("KEYSTONE_DIR", DATA_DIR / "keystone"))
 INDEX_MAX_CELLS = int(os.environ.get("INDEX_MAX_CELLS", "20000"))
 INDEX_FP_DIM = int(os.environ.get("INDEX_FP_DIM", "256"))          # first-pass Matryoshka dims (runs/index/ann_bench.json)

@@ -328,16 +328,26 @@ class CellStore:
                 "bytes_per_cell": round((self.text_bytes + vec_b + qv_b) / n) if n else 0,
                 "evicted": self.evicted, "full_dropped": self.full_dropped}
 
-    def save(self, path: Path):
+    def snapshot(self) -> tuple:
+        """A consistent copy for writing elsewhere (cheap: dict copies + array slices)."""
         with self.lock:
-            path.mkdir(parents=True, exist_ok=True)
             ids = sorted(self.cells)
-            meta = [asdict(self.cells[i]) for i in ids]
-            tmp = path / "cells.jsonl.tmp"
-            tmp.write_text("\n".join(json.dumps(m) for m in meta) + ("\n" if meta else ""))
-            np.savez(path / "cells_vec.tmp.npz", full=self.full[ids], qv=self.qv[ids].astype(np.float16), has_q=self.has_q[ids])
-            tmp.replace(path / "cells.jsonl")
-            (path / "cells_vec.tmp.npz").replace(path / "cells_vec.npz")
+            meta = [dict(self.cells[i].__dict__, ents=list(self.cells[i].ents), links=list(self.cells[i].links),
+                         arc=dict(self.cells[i].arc)) for i in ids]
+            return meta, self.full[ids].copy(), self.qv[ids].astype(np.float16), self.has_q[ids].copy()
+
+    @staticmethod
+    def write(path: Path, snap: tuple):
+        meta, full, qv, has_q = snap
+        path.mkdir(parents=True, exist_ok=True)
+        tmp = path / "cells.jsonl.tmp"
+        tmp.write_text("\n".join(json.dumps(m) for m in meta) + ("\n" if meta else ""))
+        np.savez(path / "cells_vec.tmp.npz", full=full, qv=qv, has_q=has_q)
+        tmp.replace(path / "cells.jsonl")
+        (path / "cells_vec.tmp.npz").replace(path / "cells_vec.npz")
+
+    def save(self, path: Path):
+        self.write(path, self.snapshot())
 
     def load(self, path: Path) -> int:
         try:

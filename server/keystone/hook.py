@@ -84,28 +84,47 @@ def _load(ks: Keystone):
         pass
 
 
+_saving = threading.Lock()
+
+
 def save(force: bool = False):
-    """Persist (cells + vectors, graph, codes) at most every 30 s. Never raises."""
+    """Persist (cells + vectors, graph, codes) at most every INDEX_SAVE_S. A cheap snapshot is taken here; the
+    serialisation and disk writes run on a background thread (a synchronous save stalled the event loop ~75 ms with
+    1.4k cells). force=True writes synchronously (tests, shutdown). Never raises."""
     if not config.INDEX_PERSIST or _ks is None:
         return
     now = time.time()
-    if not force and now - _last_save[0] < 30:
+    if not force and now - _last_save[0] < config.INDEX_SAVE_S:
         return
     _last_save[0] = now
-    import json
+    import copy
     try:
-        d = config.KEYSTONE_DIR
-        d.mkdir(parents=True, exist_ok=True)
-        with _lock:
-            _ks.cells.save(d)
-            # cell ids change on reload: rebuild codes on load from the saved order
-            (d / "graph.tmp").write_text(json.dumps(_ks.g.to_json(), default=list))
-            (d / "graph.tmp").replace(d / "graph.json")
-            ids = sorted(_ks.codes)
-            np.savez(d / "codes.npz", ids=np.array(ids, int), codes=np.array([_ks.codes[i] for i in ids], np.uint8)
-                     if ids else np.zeros((0, 8), np.uint8))
+        snap = _ks.cells.snapshot()
+        graph = copy.deepcopy(_ks.g.to_json())
+        ids = sorted(_ks.codes)
+        codes = (np.array(ids, int), np.array([_ks.codes[i] for i in ids], np.uint8) if ids else np.zeros((0, 8), np.uint8))
+    except Exception:  # noqa: BLE001
+        return
+    if force:
+        _write(config.KEYSTONE_DIR, snap, graph, codes)
+    else:
+        threading.Thread(target=_write, args=(config.KEYSTONE_DIR, snap, graph, codes), daemon=True).start()
+
+
+def _write(d, snap, graph, codes):
+    import json
+    if not _saving.acquire(blocking=False):
+        return                                   # a write is already in progress: the next save catches up
+    try:
+        from .cells import CellStore
+        CellStore.write(d, snap)
+        (d / "graph.tmp").write_text(json.dumps(graph, default=list))
+        (d / "graph.tmp").replace(d / "graph.json")
+        np.savez(d / "codes.npz", ids=codes[0], codes=codes[1])
     except Exception:  # noqa: BLE001
         pass
+    finally:
+        _saving.release()
 
 
 def is_live(f) -> bool:

@@ -34,7 +34,7 @@ def main():
     print("| set | index | n | ready p50 ms | ready p90 ms | correct | paid / q | answers from index | index-served fires |")
     print("|---|---|---:|---:|---:|---:|---:|---:|---:|")
     for s in ("q58", "showcase"):
-        for v in ("off", "cold", "warm"):
+        for v in ("off", "cold", "warm", "off2", "warm2", "off3", "warm3"):
             p = RUNS / f"ab_{s}_{v}.json"
             if not p.exists():
                 continue
