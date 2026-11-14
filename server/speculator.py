@@ -1215,7 +1215,7 @@ class Speculator:
             m["superseded"] = True
             return m
 
-        q = f.query() or " ".join(f.words)
+        q = f.query() or f.text           # (f.text: masked profanity / toxicity left out)
         qtext = f.resolved_text
         fplan = self._plan(f, final=True)
         if fplan is not None:

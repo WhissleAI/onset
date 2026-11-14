@@ -16,7 +16,7 @@ import time
 import numpy as np
 
 from . import frame as framemod
-from . import config, confidence, director, heard, lanes
+from . import config, confidence, director, heard, lanes, safety
 from . import memory as memmod
 from . import persona as personamod
 from .speculator import Speculator
@@ -24,6 +24,7 @@ from .tagger import Tagger
 from . import arcstate as arcstatemod
 
 _END = re.compile(r"[.?!]+$")
+TAGGER_EMIT = "entity,number,pii,events,intent,act,safety,state"     # server/tagger.py's default read-out
 CC = "discourse.assistant.command_complete"
 
 
@@ -94,7 +95,10 @@ class Session:
                  open_mic: bool = False, cost_mode: str | None = None, arcstate=None):
         # every event carries "q": the id of the question (utterance) it belongs to, so a client can tell this turn's
         # events from a previous turn's late ones (its answer streaming while the next question is heard)
-        self._out = emit
+        self._raw_out = emit
+        self._out = self._masking_out
+        self._amask: dict = {}                   # question id -> {"m": safety.AnswerMasker, "text": masked answer so far}
+        self.typed = False                       # typed turns (server/app.py Run.kind "typed"): no audio, Enter = endpoint
         self.qid = 0
         if config.ARC_OFF:
             mode = "plain"
@@ -103,7 +107,14 @@ class Session:
         self.cost_mode = cost_mode               # COST_MODE override for this session (server/cost.py); None = config
         self.plain = mode == "plain"           # Arc-off arm: no tagger read-out anywhere (frame.plain)
         self.open_mic = open_mic                 # open mic: statements are heard, not answered (open_mic_skip)
-        self.tagger = Tagger(domain=domain)
+        # the Arc Tagger with its own profanity / toxicity heads on (server/safety.py, TAGGER_SAFETY=1); the old word
+        # list is the fallback when the heads can't be enabled
+        self.safety_tagger = False
+        try:
+            self.tagger = Tagger(domain=domain, emit=safety.emit_list(TAGGER_EMIT), options=safety.tagger_options())
+            self.safety_tagger = safety.ENABLED
+        except ValueError:
+            self.tagger = Tagger(domain=domain)
         self.t0 = t0 or time.perf_counter()        # wall time of audio sample 0
         self.history: list[dict] = []
         self.semantic = mode == "headstart" and config.SEMANTIC_ENDPOINT
@@ -122,6 +133,12 @@ class Session:
         self.carry: dict = {}                # {"person": [...], "thing": [...]} from the last question + answer
         self.context = ""                    # last question + answer text, for the answer model
         self.ans_tagger = Tagger(domain="talk")
+        self.ans_mask = None                     # streaming handle that masks profanity in the answer text as it streams
+        if safety.ENABLED and not self.plain:
+            try:
+                self.ans_mask = Tagger(domain="talk", emit="profanity", options={"redact": "profanity=mask"})
+            except Exception:                    # the word list masks instead
+                self.ans_mask = None
         self.bg_tasks: list = []
         self.mem = memmod.Memory()           # entity memory across turns + user facts (server/memory.py)
         self.persona = personamod.Profile()  # who is asking + how to answer them (server/persona.py, PERSONA=1)
@@ -396,7 +413,8 @@ class Session:
         if self.plain:
             return framemod.plain(self.words)
         f = framemod.build(self.words, self.spans, self.current, self.events, self.prev_intent,
-                           local_ok=bool(len(lanes.index())), carry=self._carry(self.words) if carry is None else carry)
+                           local_ok=bool(len(lanes.index())), carry=self._carry(self.words) if carry is None else carry,
+                           safety_tagger=self.safety_tagger)
         if self.wconf and len(self.wconf) == f.n and any(c is not None for c in getattr(self, "confs", []) or []):
             f.wconf = tuple(self.wconf)                # only when the ear gives word confidences (Flux / nova)
         if config.DIRECTOR_PII:
@@ -418,6 +436,8 @@ class Session:
     def _persona_style(self, f, ws: list[dict]) -> dict | None:
         """How to answer this question (server/persona.py): sets f.persona_hint; returns {sig, style}. Never raises."""
         try:
+            if self.typed:                       # keystroke timing is not speech pace: no pace / pause signals
+                ws = [{"text": w.get("text", ""), "conf": None} for w in ws or []]
             sig = personamod.signals(f.words, ws, followup=bool(f.carried or f.inline or f.followup_of),
                                      prev_answered=bool(self.context), arc=self.arc,
                                      arc_x2=getattr(self, "arc_x2", None), intent=f.intent)
@@ -512,7 +532,7 @@ class Session:
             self.prev_intent = (f.intent, f.intent_p)
         if changed:
             self.emit({"t": "words", "words": self._words_json(),
-                       "from": k, "ms": self.spec.ms()})
+                       "from": k, "ms": self.spec.ms(), **({"typed": True} if self.typed else {})})
             self.emit({"t": "frame", **f.to_json(), "spans": [
                 {"type": s["type"], "start": s["start"], "end": s["end"], "text": s["text"]} for s in self.spans],
                 "arc": self.arc, "cc_word": self.cc_at, "ms": self.spec.ms(), "director": self._director_json()})
@@ -552,6 +572,11 @@ class Session:
             streams: memory is updated when it ends): a search now would be for "founded", wasted;
           - a statement of a user fact ("I live in Denver"): remembered, not searched.
         The frame is re-evaluated when the previous answer lands (_answer)."""
+        if self.mode == "headstart" and (safety.no_search(f.safety) or self._masked_empty(f)):
+            if not self.held_note:                   # self-harm / threat / hate, or nothing left after masking
+                self.held_note = True
+                self.emit({"t": "spec_hold", "why": "safety", "ms": self.spec.ms(), "words": f.text.split()})
+            return True
         if not config.MEM_HOLD or self.mode != "headstart":
             return False
         why = None
@@ -616,6 +641,8 @@ class Session:
             return False                           # open mic, not a request: the ear's final labels it, no answer
         if self.user_statement(f):
             return False                           # "I live in Denver": remembered at the final, not searched
+        if safety.no_search(f.safety) or self._masked_empty(f):
+            return False                           # answered at the final with a plain line, never searched
         if self.final_task is not None and not self.final_task.done():
             self.final_task.cancel()               # superseded by this longer question: one soft answer at a time
         prev = self.soft
@@ -859,7 +886,7 @@ class Session:
             job.update(words=list(self.words), spans=list(self.spans), current=self.current, events=self.events,
                        prev_intent=self.prev_intent)
             self.emit({"t": "words", "words": self._words_json(),
-                       "from": 0, "final": True, "ms": self.spec.ms()})
+                       "from": 0, "final": True, "ms": self.spec.ms(), **({"typed": True} if self.typed else {})})
             self.emit({"t": "frame", **f.to_json(), "final": True, "spans": [
                 {"type": s["type"], "start": s["start"], "end": s["end"], "text": s["text"]} for s in self.spans],
                 "cc_word": self.cc_at, "ms": self.spec.ms()})
@@ -876,8 +903,8 @@ class Session:
     def _arc_observe(self, f):
         """ArcState (server/arcstate.py): measure the closed question against this voice's usual, fold it in, show it."""
         st = arcstatemod.of(self)
-        if st is None or not self.words:
-            return
+        if st is None or not self.words or self.typed:
+            return                                   # typed turns: no audio, the voice baselines stay as they are
         try:
             t0 = self.times[0][0] if self.times and self.times[0] else None
             key = (None if t0 is None else round(float(t0), 1), tuple(self.words))
@@ -891,7 +918,7 @@ class Session:
 
     def _arc_turn(self, f):
         st = arcstatemod.of(self)
-        if st is None:
+        if st is None or self.typed:
             return
         try:
             subj = next((txt for t, txt in f.slots if t not in framemod.NUMBER_TYPES), "") or (f.carried or "")
@@ -950,7 +977,7 @@ class Session:
         f = None
         if job.get("superseded"):                 # corrected before its turn came (_reopen)
             spec.close()
-            return {"mode": self.mode, "question": " ".join(job.get("words") or []), "superseded": True}
+            return {"mode": self.mode, "question": self._said(job), "superseded": True}
         if self.plain:
             return await self._answer_plain(job, spec, last_end, q)
         try:
@@ -963,7 +990,8 @@ class Session:
                 if learned:
                     self.emit_memory(learned, why="user fact", q=q)
             f = framemod.build(job["words"], job["spans"], job["current"], job["events"], job["prev_intent"],
-                               local_ok=bool(len(lanes.index())), carry=self._carry(job["words"]))
+                               local_ok=bool(len(lanes.index())), carry=self._carry(job["words"]),
+                               safety_tagger=self.safety_tagger)
             if config.DIRECTOR_PII:
                 director.apply_pii(f, job.get("director"))
             pst = self._persona_style(f, ws) if self._persona_on() else None
@@ -975,12 +1003,14 @@ class Session:
             spec.context = self.context
             if learned and self.user_statement(f) and soft is None:
                 return self._ack_user(job, spec, f, learned, last_end, q)
+            if safety.no_search(f.safety) or self._masked_empty(f):
+                return self._safety_answer(job, spec, f, last_end, q)
             why = self._not_request(f, job.get("director"), ws) if (self.open_mic and soft is None) else None
             if why:
                 # open mic, not a request: heard and labelled, no search and no answer (not part of the conversation)
                 self.emit({"t": "heard", "why": why, "ms": spec.ms(), "speech_end_ms": round(last_end * 1000),
                            "words": [framemod.norm(w) for w in job["words"]], "frame": f.to_json(), "q": q})
-                return {"mode": self.mode, "question": " ".join(job["words"]), "skipped": why}
+                return {"mode": self.mode, "question": self._said(job), "skipped": why}
             if soft is not None and soft["sig"] == meaning(f):
                 # the ear confirms what we already answered at the semantic endpoint
                 if final_task is not None and not final_task.done():
@@ -1004,7 +1034,7 @@ class Session:
         except Exception as e:
             err = f"{type(e).__name__}: {e}"[:300]
             self.emit({"t": "answer_error", "error": err, "q": q})
-            m = {"mode": self.mode, "question": " ".join(job.get("words") or [w["text"] for w in ws]),
+            m = {"mode": self.mode, "question": self._said(job),
                  "endpoint_by": "ear", "path": "failed", "error": err, "failed": True}
             self.emit({"t": "metric", **m, "q": q})
         finally:
@@ -1016,6 +1046,9 @@ class Session:
             m["superseded"] = True
             self.superseded.append(m)
             return m
+        if self.typed:
+            m["modality"] = "typed"
+        self._mask_metric(m, q)
         job["metric"] = m
         if job.get("persona") is not None and not m.get("failed"):
             self._persona_learn(f, m, spec, job["persona"])
@@ -1104,6 +1137,91 @@ class Session:
         job["metric"] = m
         self.history.append(m)
         return m
+
+    def _said(self, job: dict) -> str:
+        """A closed question's words for a metric / log line, masked words left out (server/safety.py)."""
+        words = job.get("words") or [w.get("text", "") for w in job.get("ws") or []]
+        try:
+            m = safety.mask_idx(words, job.get("spans") or [], tagger=self.safety_tagger)
+        except Exception:
+            m = {}
+        return " ".join(w for i, w in enumerate(words) if w and i not in m)
+
+    @staticmethod
+    def _masked_empty(f) -> bool:
+        """Masking (profanity / toxicity) left nothing to search: "you are a stupid idiot"."""
+        return bool(getattr(f, "mask_tok", None)) and not f.query().strip()
+
+    def _safety_answer(self, job: dict, spec, f, last_end: float, q: int) -> dict:
+        """A turn that gets no web search (server/safety.py): self-harm cues get a short supportive line with a crisis
+        resource; a threat / hate turn, or one with nothing left after masking, a plain one-line decline. No search, no
+        model call; nothing from it goes into memory, Keystone or the persona profile."""
+        t_end = self.t0 + last_end
+        self.emit({"t": "endpoint", "ms": spec.ms(), "speech_end_ms": round(last_end * 1000), "frame": f.to_json(),
+                   "by": "ear", "q": q, **({"modality": "typed"} if self.typed else {})})
+        care = f.safety == "self_harm"
+        text = safety.CRISIS_LINE if care else safety.DECLINE_LINE
+        self.emit({"t": "sources", "ms": spec.ms(), "docs": [], "q": q})
+        self.emit({"t": "answer", "delta": text, "ms": spec.ms(), "q": q})
+        now = time.perf_counter()
+        m = {"mode": self.mode, "question": f.text, "query": "", "intent": f.intent, "endpoint_by": "ear",
+             "path": "safety", "answer_by": "safety", "answer": text, "sources": [], "n_sources": 0,
+             "safety": f.safety or "masked", "ready_ms": round((now - t_end) * 1000),
+             "sources_ms": round((now - t_end) * 1000), "done_ms": round((now - t_end) * 1000), "web_calls": 0,
+             "paid_calls": 0, "credits": 0.0, **({"modality": "typed"} if self.typed else {})}
+        self.emit({"t": "metric", **{k: v for k, v in m.items() if k != "answer"}, "q": q})
+        spec.close()
+        job["metric"] = m
+        job["safety"] = True
+        self.history.append(m)
+        return m
+
+    # ------------------------------------------------------------------ answer masking (server/safety.py)
+    def _masking_out(self, e: dict):
+        """Every event leaves through here: answer text is masked as it streams (whole words; the trailing partial
+        word waits for the next delta, the rest is flushed before the metric). Never raises: on any error the event
+        passes through unchanged."""
+        if self.typed and e.get("t") == "metric" and "modality" not in e:
+            e = {**e, "modality": "typed"}
+        if not safety.ENABLED or getattr(self, "plain", False):
+            return self._raw_out(e)
+        try:
+            t, q = e.get("t"), e.get("q")
+            if t in ("endpoint", "extended"):
+                self._amask.pop(q, None)          # a new answer stream for this question
+            elif t == "answer":
+                st = self._amask.get(q)
+                if st is None:
+                    for k in [k for k in self._amask if k != q][:-2]:
+                        self._amask.pop(k, None)  # keep the last few questions only
+                    st = self._amask[q] = {"m": safety.AnswerMasker(self.ans_mask), "text": ""}
+                    st["m"].reset()
+                d = st["m"].feed(e.get("delta") or "")
+                if not d:
+                    return
+                st["text"] += d
+                return self._raw_out({**e, "delta": d})
+            elif t in ("metric", "answer_error"):
+                st = self._amask.get(q)
+                if st is not None:
+                    rest = st["m"].flush()
+                    if rest:
+                        st["text"] += rest
+                        self._raw_out({"q": q, "t": "answer", "delta": rest, "ms": e.get("ms", self.spec.ms())})
+                    if t == "metric":
+                        st["done"] = True
+                        if st["m"].masked:
+                            e = {**e, "answer_masked": st["m"].masked}
+        except Exception:
+            pass
+        return self._raw_out(e)
+
+    def _mask_metric(self, m: dict, q: int):
+        """The answer kept in history / memory / Keystone is the masked one the user saw."""
+        st = self._amask.get(q)
+        if st is not None and st.get("done") and st["m"].masked and m.get("answer"):
+            m["answer"] = st["text"]
+            m["answer_masked"] = st["m"].masked
 
     def _remember(self, f, m, spec=None, q: int | None = None):
         """Conversation memory: entities of the question and of the answer, typed person vs thing (the one-turn
@@ -1276,3 +1394,5 @@ class Session:
         self.pending_finals.clear()
         self.tagger.close()
         self.ans_tagger.close()
+        if self.ans_mask is not None:
+            self.ans_mask.close()

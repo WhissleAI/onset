@@ -228,8 +228,7 @@ def step_feats2(r: dict, prev: dict | None, f=None, plan=None, groups=GROUP_ORDE
             d[f"pii_{k}"] = float(any(s["type"] == f"safety.pii.{k}" for s in sp))
         d["pii_other"] = float(any(s.get("family") == "pii" and s["type"].split(".")[-1] not in PII_K for s in sp))
         d["pii_any"] = float(bool(f.redact_tok))
-        from .frame import PROFANITY
-        d["profanity"] = float(any(norm(w) in PROFANITY for w in r["words"]))
+        d["profanity"] = float(bool(getattr(f, "mask_tok", None)))     # server/safety.py (tagger heads; list fallback)
         for k in NUM_K:
             d[f"num_{k}"] = float(any(s["type"] == f"entity.number.{k}" for s in sp))
         d["n_num"] = min(sum(s.get("family") == "number" and s["type"] != "entity.numeral" for s in sp), 4) / 4
@@ -458,8 +457,7 @@ def apply_pii(f, out: dict | None, thr: float | None = None) -> bool:
     men = {i for sp in (getattr(f, "spans", None) or []) if str(sp.get("type", "")).startswith("entity.mention")
            for i in range(sp["start"], sp["end"])}
     hide = {i for i in hide if not (i in men and not any(c.isdigit() for c in str(f.words[i])))}
-    from .frame import PROFANITY
-    hide |= {i for i, w in enumerate(f.words) if norm(w) in PROFANITY}
+    hide |= set(getattr(f, "mask_tok", ()) or ())        # profanity / toxicity stay hidden (server/safety.py)
     f.redact_tok = frozenset(hide)
     return True
 

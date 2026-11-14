@@ -328,7 +328,9 @@ def test_superseded_soft_answer_emits_nothing(monkeypatch):
     answers = [e for e in ev if e["t"] == "answer"]
     # one answer only: the superseded soft answer (Paris) emitted no sources, tokens or metric
     assert len(metrics) == 1 and "tomorrow" in metrics[0]["question"], [m["question"] for m in metrics]
-    assert len(sources) == 1 and len(answers) == 1 and "tomorrow" in answers[0]["delta"].lower()
+    # (the answer masker, server/safety.py, may split a delta at its last word: one answer, possibly two events)
+    assert len(sources) == 1 and len({e["q"] for e in answers}) == 1 and \
+        "tomorrow" in "".join(e["delta"] for e in answers).lower()
     assert len(s.history) == 1 and "tomorrow" in r["query"]
 
 

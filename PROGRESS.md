@@ -1786,6 +1786,7 @@ the same value for over an hour), so the per-call numbers are the ledger.
   install the site into the Mac app with `HEADSTART_DATA_DIR=<app data dir> .venv/bin/python index/build_site.py
   --rebuild` (or copy `runs/sites/docs.tavily.com`), not done while the user was testing; scoped questions add one
   query embedding (~40 ms idle, up to the 800 ms cap under load) to their paid-lane fallback.
+
 ## Continuous training (branch feat/trainer; scripts/train_cycle.sh, eval/train/, tests/test_train_loop.py)
 A background loop retrains the learned parts on new real + synthetic data and promotes a model only when it beats the
 current one on fixed held-out sets. `scripts/train_cycle.sh start | stop | status | once | dry-run`; log
@@ -1876,3 +1877,60 @@ Model versions: search director v000 (2026-11-13) · Keystone director v000 (202
   turn) + Results checks (verbatim quotes for every set, 27% recomputed from the credit totals, no number twice, lane
   on every card, comparison not in the accent). Playwright 1280x720 light + dark (busy 8-turn session): no console
   errors, no horizontal scroll, no overlapping labels small or big, no keys leak while open.
+
+## Typed questions + streaming redaction with the Arc Tagger (branch feat/typed; server/safety.py, tests/test_typed.py)
+**Text box (TYPED_INPUT=1, default on).** A search bar above the transcript ("/" or ⌘K focuses it, Enter sends, Esc
+leaves; Space push-to-talk is unchanged outside the box). Typed text goes through the same Session as speech: the page
+sends the whole text on every keystroke (`{t:"type", rid, text, final}`, server/app.py `Run.type_text`); finished words
+(followed by a space) stream into the Arc Tagger with keystroke timings (`TypedText`: a word starts at its first
+keystroke and ends when it was finished), so frame, speculator, router, Keystone, memory / ellipsis, persona and
+calibrate run as for a spoken turn and free lookups fire while typing. Enter is the endpoint (the last word's end =
+Enter, so `ready_ms` is measured from Enter). A typed run has no ear (no audio, no cloud ear connection), no semantic /
+pause endpoint, no Arc state update (voice baselines untouched), persona gets no pace / pause signals, the director
+gets no audio streams (x2/aw absent = its neutral `*_ok=0` inputs); every metric carries `modality: "typed"`. Race
+mode works: the baseline searches at Enter. A ticker re-sends the finished words every 150 ms so the speculator's
+stability timers advance while the user pauses. Not built: the optional "typing pause + command_complete" endpoint.
+- Measured (eval/typed_eval.py, 30 showcase questions, Onset only, WEB_BACKEND=wikipedia, INDEX=0, caches cleared
+  before every ask, fresh connection, arm order alternating; typed at 5 chars/s with jitter, ~60 wpm):
+  time from Enter to the first answer token on screen, **typed p50 1110 ms / p90 1679** vs **pasted p50 1325 / p90
+  1926**; paired median **232 ms sooner** when typed (21 of 30 faster); 2.1 early lookups per typed question fired
+  before Enter (0 when pasted). Server `ready_ms` p50 1031 vs 1179. The page-side number includes ~75 ms p50 of
+  socket + rendering + the answer masker holding the first partial word (client time minus server ready_ms). Machine
+  load 4-17 during the run. Numbers: eval/typed/results.json.
+
+**Streaming redaction (TAGGER_SAFETY=1, default on).** The hard-coded PROFANITY list (frame.py, director.py x2) is now
+only the fallback (TAGGER_SAFETY=0, or a handle that can't enable the heads). The session tagger emits `profanity,
+toxicity` and sets `redact=profanity=mask,toxicity=mask` (+ self-harm flag threshold 0.3, as configs/trust_safety_gaming
+.json); `server/safety.py` turns the spans and utterance flags into:
+- masked words (`frame.mask_tok`): out of the query, `f.text` / `clean_text` / `kept_text` (so the metric, logs, drafts,
+  history, memory, Keystone `note_answer`), the persona profile; shown as "f***" with a small label in the transcript
+  while "Mask profanity in the transcript" is on (default on; display only). Profanity spans >= 0.5; toxicity spans
+  >= 0.6, and once a turn has one >= 0.6 its other toxicity spans >= 0.5 too ("stupid IDIOT" 0.60; a lone "black
+  HOLE" 0.59 stays); a toxicity span on a tagged entity mention is never masked ("Dick Van Dyke", "Peru" after an
+  insult), a profanity span inside one only if the word is on the old list.
+- a turn flag (`frame.safety`): self_harm (tagger flags or a few unambiguous first-person phrases) -> no search, a
+  short supportive line with 988 / findahelpline.com; threat / hate -> no search, "I won't search for that."; insult ->
+  the insult is masked and the rest searched; nothing left after masking -> the decline line. No-search turns hold the
+  speculator (`spec_hold why=safety`), never soft-answer, and are kept out of memory, Keystone and persona.
+- the answer: profanity in the streamed answer text is masked too (a separate streaming tagger handle per session,
+  whole words; the trailing partial word waits for the next delta, flushed before the metric); the stored answer
+  (history / memory / Keystone) is the masked one.
+- Measured (eval/redaction_eval.py on eval/redaction/utterances.jsonl, 60 labelled utterances: 14 clean, 14 traps, 14
+  profane, 8 toxic, 5 self-harm, 5 PII; streamed word by word like a Session):
+
+  | | old word list | Arc Tagger heads |
+  |---|---|---|
+  | words masked: precision | 0.77 (10/13) | **0.84** (21/25) |
+  | words masked: recall | 0.40 (10/25) | **0.84** (21/25) |
+  | false masks on clean + trap rows | 3 ("dick" x3) | **0** |
+  | toxic turn flag (insult / hate / threat) P / R | - / 0.00 | 1.00 / 0.75 (misses "I will kill you" and "my boss is a worthless piece of garbage") |
+  | self-harm turn flag P / R | - / 0.00 | 1.00 / 1.00 (the tagger's own flags: 0 / 5 in streaming; the cue phrases do the work, and they were written with this set: optimistic) |
+  | added latency per streaming update | | ~0 ms p50 (-0.03 to +0.03 across runs), +0.02 to +0.13 ms p95 |
+
+  The tagger's remaining "false" masks are inside toxic turns ("shut up", "him until"); misses: "crap", "worthless
+  garbage", "fat". On the 92 eval questions (50 + 30 showcase + 12 current) the safety heads change no query and flag
+  no turn (scratch check: tagger streamed with and without the heads), so spoken p50 / accuracy are unaffected.
+- Tests: tests/test_typed.py (14): typed words + timings, mask decisions, flags, answer masker (list + tagger),
+  frame masking, typed Session turn (no Arc state, masked answer), no-search turns, spoken profanity, ws race run.
+- Screenshots: scratchpad/feature_shots/typed/ (typing mid-question with live chips, typed answer, masked transcript,
+  self-harm line; light + dark; no console errors, no horizontal scroll).

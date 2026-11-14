@@ -1,0 +1,986 @@
+{
+ "date": "2026-11-14 13:54",
+ "web_backend": "wikipedia (server env)",
+ "cps": 5.0,
+ "modes": [
+  "headstart"
+ ],
+ "summary": {
+  "headstart.typed": {
+   "n": 30,
+   "enter_to_answer_p50_ms": 1110,
+   "enter_to_answer_p90_ms": 1679,
+   "server_ready_p50_ms": 1031,
+   "fires_before_enter_mean": 2.1
+  },
+  "headstart.pasted": {
+   "n": 30,
+   "enter_to_answer_p50_ms": 1325,
+   "enter_to_answer_p90_ms": 1926,
+   "server_ready_p50_ms": 1179,
+   "fires_before_enter_mean": 0.0
+  }
+ },
+ "rows": [
+  {
+   "id": "sc01",
+   "text": "what's the weather gonna be like in Chicago tomorrow",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 233,
+     "ready_ms": 216,
+     "path": "speculative-hit",
+     "lane": "card",
+     "spec_fires": 2,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 670,
+     "ready_ms": 593,
+     "path": "speculative-hit",
+     "lane": "card",
+     "spec_fires": 2,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc02",
+   "text": "hey, did the Kansas City Chiefs win their game on Sunday",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1893,
+     "ready_ms": 1391,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1724,
+     "ready_ms": 1710,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 0,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc03",
+   "text": "um, what's the score of the Celtics game right now",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1279,
+     "ready_ms": 1271,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1539,
+     "ready_ms": 1389,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 0,
+     "spec_used": 0,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc04",
+   "text": "hey, when is Manchester United playing their next match",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1926,
+     "ready_ms": 1535,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 0,
+     "spec_used": 0,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 745,
+     "ready_ms": 719,
+     "path": "pool-reuse",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc05",
+   "text": "hey, what's the latest news about OpenAI this week",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1503,
+     "ready_ms": 1496,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 0,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1149,
+     "ready_ms": 1073,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc06",
+   "text": "how much is one Bitcoin worth right now in US dollars",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 441,
+     "ready_ms": 355,
+     "path": "card-hit",
+     "lane": "card",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 149,
+     "ready_ms": 71,
+     "path": "card-hit",
+     "lane": "card",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc07",
+   "text": "I'm baking something, how many ounces are in one cup",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 288,
+     "ready_ms": 274,
+     "path": "speculative-hit",
+     "lane": "card",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 144,
+     "ready_ms": 66,
+     "path": "speculative-hit",
+     "lane": "card",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc08",
+   "text": "what's a hundred US dollars in euros at today's rate",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 262,
+     "ready_ms": 180,
+     "path": "card-hit",
+     "lane": "card",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 46,
+     "ready_ms": 38,
+     "path": "card-hit",
+     "lane": "card",
+     "spec_fires": 2,
+     "spec_used": 2,
+     "fires_before_enter": 3,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc09",
+   "text": "how many miles is a marathon, like, exactly, to the decimal",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 889,
+     "ready_ms": 888,
+     "path": "pool-reuse",
+     "lane": "facts",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 2023,
+     "ready_ms": 1935,
+     "path": "speculative-miss",
+     "lane": "facts",
+     "spec_fires": 0,
+     "spec_used": 0,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc10",
+   "text": "okay so, how do I get a red wine stain out of a carpet",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1234,
+     "ready_ms": 1160,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1216,
+     "ready_ms": 1213,
+     "path": "coverage-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc11",
+   "text": "how long should I boil an egg if I want the yolk soft",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1472,
+     "ready_ms": 1229,
+     "path": "pool-reuse",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1224,
+     "ready_ms": 1143,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc12",
+   "text": "how do I take a screenshot on a Mac, just part of the screen",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1685,
+     "ready_ms": 1467,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1363,
+     "ready_ms": 1361,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc13",
+   "text": "uh, my iPhone won't charge anymore, what should I try first",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1726,
+     "ready_ms": 1718,
+     "path": "coverage-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1489,
+     "ready_ms": 1211,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 0,
+     "spec_used": 0,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc14",
+   "text": "what are the usual symptoms of strep throat in adults",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1779,
+     "ready_ms": 1683,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 0,
+     "spec_used": 0,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 710,
+     "ready_ms": 704,
+     "path": "pool-reuse",
+     "lane": "web",
+     "spec_fires": 2,
+     "spec_used": 1,
+     "fires_before_enter": 3,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc15",
+   "text": "is it bad to take ibuprofen on an empty stomach",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 691,
+     "ready_ms": 662,
+     "path": "draft-reuse",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 2140,
+     "ready_ms": 1576,
+     "path": "pool-reuse",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc16",
+   "text": "what time does the Louvre in Paris close today",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1854,
+     "ready_ms": 1752,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 938,
+     "ready_ms": 736,
+     "path": "pool-reuse",
+     "lane": "web",
+     "spec_fires": 2,
+     "spec_used": 2,
+     "fires_before_enter": 3,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc17",
+   "text": "what are some really good ramen places in Seattle",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1393,
+     "ready_ms": 1387,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 3,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 3,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1222,
+     "ready_ms": 1145,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc18",
+   "text": "is the Apple Store on Fifth Avenue in New York open twenty four hours",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1842,
+     "ready_ms": 1761,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1040,
+     "ready_ms": 883,
+     "path": "pool-reuse",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc19",
+   "text": "do I need a visa to visit Japan from the US",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1500,
+     "ready_ms": 1495,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1237,
+     "ready_ms": 1150,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc20",
+   "text": "when's the best time of year to visit Iceland to see the northern lights",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1953,
+     "ready_ms": 1494,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1679,
+     "ready_ms": 1675,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 0,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc21",
+   "text": "how long is the flight from New York to London",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1253,
+     "ready_ms": 1248,
+     "path": "speculative-miss",
+     "lane": "facts",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1501,
+     "ready_ms": 1413,
+     "path": "speculative-hit",
+     "lane": "facts",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc22",
+   "text": "which one's better for photos, the iPhone 17 Pro or the Pixel 10 Pro",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1246,
+     "ready_ms": 1166,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1430,
+     "ready_ms": 1424,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 0,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc23",
+   "text": "what's the best robot vacuum for a house with a lot of pet hair",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 738,
+     "ready_ms": 735,
+     "path": "pool-reuse",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1862,
+     "ready_ms": 1787,
+     "path": "coverage-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc24",
+   "text": "hmm, what does the word ubiquitous actually mean, exactly",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1401,
+     "ready_ms": 1186,
+     "path": "route-hit+cover-web",
+     "lane": "facts",
+     "spec_fires": 1,
+     "spec_used": 0,
+     "fires_before_enter": 0,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 843,
+     "ready_ms": 839,
+     "path": "route-hit+cover-web",
+     "lane": "facts",
+     "spec_fires": 2,
+     "spec_used": 0,
+     "fires_before_enter": 3,
+     "web_calls": 3,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc25",
+   "text": "so, um, what exactly is a Roth IRA and how does it work",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 755,
+     "ready_ms": 752,
+     "path": "route-hit",
+     "lane": "facts",
+     "spec_fires": 2,
+     "spec_used": 1,
+     "fires_before_enter": 3,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1154,
+     "ready_ms": 1085,
+     "path": "speculative-hit",
+     "lane": "facts",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc26",
+   "text": "what can I use instead of buttermilk in pancakes",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1219,
+     "ready_ms": 1146,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 2313,
+     "ready_ms": 2304,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 0,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc27",
+   "text": "what's the weather in Boston, sorry, I mean Denver",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 214,
+     "ready_ms": 200,
+     "path": "speculative-hit",
+     "lane": "card",
+     "spec_fires": 2,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 326,
+     "ready_ms": 231,
+     "path": "speculative-hit",
+     "lane": "card",
+     "spec_fires": 2,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc28",
+   "text": "how many teaspoons are in a tablespoon, actually, make that a quarter cup",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 247,
+     "ready_ms": 166,
+     "path": "speculative-hit",
+     "lane": "card",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 115,
+     "ready_ms": 103,
+     "path": "route-card",
+     "lane": "card",
+     "spec_fires": 1,
+     "spec_used": 0,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc29",
+   "text": "when is the next SpaceX Starship launch happening",
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1179,
+     "ready_ms": 1174,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1249,
+     "ready_ms": 1172,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 0,
+     "spec_used": 0,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  },
+  {
+   "id": "sc30",
+   "text": "who won the Formula One Grand Prix this past weekend",
+   "pasted": {
+    "headstart": {
+     "enter_to_answer_ms": 1405,
+     "ready_ms": 1339,
+     "path": "speculative-hit",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 0,
+     "web_calls": 1,
+     "failed": false,
+     "modality": "typed"
+    }
+   },
+   "typed": {
+    "headstart": {
+     "enter_to_answer_ms": 1443,
+     "ready_ms": 1440,
+     "path": "speculative-miss",
+     "lane": "web",
+     "spec_fires": 1,
+     "spec_used": 1,
+     "fires_before_enter": 2,
+     "web_calls": 2,
+     "failed": false,
+     "modality": "typed"
+    }
+   }
+  }
+ ]
+}

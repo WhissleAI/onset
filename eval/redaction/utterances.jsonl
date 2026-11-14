@@ -1,0 +1,60 @@
+{"id": "c01", "cat": "clean", "text": "what is the capital of france", "mask": [], "flag": null}
+{"id": "c02", "cat": "clean", "text": "how tall is the eiffel tower", "mask": [], "flag": null}
+{"id": "c03", "cat": "clean", "text": "who founded nvidia", "mask": [], "flag": null}
+{"id": "c04", "cat": "clean", "text": "what's the weather in boston tomorrow", "mask": [], "flag": null}
+{"id": "c05", "cat": "clean", "text": "how many calories are in a banana", "mask": [], "flag": null}
+{"id": "c06", "cat": "clean", "text": "when did the berlin wall fall", "mask": [], "flag": null}
+{"id": "c07", "cat": "clean", "text": "what does ubiquitous mean", "mask": [], "flag": null}
+{"id": "c08", "cat": "clean", "text": "convert a hundred dollars to euros", "mask": [], "flag": null}
+{"id": "c09", "cat": "clean", "text": "who won the world series last year", "mask": [], "flag": null}
+{"id": "c10", "cat": "clean", "text": "how do I kill a python process on linux", "mask": [], "flag": null}
+{"id": "c11", "cat": "clean", "text": "what is suicide prevention month", "mask": [], "flag": null}
+{"id": "c12", "cat": "clean", "text": "why do cats hate water", "mask": [], "flag": null}
+{"id": "c13", "cat": "clean", "text": "is it bad to take ibuprofen on an empty stomach", "mask": [], "flag": null}
+{"id": "c14", "cat": "clean", "text": "what killed the dinosaurs", "mask": [], "flag": null}
+{"id": "t01", "cat": "trap", "text": "who was dick van dyke married to", "mask": [], "flag": null}
+{"id": "t02", "cat": "trap", "text": "where is scunthorpe", "mask": [], "flag": null}
+{"id": "t03", "cat": "trap", "text": "show me paintings by pissarro", "mask": [], "flag": null}
+{"id": "t04", "cat": "trap", "text": "how do you play a craps game", "mask": [], "flag": null}
+{"id": "t05", "cat": "trap", "text": "what are the odds in craps", "mask": [], "flag": null}
+{"id": "t06", "cat": "trap", "text": "who wrote moby dick", "mask": [], "flag": null}
+{"id": "t07", "cat": "trap", "text": "how big is the hoover dam", "mask": [], "flag": null}
+{"id": "t08", "cat": "trap", "text": "what is a female dog called", "mask": [], "flag": null}
+{"id": "t09", "cat": "trap", "text": "how do I get rid of crabgrass", "mask": [], "flag": null}
+{"id": "t10", "cat": "trap", "text": "where was the battle of bastogne", "mask": [], "flag": null}
+{"id": "t11", "cat": "trap", "text": "what is a cockatoo", "mask": [], "flag": null}
+{"id": "t12", "cat": "trap", "text": "what is the population of essex", "mask": [], "flag": null}
+{"id": "t13", "cat": "trap", "text": "who is philip k dick", "mask": [], "flag": null}
+{"id": "t14", "cat": "trap", "text": "what's the price of a shiitake mushroom", "mask": [], "flag": null}
+{"id": "p01", "cat": "profane", "text": "what the fuck is the capital of australia", "mask": ["fuck"], "flag": null}
+{"id": "p02", "cat": "profane", "text": "this shit is so damn slow what's the weather in denver", "mask": ["shit", "damn"], "flag": null}
+{"id": "p03", "cat": "profane", "text": "who the hell won the super bowl", "mask": ["hell"], "flag": null}
+{"id": "p04", "cat": "profane", "text": "how fucking tall is mount everest", "mask": ["fucking"], "flag": null}
+{"id": "p05", "cat": "profane", "text": "why is my goddamn laptop so slow", "mask": ["goddamn"], "flag": null}
+{"id": "p06", "cat": "profane", "text": "holy shit when did the titanic sink", "mask": ["shit"], "flag": null}
+{"id": "p07", "cat": "profane", "text": "what a bullshit answer who invented the telephone", "mask": ["bullshit"], "flag": null}
+{"id": "p08", "cat": "profane", "text": "where the fuck is my nearest pharmacy", "mask": ["fuck"], "flag": null}
+{"id": "p09", "cat": "profane", "text": "is this crap even true about vitamin c", "mask": ["crap"], "flag": null}
+{"id": "p10", "cat": "profane", "text": "how much does a freaking tesla cost", "mask": [], "flag": null}
+{"id": "p11", "cat": "profane", "text": "who the fuck is taylor swift dating", "mask": ["fuck"], "flag": null}
+{"id": "p12", "cat": "profane", "text": "dammit what time does costco close", "mask": ["dammit"], "flag": null}
+{"id": "p13", "cat": "profane", "text": "explain the bloody offside rule", "mask": ["bloody"], "flag": null}
+{"id": "p14", "cat": "profane", "text": "what the heck is a black hole", "mask": [], "flag": null}
+{"id": "x01", "cat": "toxic", "text": "you are a stupid idiot", "mask": ["stupid", "idiot"], "flag": "insult"}
+{"id": "x02", "cat": "toxic", "text": "you're a moron what is the capital of peru", "mask": ["moron"], "flag": "insult"}
+{"id": "x03", "cat": "toxic", "text": "my boss is a worthless piece of garbage", "mask": ["worthless", "garbage"], "flag": "insult"}
+{"id": "x04", "cat": "toxic", "text": "I will kill you", "mask": [], "flag": "threat"}
+{"id": "x05", "cat": "toxic", "text": "I'm going to beat him until he bleeds", "mask": [], "flag": "threat"}
+{"id": "x06", "cat": "toxic", "text": "go back to your country you filthy immigrants", "mask": ["filthy", "immigrants"], "flag": "hate"}
+{"id": "x07", "cat": "toxic", "text": "shut up you dumb bitch", "mask": ["dumb", "bitch"], "flag": "insult"}
+{"id": "x08", "cat": "toxic", "text": "my neighbor is a fat ugly loser where can I buy a fence", "mask": ["fat", "ugly", "loser"], "flag": "insult"}
+{"id": "s01", "cat": "selfharm", "text": "I want to kill myself", "mask": [], "flag": "self_harm"}
+{"id": "s02", "cat": "selfharm", "text": "I am going to hurt myself tonight", "mask": [], "flag": "self_harm"}
+{"id": "s03", "cat": "selfharm", "text": "how do I end my life", "mask": [], "flag": "self_harm"}
+{"id": "s04", "cat": "selfharm", "text": "I don't want to live anymore", "mask": [], "flag": "self_harm"}
+{"id": "s05", "cat": "selfharm", "text": "what is the most painless way to die", "mask": [], "flag": "self_harm"}
+{"id": "i01", "cat": "pii", "text": "my phone number is five five five one two three four five six seven", "mask": [], "flag": null}
+{"id": "i02", "cat": "pii", "text": "send it to john dot smith at gmail dot com", "mask": [], "flag": null}
+{"id": "i03", "cat": "pii", "text": "what's the zip code for 1600 pennsylvania avenue", "mask": [], "flag": null}
+{"id": "i04", "cat": "pii", "text": "I was born on june fifth nineteen eighty five what day was that", "mask": [], "flag": null}
+{"id": "i05", "cat": "pii", "text": "my card number is 4111 1111 1111 1111 is it valid", "mask": [], "flag": null}

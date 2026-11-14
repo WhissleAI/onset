@@ -10,6 +10,10 @@ Client -> server
   {"t":"hello","client":"<random id>"}  this browser's id (localStorage): its memory is kept in runs/memory/ across
                                     reconnects (server/memory.py Store; TTLs MEM_CONV_TTL_S / MEM_USER_TTL_S)
   {"t":"forget"}                      clear this browser's memory (conversation + user facts), here and on disk
+  {"t":"start","typed":true,"modes"}  a typed question (TYPED_INPUT=1): no ear, no audio; words come from "type"
+  {"t":"type","rid","text","final"}   the text box as it is typed (whole text each keystroke). Finished words (followed
+                                    by a space) stream into the tagger with keystroke timings, so the speculator works
+                                    while typing; final=true is Enter: the endpoint. Starts a typed run if none is open.
   "fresh": true on start              a scripted conversation: start a new conversation (user facts are kept)
 Server -> client: JSON events, each with "mode" ("headstart" | "baseline" | "ear" | "sys"):
   sys    {"t":"ready"}, {"t":"error","error"}, {"t":"run_done"}
@@ -35,7 +39,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import answer, config, embed, ear, lanes
+from . import answer, config, embed, ear, lanes, safety
 from . import cost as costmod
 from . import memory as memmod
 from . import persona as personamod
@@ -46,6 +50,8 @@ from .session import Session
 ROOT = config.ROOT
 WEB = ROOT / "web"
 REQUEST_LOG = os.environ.get("REQUEST_LOG", "1") == "1"   # one line per connection / run / question on stdout
+TYPED_INPUT = os.environ.get("TYPED_INPUT", "1") == "1"     # the text box: typed questions through the same pipeline
+TYPED_TICK_S = float(os.environ.get("TYPED_TICK_S", "0.15"))   # speculator ticks while a typed question is open
 
 
 def rlog(msg: str):
@@ -109,7 +115,8 @@ def degraded() -> dict:
 def status_payload() -> dict:
     from . import notices
     w, a = lanes.web_health(), answer.health()
-    return {**STATE, **ear.describe(), "web_backend": config.WEB_BACKEND, "web": w,
+    return {**STATE, **ear.describe(), "web_backend": config.WEB_BACKEND, "web": w, "typed_input": TYPED_INPUT,
+            "tagger_safety": safety.ENABLED,
             "answer": a, "degraded": degraded(), "notices": notices.build(w, a)}
 
 
@@ -213,15 +220,28 @@ class Run:
     """One run: an ear feeding one Session per mode, and a sender task draining their events to the socket."""
 
     def __init__(self, ws: WebSocket, modes, domain, cost_mode: str | None = None, arcstate=None,
-                 keyterms: list[str] | None = None):
+                 keyterms: list[str] | None = None, typed: bool = False):
         self.id = next(_run_ids)
         self.ws = ws
         self.q: asyncio.Queue = asyncio.Queue()
         t0 = time.perf_counter()
         self.sessions = [Session(self._emitter(m), mode=m, domain=domain, t0=t0, cost_mode=cost_mode, arcstate=arcstate)
                          for m in modes]
-        self.ear = ear.make_ear(self.sessions, domain=domain, on_event=self._emitter("ear"), keyterms=keyterms,
-                                arcstate=arcstate)
+        self.typed = typed
+        self.typing = TypedText() if typed else None
+        self.final_sent = False
+        self.final_tasks: list[asyncio.Task] = []
+        self.ticker: asyncio.Task | None = None
+        if typed:
+            # a typed question: no ear (no audio, no cloud ear connection); Enter is the endpoint, so no semantic
+            # (pause-based) early answer; no audio features for Arc state / the director
+            for s in self.sessions:
+                s.typed = True
+                s.semantic = False
+            self.ear = None
+        else:
+            self.ear = ear.make_ear(self.sessions, domain=domain, on_event=self._emitter("ear"), keyterms=keyterms,
+                                    arcstate=arcstate)
         self.sender = asyncio.create_task(self._send())
         self.clock_set = False           # mic runs: the clock starts at the first audio frame, not at "start"
         self._stop: asyncio.Task | None = None
@@ -229,6 +249,56 @@ class Run:
         self.samples = 0
         self.rid = None                  # the page's own id for this run (echoed on every event: late events of an
                                          # earlier run, e.g. its run_done, must not end the page's next run)
+        if typed:
+            self.set_clock(t0)
+            self.ticker = asyncio.create_task(self._tick())
+
+    # ------------------------------------------------------------------ typed questions (TYPED_INPUT)
+    def _typed_ws(self, text: str, final: bool) -> list[dict]:
+        return self.typing.update(text, time.perf_counter() - self.sessions[0].t0, final)
+
+    async def type_text(self, text: str, final: bool = False):
+        """The text box changed (the whole text). Finished words go to every session as a partial (the speculator
+        searches while you type); final (Enter) closes the question: the endpoint, measured from Enter."""
+        if self.closed or self.final_sent:
+            return
+        ws = self._typed_ws(text, final)
+        if not final:
+            for s in self.sessions:
+                s.on_partial(ws)
+            return
+        self.final_sent = True
+        if self.ticker is not None:
+            self.ticker.cancel()
+        if not ws:
+            await self.stop()
+            return
+        enter = time.perf_counter() - self.sessions[0].t0
+        ws[-1] = {**ws[-1], "end": round(max(ws[-1].get("end") or 0.0, enter), 3)}   # the endpoint is Enter
+        self.q.put_nowait({"t": "ear", "mode": "ear", "kind": "final", "ear": "typed", "text": " ".join(w["text"] for w in ws),
+                           "reason": "enter", **({"rid": self.rid} if self.rid is not None else {})})
+        for s in self.sessions:
+            s.end_of_audio()                 # nothing more is coming: a trailing "sorry," is not held for a continuation
+            s.on_partial(ws)
+        self.final_tasks = [asyncio.create_task(s.on_final(ws)) for s in self.sessions]
+        asyncio.create_task(self._finish_typed())
+
+    async def _finish_typed(self):
+        await asyncio.gather(*self.final_tasks, return_exceptions=True)
+        await self.stop()
+
+    async def _tick(self):
+        """While a typed question is open: re-send the finished words every TYPED_TICK_S (the speculator's stability
+        timers count partials, as they do the ear's ~100 ms updates)."""
+        try:
+            while not self.closed and not self.final_sent:
+                await asyncio.sleep(TYPED_TICK_S)
+                ws = self.typing.last
+                if ws and not self.final_sent:
+                    for s in self.sessions:
+                        s.on_partial(ws)
+        except asyncio.CancelledError:
+            pass
 
     def _emitter(self, mode):
         def emit(e):
@@ -248,7 +318,7 @@ class Run:
             s.set_t0(t0)
 
     async def feed(self, pcm: np.ndarray):
-        if self.closed:
+        if self.closed or self.ear is None:
             return
         self.samples += len(pcm)
         if not self.clock_set:
@@ -276,15 +346,21 @@ class Run:
         await asyncio.shield(self._stop)
 
     async def _do_stop(self):
-        rlog(f"run {self.id} stopping: {self.samples / 16000:.1f}s of audio")
+        rlog(f"run {self.id} stopping: " + ("typed" if self.typed else f"{self.samples / 16000:.1f}s of audio"))
         for s in self.sessions:
             s.end_of_audio()                     # a final held for its continuation is answered now
+        if self.ticker is not None:
+            self.ticker.cancel()
         try:
-            await self.ear.flush()
+            if self.ear is not None:
+                await self.ear.flush()
+            elif self.final_tasks:
+                await asyncio.gather(*self.final_tasks, return_exceptions=True)
         except Exception as e:
             self.q.put_nowait({"t": "error", "mode": "sys", "error": f"flush: {type(e).__name__}: {e}"[:300]})
         finally:
-            self.ear.close()
+            if self.ear is not None:
+                self.ear.close()
             self.closed = True
         await asyncio.sleep(0.05)
         for s in self.sessions:
@@ -299,13 +375,50 @@ class Run:
         self.closed = True
         if self._stop is not None and not self._stop.done():
             self._stop.cancel()
-        self.ear.close()
-        for t in getattr(self.ear, "final_tasks", []):
+        if self.ticker is not None:
+            self.ticker.cancel()
+        if self.ear is not None:
+            self.ear.close()
+        for t in list(getattr(self.ear, "final_tasks", [])) + self.final_tasks:
             if not t.done():
                 t.cancel()
         for s in self.sessions:
             s.close()
         self.sender.cancel()
+
+
+class TypedText:
+    """Words of a text box as it is typed, with keystroke timings (seconds on the run clock): a word starts at its
+    first keystroke and ends when it was finished (the space after it). Only finished words are returned, so a word
+    being typed ("Nvi") never reaches the tagger; Enter (final) finishes the last one. An edited word gets new times."""
+
+    def __init__(self):
+        self.first: dict[int, tuple[str, float]] = {}
+        self.done: dict[int, tuple[str, float]] = {}
+        self.last: list[dict] = []
+
+    def update(self, text: str, now: float, final: bool = False) -> list[dict]:
+        toks = str(text or "").split()
+        for i, w in enumerate(toks):
+            p = self.first.get(i)
+            if p is None or not (w.startswith(p[0]) or p[0].startswith(w)):
+                self.first[i] = (w, now)
+            else:
+                self.first[i] = (w, p[1])
+        for i in [i for i in self.first if i >= len(toks)]:
+            del self.first[i]
+        n = len(toks) if (final or str(text or "")[-1:].isspace()) else max(0, len(toks) - 1)
+        out = []
+        for i in range(n):
+            d = self.done.get(i)
+            if d is None or d[0] != toks[i]:
+                d = self.done[i] = (toks[i], now)
+            t0 = self.first[i][1]
+            out.append({"text": toks[i], "start": round(t0, 3), "end": round(max(d[1], t0), 3)})
+        for i in [i for i in self.done if i >= n]:
+            del self.done[i]
+        self.last = out
+        return out
 
 
 async def replay(run: Run, path: Path):
@@ -388,11 +501,12 @@ async def ws_endpoint(ws: WebSocket):
         if run is not None:
             r, run = run, None
             await r.stop()
-            if getattr(r, "kind", "") == "mic":
+            if getattr(r, "kind", "") in ("mic", "typed"):
                 for s in r.sessions:
                     memory[s.mode] = s.export_memory()
                 persist()
-                arcstatemod.save(client["id"], astate)
+                if r.kind == "mic":
+                    arcstatemod.save(client["id"], astate)
             for s in r.sessions:
                 if s.mode == "headstart" and personamod.ENABLED:
                     prof["p"] = s.persona
@@ -467,6 +581,18 @@ async def ws_endpoint(ws: WebSocket):
                 await send({"t": "arcstate", "mode": "sys", "reset": "all",
                             **(astate.summary() if astate is not None else {"on": False})})
                 continue
+            type_msg = None
+            if t == "type":
+                if not TYPED_INPUT:
+                    await send({"t": "error", "mode": "sys", "error": "typed questions are off (TYPED_INPUT=0)"})
+                    continue
+                rid = data.get("rid")
+                if (run is not None and getattr(run, "kind", "") == "typed" and not run.final_sent
+                        and (rid is None or rid == run.rid)):
+                    await run.type_text(str(data.get("text") or "")[:2000], bool(data.get("final")))
+                    continue
+                type_msg, t = data, "start"              # no open typed question: start one
+                data = {**data, "t": "start", "typed": True}
             if t in ("start", "replay"):
                 conn_runs += 1
                 await end_run()
@@ -476,8 +602,11 @@ async def ws_endpoint(ws: WebSocket):
                         await send({"t": "error", "mode": "sys", "error": f"no such file {p.name}"})
                         continue
                 modes = data.get("modes") or ["headstart", "baseline"]
+                typed = t == "start" and bool(data.get("typed")) and TYPED_INPUT
                 rstate, kt = None, None
-                if astate is not None and t == "start":
+                if typed:
+                    pass                              # typed: no voice, Arc state is not touched
+                elif astate is not None and t == "start":
                     if astate.touch() == "idle":
                         await send({"t": "arcstate", "mode": "sys", "reset": "idle", **astate.summary()})
                     rstate = astate
@@ -490,13 +619,14 @@ async def ws_endpoint(ws: WebSocket):
                 elif astate is not None:
                     rstate = arcstatemod.ArcState()   # a replay (demo file): its own state, never the user's voice
                 run = Run(ws, modes, data.get("domain", "assistant"), cost_mode=costmod.valid(data.get("cost")),
-                          arcstate=rstate, keyterms=kt)
-                trainlog.bind(run.id, client.get("id"), "mic" if t == "start" else "replay")
-                run.kind = "mic" if t == "start" else "replay"
+                          arcstate=rstate, keyterms=kt, typed=typed)
+                run.kind = "typed" if typed else "mic" if t == "start" else "replay"
+                trainlog.bind(run.id, client.get("id"), run.kind)
                 rid = data.get("rid")
                 run.rid = rid if isinstance(rid, int) and not isinstance(rid, bool) else None
-                rlog(f"run {run.id} start {run.kind}" + (f" {p.name}" if t == "replay" else
-                     (" open-mic" if data.get("open") else " push-to-talk")) + f" modes={','.join(modes)} ear={ear.describe().get('ear')}"
+                rlog(f"run {run.id} start {run.kind}" + (f" {p.name}" if t == "replay" else "" if typed else
+                     (" open-mic" if data.get("open") else " push-to-talk")) + f" modes={','.join(modes)}"
+                     + ("" if typed else f" ear={ear.describe().get('ear')}")
                      + (f" arcstate=on keyterms={len(kt or [])}" if rstate is not None else ""))
                 if t == "start":
                     fresh = bool(data.get("fresh"))
@@ -516,6 +646,8 @@ async def ws_endpoint(ws: WebSocket):
                         s.import_memory(stored_memory(fresh=True))
                         if s.mode == "headstart":
                             s.set_persona(prof["p"])
+                if type_msg is not None:
+                    await run.type_text(str(type_msg.get("text") or "")[:2000], bool(type_msg.get("final")))
                 if t == "replay":
                     async def go(r=run, p=p):
                         await replay(r, p)

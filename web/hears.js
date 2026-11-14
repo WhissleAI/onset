@@ -26,6 +26,11 @@
     numeral: "number", money: "money", percent: "percent", quantity: "quantity", year: "year", event_name: "event", event: "event",
     product: "product", work_of_art: "title", duration: "duration", team: "team", age: "age" };
   const slotLabel = (t) => SLOT_SHORT[String(t).toLowerCase()] || String(t).replace(/_/g, " ");
+  // masked words (server/safety.py: the Arc Tagger's profanity / toxicity heads): "f***" while "Mask profanity in the
+  // transcript" is on (window.HSMaskOn, default on). Either way they never reach the search, memory or logs.
+  const maskOn = () => (typeof window.HSMaskOn === "function" ? window.HSMaskOn() : true);
+  const shown = (w) => { const m = String(w).match(/^(\W*)(\w)(\w*)(\W*)$/); return m ? m[1] + m[2] + "*".repeat(Math.max(2, m[3].length)) + m[4] : "*".repeat(Math.max(3, String(w).length)); };
+  const MASK_LAB = { profanity: "profanity", insult: "insult", hate: "hate", threat: "threat", self_harm: "self-harm" };
   const isNumType = (t) => /^(cardinal|ordinal|money|percent|date|time|quantity|numeral|year|number|duration|age)/.test(String(t));
 
   // ---------------------------------------------------------------- normalised values (client side)
@@ -124,7 +129,7 @@
     if (!tr) return false;
     tr.classList.add("hears-host");
     tr.innerHTML = `<div class="hears">
-      <div class="hw-line" id="hwLine"><span class="hw-ph">Pick a question, or hold <kbd>Space</kbd> and ask; release when you are done.</span></div>
+      <div class="hw-line" id="hwLine"><span class="hw-ph">Pick a question, type one, or hold <kbd>Space</kbd> and ask; release when you are done.</span></div>
       <div class="hw-chips" id="hwChips"></div></div>`;
     box = tr;
     return true;
@@ -171,7 +176,7 @@
         const old = S.words;
         const nw = e.words || [];
         nw.forEach((w, i) => { if (old[i] && old[i].w !== w.w) S.revised[i] = { was: old[i].w, at: performance.now() }; });
-        S.wordsSig = sig; S.wordsMode = m; S.words = nw;
+        S.wordsSig = sig; S.wordsMode = m; S.words = nw; S.typed = !!e.typed;
         schedule();
         break;
       }
@@ -276,6 +281,8 @@
     const n = W.length;
     const content = new Set((f.content_idx || []).filter((i) => i < n));
     const dropped = new Set(f.dropped || []), cue = new Set(f.cue || []), redact = new Set(f.redact || []);
+    const mask = new Map((f.mask_kind || []).map(([i, k]) => [i, k]));
+    for (const i of f.mask || []) if (!mask.has(i)) mask.set(i, "profanity");
     const haveFrame = !!S.frame && Array.isArray(f.content_idx);
     // typed spans → per word
     const spanAt = new Array(n).fill(null);
@@ -346,7 +353,12 @@
       const sp = spanAt[i];
       const cls = ["hw"];
       let txt = esc(w.w), under = "", pre = "";
-      if (redact.has(i) || (sp && sp.fam === "pii")) {
+      if (mask.has(i)) {
+        const k = mask.get(i), first = !mask.has(i - 1) || mask.get(i - 1) !== k;
+        if (maskOn()) { cls.push("masked"); txt = esc(shown(w.w)); }
+        else cls.push("masked-off");
+        if (first) under = `<span class="ul mask" title="left out of the search, memory and logs">${esc(MASK_LAB[k] || k)}</span>`;
+      } else if (redact.has(i) || (sp && sp.fam === "pii")) {
         cls.push("redact");
         txt = `<span class="lock">🔒</span>●●●`;
         if (!sp || sp.first) under = `<span class="ul pii">private · kept on device</span>`;
@@ -359,7 +371,7 @@
           under = `<span class="ul ${sp.fam}">${esc(slotLabel(String(sp.s.type).split(".").pop()))}${val ? ` <b>${esc(val)}</b>` : ""}</span>`;
         }
       }
-      if (haveFrame && !redact.has(i) && !dropped.has(i) && !cue.has(i)) cls.push(content.has(i) ? "content" : "stop");
+      if (haveFrame && !mask.has(i) && !redact.has(i) && !dropped.has(i) && !cue.has(i)) cls.push(content.has(i) ? "content" : "stop");
       if (i === repl) {
         cls.push("repl");
         pre = `<span class="arrow" title="replaces “${esc(corrWas)}”">→</span>`;
@@ -370,7 +382,7 @@
       if (conf != null && conf < 0.85) cls.push("unsure");
       // a pause before this word (from word timestamps) opens a little space
       const prev = W[i - 1];
-      const gap = prev && prev.t1 != null && w.t0 != null ? w.t0 - prev.t1 : 0;
+      const gap = !S.typed && prev && prev.t1 != null && w.t0 != null ? w.t0 - prev.t1 : 0;
       const style = [conf != null ? `--conf:${Math.max(0, Math.min(1, (0.85 - conf) / 0.35)).toFixed(2)}` : "", gap > 0.25 ? `margin-left:${Math.min(34, 8 + gap * 30).toFixed(0)}px` : ""].filter(Boolean).join(";");
       const age = S.revised[i] ? performance.now() - S.revised[i].at : 1e9;
       // a re-render must not restart the fade: the animation resumes at its age (negative delay)
@@ -488,6 +500,9 @@
     if (f.carried) out.push(chip("mem", "memory", `→ ${f.carried}`, "resolved from the previous turn"));
     else if (f.memory && f.memory.ref && f.memory.inline) out.push(chip("mem", "memory", `“${f.memory.ref}” → ${f.memory.inline}`, "rewritten from the previous question and its answer"));
     if (r.redacted && r.redacted.length) out.push(chip("priv", "🔒", r.redacted.join(", ") + " kept on device", "personal data never goes into the web query"));
+    if (f.safety === "self_harm") out.push(chip("care", "", "support line instead of results", "self-harm cue: no search; a crisis line is shown"));
+    else if (f.safety === "threat" || f.safety === "hate") out.push(chip("warn", "", `${f.safety} · not searched`, "Arc Tagger safety: no web search for this"));
+    else if ((f.mask || []).length) out.push(chip("mask", "", `${(f.mask || []).length} masked · not searched`, "Arc Tagger profanity / toxicity: left out of the search, memory and logs"));
     if (r.jailbreak) out.push(chip("warn", "⚠", "prompt injection: no early search", "safety.jailbreak.attempt"));
     if (a.for_me != null) out.push(chip(a.for_me >= 0.5 ? "arc" : "warn", "Arc audio", a.for_me >= 0.5 ? `to the assistant ${a.for_me.toFixed(2)}` : `not to the assistant ${a.for_me.toFixed(2)}`, "Arc audio head: device-directed"));
     else if (r.directed != null) out.push(chip(r.directed >= 0.5 ? "arc" : "warn", "for me", r.directed.toFixed(2), "device-directed (Arc Tagger)"));
@@ -506,5 +521,5 @@
     }
   }
 
-  window.HSHears = { start, newQuestion, event, normValue, state: () => S };
+  window.HSHears = { start, newQuestion, event, normValue, state: () => S, repaint: () => { if (S && box) { const l = document.getElementById("hwLine"); if (l) l._h = null; schedule(); } } };
 })();

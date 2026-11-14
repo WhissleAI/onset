@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=27">
+<link rel="stylesheet" href="style.css?v=28">
 <link rel="stylesheet" href="film.css?v=4">
 <link rel="stylesheet" href="meter.css?v=4">
 <link rel="stylesheet" href="graph.css?v=4">
@@ -83,13 +83,23 @@
   </aside>
 
   <main class="main">
+    <form class="typebar" id="typeForm" autocomplete="off" role="search" hidden>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M10 4a6 6 0 1 0 3.47 10.9l4.31 4.31 1.42-1.42-4.31-4.31A6 6 0 0 0 10 4Zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"/></svg>
+      <input id="typeBox" type="text" spellcheck="false" autocomplete="off" aria-label="Type a question"
+             placeholder="Or type a question: lookups start as you type">
+      <kbd class="tb-key" title="Press / or ⌘K to type">/</kbd>
+      <button type="submit" class="tb-go">Search</button>
+      <label class="tb-mask" title="Masked words never go into the search, memory or logs, whatever this shows">
+        <input type="checkbox" id="maskToggle" checked> Mask profanity in the transcript
+      </label>
+    </form>
     <section class="row-top">
       <div class="card transcript-card">
         <div class="card-head">
           <h2>What Arc hears</h2>
           <span class="ear" id="earState">idle</span>
         </div>
-        <div class="transcript" id="transcript"><span class="placeholder">Pick a question, or hold <kbd>Space</kbd> and ask; release when you are done.</span></div>
+        <div class="transcript" id="transcript"><span class="placeholder">Pick a question, type one, or hold <kbd>Space</kbd> and ask; release when you are done.</span></div>
         <div class="history" id="history" hidden></div>
       </div>
       <div class="card frame-card">
@@ -172,14 +182,14 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="results.js?v=5"></script>
 <script src="film.js?v=7"></script>
-<script src="hears.js?v=6"></script>
+<script src="hears.js?v=7"></script>
 <script src="meter.js?v=5"></script>
 <script src="graphlayout.js?v=1"></script>
 <script src="graph.js?v=3"></script>
 <script src="graphbig.js?v=1"></script>
 <script src="plan.js?v=2"></script>
 <script src="confidence.js?v=1"></script>
-<script src="app.js?v=106"></script>
+<script src="app.js?v=107"></script>
 <script src="scorecard.js?v=2"></script>
 </body>
 </html>
