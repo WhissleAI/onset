@@ -1,0 +1,171 @@
+{
+ "latency": {
+  "1000": {
+   "fp32_768": {
+    "p50_us": 24,
+    "p90_us": 87
+   },
+   "fp16_768": {
+    "p50_us": 1567,
+    "p90_us": 2453
+   },
+   "int8_256+rescore": {
+    "p50_us": 152,
+    "p90_us": 395
+   },
+   "fp32_256+rescore": {
+    "p50_us": 120,
+    "p90_us": 261
+   },
+   "fp32_512+rescore": {
+    "p50_us": 135,
+    "p90_us": 298
+   },
+   "bits_256+rescore": {
+    "p50_us": 319,
+    "p90_us": 1557
+   },
+   "hnsw_768": {
+    "p50_us": 461,
+    "p90_us": 800,
+    "build_s": 0.07,
+    "recall@10": 0.955
+   }
+  },
+  "10000": {
+   "fp32_768": {
+    "p50_us": 2180,
+    "p90_us": 9037
+   },
+   "fp16_768": {
+    "p50_us": 17377,
+    "p90_us": 19340
+   },
+   "int8_256+rescore": {
+    "p50_us": 1301,
+    "p90_us": 4275
+   },
+   "fp32_256+rescore": {
+    "p50_us": 351,
+    "p90_us": 5458
+   },
+   "fp32_512+rescore": {
+    "p50_us": 547,
+    "p90_us": 3194
+   },
+   "bits_256+rescore": {
+    "p50_us": 619,
+    "p90_us": 2301
+   },
+   "hnsw_768": {
+    "p50_us": 934,
+    "p90_us": 1224,
+    "build_s": 1.91,
+    "recall@10": 0.924
+   }
+  },
+  "100000": {
+   "fp32_768": {
+    "p50_us": 6459,
+    "p90_us": 12266
+   },
+   "fp16_768": {
+    "p50_us": 172350,
+    "p90_us": 197536
+   },
+   "int8_256+rescore": {
+    "p50_us": 15053,
+    "p90_us": 23833
+   },
+   "fp32_256+rescore": {
+    "p50_us": 2342,
+    "p90_us": 5664
+   },
+   "fp32_512+rescore": {
+    "p50_us": 4667,
+    "p90_us": 11019
+   },
+   "bits_256+rescore": {
+    "p50_us": 9545,
+    "p90_us": 16055
+   },
+   "hnsw_768": {
+    "p50_us": 1315,
+    "p90_us": 1864,
+    "build_s": 20.2,
+    "recall@10": 0.905
+   }
+  }
+ },
+ "recall": {
+  "768_fp32": {
+   "first_pass_only": 1.0,
+   "with_rescore_M64": 0.999
+  },
+  "768_int8": {
+   "first_pass_only": 0.976,
+   "with_rescore_M64": 0.999
+  },
+  "768_bits": {
+   "first_pass_only": 0.457,
+   "with_rescore_M64": 0.808
+  },
+  "512_fp32": {
+   "first_pass_only": 0.829,
+   "with_rescore_M64": 0.998
+  },
+  "512_int8": {
+   "first_pass_only": 0.831,
+   "with_rescore_M64": 0.998
+  },
+  "512_bits": {
+   "first_pass_only": 0.381,
+   "with_rescore_M64": 0.704
+  },
+  "256_fp32": {
+   "first_pass_only": 0.654,
+   "with_rescore_M64": 0.969
+  },
+  "256_int8": {
+   "first_pass_only": 0.656,
+   "with_rescore_M64": 0.97
+  },
+  "256_bits": {
+   "first_pass_only": 0.256,
+   "with_rescore_M64": 0.489
+  },
+  "128_fp32": {
+   "first_pass_only": 0.348,
+   "with_rescore_M64": 0.676
+  },
+  "128_int8": {
+   "first_pass_only": 0.345,
+   "with_rescore_M64": 0.68
+  },
+  "128_bits": {
+   "first_pass_only": 0.116,
+   "with_rescore_M64": 0.278
+  },
+  "64_fp32": {
+   "first_pass_only": 0.16,
+   "with_rescore_M64": 0.36
+  },
+  "64_int8": {
+   "first_pass_only": 0.16,
+   "with_rescore_M64": 0.36
+  },
+  "64_bits": {
+   "first_pass_only": 0.042,
+   "with_rescore_M64": 0.135
+  }
+ },
+ "bytes_per_cell": {
+  "fp32_768": 3072,
+  "fp16_768": 1536,
+  "int8_256": 260,
+  "bits_256": 32,
+  "int8_128": 132,
+  "bits_128": 16,
+  "keystone_default": "int8_256 (260) + bits_256 (32) + fp16_768 rescoring copy (1536)"
+ }
+}

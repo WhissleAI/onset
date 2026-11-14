@@ -1,0 +1,157 @@
+{
+ "embed_ms": 58.7,
+ "points": [
+  {
+   "theta": 0.6,
+   "paid_per_q": 0.2625,
+   "local_hit_rate": 0.5563,
+   "p50_ms": 117.1,
+   "acc_expect": 0.5486,
+   "agree_silver": 0.8614,
+   "regret_rate": 0.1375,
+   "local_acc": 0.6479
+  },
+  {
+   "theta": 0.7,
+   "paid_per_q": 0.285,
+   "local_hit_rate": 0.5112,
+   "p50_ms": 116.7,
+   "acc_expect": 0.5798,
+   "agree_silver": 0.8948,
+   "regret_rate": 0.105,
+   "local_acc": 0.6912
+  },
+  {
+   "theta": 0.75,
+   "paid_per_q": 0.3,
+   "local_hit_rate": 0.485,
+   "p50_ms": 140.0,
+   "acc_expect": 0.6187,
+   "agree_silver": 0.9151,
+   "regret_rate": 0.0775,
+   "local_acc": 0.739
+  },
+  {
+   "theta": 0.8,
+   "paid_per_q": 0.3175,
+   "local_hit_rate": 0.4487,
+   "p50_ms": 157.3,
+   "acc_expect": 0.6342,
+   "agree_silver": 0.9428,
+   "regret_rate": 0.0537,
+   "local_acc": 0.7877
+  },
+  {
+   "theta": 0.85,
+   "paid_per_q": 0.3262,
+   "local_hit_rate": 0.4138,
+   "p50_ms": 205.1,
+   "acc_expect": 0.6381,
+   "agree_silver": 0.965,
+   "regret_rate": 0.0375,
+   "local_acc": 0.8157
+  },
+  {
+   "theta": 0.9,
+   "paid_per_q": 0.3375,
+   "local_hit_rate": 0.38,
+   "p50_ms": 251.2,
+   "acc_expect": 0.6654,
+   "agree_silver": 0.9816,
+   "regret_rate": 0.0175,
+   "local_acc": 0.8618
+  },
+  {
+   "theta": 0.93,
+   "paid_per_q": 0.3625,
+   "local_hit_rate": 0.3375,
+   "p50_ms": 301.4,
+   "acc_expect": 0.6615,
+   "agree_silver": 0.9963,
+   "regret_rate": 0.0075,
+   "local_acc": 0.8889
+  },
+  {
+   "theta": 0.95,
+   "paid_per_q": 0.3688,
+   "local_hit_rate": 0.3262,
+   "p50_ms": 326.9,
+   "acc_expect": 0.6576,
+   "agree_silver": 0.9963,
+   "regret_rate": 0.0075,
+   "local_acc": 0.8851
+  },
+  {
+   "theta": 0.97,
+   "paid_per_q": 0.395,
+   "local_hit_rate": 0.28,
+   "p50_ms": 347.4,
+   "acc_expect": 0.6576,
+   "agree_silver": 0.9982,
+   "regret_rate": 0.0063,
+   "local_acc": 0.8839
+  },
+  {
+   "theta": 0.99,
+   "paid_per_q": 0.515,
+   "local_hit_rate": 0.095,
+   "p50_ms": 435.7,
+   "acc_expect": 0.6576,
+   "agree_silver": 1.0,
+   "regret_rate": 0.005,
+   "local_acc": 0.8553
+  }
+ ],
+ "fresh": {
+  "n": 800,
+  "paid_per_q": 0.555,
+  "local_hit_rate": 0.0,
+  "p50_ms": 410.0,
+  "p90_ms": 914.0,
+  "mean_ms": 497.9,
+  "acc_expect": 0.6732,
+  "n_expect": 257,
+  "agree_silver": 1.0,
+  "n_silver": 543,
+  "regret_rate": 0.0,
+  "local_acc": 0.0,
+  "paths": {
+   "web": 444,
+   "facts": 274,
+   "card": 82
+  },
+  "path_acc": {
+   "card": 1.0,
+   "facts": 0.839,
+   "web": 0.91
+  }
+ },
+ "a": {
+  "n": 800,
+  "paid_per_q": 0.4637,
+  "local_hit_rate": 0.0912,
+  "p50_ms": 375.0,
+  "p90_ms": 889.0,
+  "mean_ms": 466.1,
+  "acc_expect": 0.6459,
+  "n_expect": 257,
+  "agree_silver": 1.0,
+  "n_silver": 543,
+  "regret_rate": 0.0088,
+  "local_acc": 0.8356,
+  "paths": {
+   "web": 371,
+   "facts": 274,
+   "card": 82,
+   "cache-exact": 45,
+   "cache-nn": 28
+  },
+  "path_acc": {
+   "cache-exact": 0.933,
+   "cache-nn": 0.679,
+   "card": 1.0,
+   "facts": 0.839,
+   "web": 0.906
+  }
+ }
+}

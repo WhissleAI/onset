@@ -315,3 +315,25 @@ PLAN_K_PART = int(os.environ.get("PLAN_K_PART", "0"))            # sources per p
 # number matching, cross-source agreement); a badge shows the result. Runs after the last answer token: never delays it.
 VERIFY = os.environ.get("VERIFY", "1") == "1"
 VERIFY_TOL = float(os.environ.get("VERIFY_TOL", "0.01"))         # relative tolerance for non-year numbers
+# ---------------------------------------------------------------------------------------------------- Keystone index
+# server/keystone/: one structure for the index, the search cache and memory. Every passage / fact / answer Onset
+# retrieves becomes a memory cell (the reranker's EmbeddingGemma vector, never embedded twice); every answered question
+# writes a typed edge (subject) -[relation]-> (value cell), keyed by the Arc read-out; a learned answer-equivalence
+# verifier and a calibrated value-of-information gate decide when a question can be answered locally instead of paying
+# for the web. Write-up + measurements: docs/RETRIEVAL.md (runs/index/).
+INDEX = os.environ.get("INDEX", "1") == "1"                        # ingest + local tier (ON: real-audio A/B, RETRIEVAL.md §7)
+INDEX_SERVE = os.environ.get("INDEX_SERVE", "1") == "1"            # 0 = shadow: ingest + decide, never serve
+INDEX_PERSIST = os.environ.get("INDEX_PERSIST", "1") == "1"
+INDEX_SAVE_S = float(os.environ.get("INDEX_SAVE_S", "60"))         # persist at most this often (background thread)
+KEYSTONE_DIR = Path(os.environ.get("KEYSTONE_DIR", DATA_DIR / "keystone"))
+INDEX_MAX_CELLS = int(os.environ.get("INDEX_MAX_CELLS", "20000"))
+INDEX_FP_DIM = int(os.environ.get("INDEX_FP_DIM", "256"))          # first-pass Matryoshka dims (runs/index/ann_bench.json)
+INDEX_TIMEOUT_MS = float(os.environ.get("INDEX_TIMEOUT_MS", "80")) # local lookup budget (embedding included)
+INDEX_SPEC_EMBED = os.environ.get("INDEX_SPEC_EMBED", "0") == "1"   # embedding lookups on speculative calls too
+INDEX_HASH = os.environ.get("INDEX_HASH", "1") == "1"              # learned answer-equivalence hash (candidate source)
+GRAPH_KEY = os.environ.get("GRAPH_KEY", "1") == "1"                # Arc-keyed typed edges (subject, relation)
+GRAPH_ACT = os.environ.get("GRAPH_ACT", "1") == "1"                # activation (session / user memory) ranking bias
+INDEX_SHARED = os.environ.get("INDEX_SHARED", "1") == "1"          # cross-user store of verified public typed edges
+KEYSTONE_SHARED = Path(os.environ.get("KEYSTONE_SHARED", DATA_DIR / "keystone" / "shared.sqlite"))
+VOI = os.environ.get("VOI", "1") == "1"                            # calibrated gate (else the hand gate)
+VOI_THETA = float(os.environ["VOI_THETA"]) if os.environ.get("VOI_THETA") else None   # override the fitted theta

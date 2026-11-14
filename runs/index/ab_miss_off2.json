@@ -1,0 +1,628 @@
+{
+ "created": "2026-11-14T00:21:42-0800",
+ "config": {
+  "answer_model": "claude-haiku-5-5",
+  "web_backend": "wikipedia",
+  "embed_model": "/Users/karan/Library/Application Support/Onset/models/embeddinggemma-2",
+  "tavily": null,
+  "embed_device": "mps",
+  "arc_dir": "/Users/karan/Library/Application Support/Onset/models/arc-v1",
+  "arc_threads": 6,
+  "spec_eff": {
+   "on": true,
+   "paid_max": 2,
+   "settle_ms": 350.0,
+   "last_settle_ms": 650.0,
+   "eot_fire": 0.3,
+   "drift": false,
+   "cover_sim": 0.5,
+   "cache": true,
+   "cache_scope": "per-run",
+   "index": false,
+   "index_reset": "per-run"
+  },
+  "local_docs": 222,
+  "spec": {
+   "min_words": 3,
+   "stable_updates": 1,
+   "web_budget": 6,
+   "draft_budget": 6,
+   "draft_stable_ms": 0,
+   "audio_lane": true,
+   "commit_tau": 0.55
+  },
+  "semantic_endpoint": true,
+  "ear": "flux",
+  "router": true,
+  "flux_soft": "director",
+  "arc_meta": "mini",
+  "sem_silence_ms": 250,
+  "sem_stable_ms": 420,
+  "audio_dir": "eval/audio",
+  "audio_variant": null,
+  "trail_s": 1.2,
+  "chunk_ms": 100.0,
+  "git": "7900b32",
+  "server_dirty": true,
+  "machine": "Mac arm64 26.2"
+ },
+ "summary": {
+  "headstart": {
+   "n": 2,
+   "p50_ready_ms": 1470,
+   "p90_ready_ms": 1849,
+   "mean_ready_ms": 1470,
+   "p50_ready_vad_ms": 1400,
+   "p50_sources_ms": 878,
+   "p50_done_ms": 1960,
+   "p50_endpoint_lag_ms": 734,
+   "accuracy": 1.0,
+   "n_scored": 2,
+   "mean_web_calls": 0,
+   "mean_paid_calls": 0,
+   "mean_spec_fires": 6,
+   "mean_wasted_fires": 1.5,
+   "mean_search_cached": 0,
+   "p50_used_fire_lead_ms": 648,
+   "mean_credits": 0,
+   "mean_credits_spec": 0,
+   "mean_credits_final": 0,
+   "total_credits": 0,
+   "web_backend": {
+    "wikipedia": 2
+   },
+   "mean_web_paid": 0,
+   "mean_free_calls": 0,
+   "mean_tokens_in": 2574,
+   "mean_tokens_out": 104,
+   "mean_waste_in": 1176,
+   "mean_usd": 0.000309,
+   "answer_by": {
+    "draft": 2
+   },
+   "by_lane": {
+    "local": {
+     "n": 2,
+     "p50_ready_ms": 1470,
+     "p90_ready_ms": 1849,
+     "mean_web_paid": 0,
+     "accuracy": 1.0
+    }
+   },
+   "draft_reuse_rate": 1.0,
+   "errors": 0,
+   "split_questions": 0,
+   "answered_twice": 0,
+   "mean_arc_wer": 0.0,
+   "arc_exact": 2,
+   "mean_q_wer": 0.0,
+   "phantom_answers": 0,
+   "hedged": 1,
+   "q_with_phantom": 0,
+   "answered_twice_same_q": 0,
+   "p90_endpoint_lag_ms": 946,
+   "endpoint_by": {
+    "semantic": 1,
+    "ear": 1
+   },
+   "paths": {
+    "draft-reuse": 2
+   },
+   "by_kind": {
+    "local": {
+     "n": 2,
+     "p50_ready_ms": 1470,
+     "accuracy": 1.0
+    }
+   }
+  }
+ },
+ "rows": [
+  {
+   "id": "local04",
+   "text": "What did the commentator say about Lonzo Ball in the game?",
+   "kind": "local",
+   "voice": "say:Samantha",
+   "mode": "headstart",
+   "ready_ms": 996,
+   "sources_ms": 680,
+   "done_ms": 1465,
+   "endpoint_lag_ms": 468,
+   "ready_vad_ms": 966,
+   "arc_end_s": 3.44,
+   "vad_end_s": 3.47,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "Lonzo Ball isn't named by the commentators in the recordings, but the NBA play-by-play at 01:10 has a garbled transcript mentioning \"Ponto ball\" nailing a triple and having three trades in Monday night's game [1]. The transcript is too unclear to say more.",
+   "error": null,
+   "endpoint_by": "semantic",
+   "endpoint_trigger": "tagger",
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what did the commentator say about lonzo ball in the game",
+   "hedged": false,
+   "q_wer": 0.0,
+   "web_calls": 0,
+   "spec_fires": 7,
+   "spec_used": 5,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 1338,
+   "used_fire_lead_ms": 936,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 1,
+   "drafts": 2,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "commentator lonzo ball game",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "<1.9s of speech>",
+    "commentator long",
+    "commentator lonzo",
+    "commentator lonzo ball",
+    "<2.8s of speech>",
+    "commentator lonzo ball game",
+    "<3.6s of speech>"
+   ],
+   "sources": [
+    "NBA broadcast \u00b7 01:10",
+    "Olympics commentary \u00b7 02:41",
+    "Olympics commentary \u00b7 01:52",
+    "NBA broadcast \u00b7 00:37",
+    "NBA broadcast \u00b7 00:10"
+   ],
+   "plan": null,
+   "verify": {
+    "status": "supported",
+    "label": "\u2713 matches 1 source",
+    "n_claims": 2,
+    "found": 2,
+    "ms": 0.44
+   },
+   "web_paid": 0,
+   "free_calls": 0,
+   "tiers": {},
+   "ans_in": 1435,
+   "ans_out": 96,
+   "waste_in": 991,
+   "waste_out": 0,
+   "llm_requests": 2,
+   "tokens_est": true,
+   "usd": 0.000291,
+   "usd_web": 0.0,
+   "usd_llm": 0.0002906,
+   "usd_llm_waste": 9.91e-05,
+   "wasted_fires": 2,
+   "answer_tier": "local",
+   "route_plan": "web",
+   "route_conf": 0.0,
+   "answer_src": "local",
+   "routes": [],
+   "route_why": null,
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f1",
+     "lane": "audio",
+     "state": "fired",
+     "ms": 2102,
+     "query": "<1.9s of speech>"
+    },
+    {
+     "t": "spec",
+     "id": "f2",
+     "lane": "local",
+     "state": "fired",
+     "ms": 2504,
+     "query": "commentator long"
+    },
+    {
+     "t": "spec",
+     "id": "f1",
+     "lane": "audio",
+     "state": "done",
+     "ms": 2534,
+     "took": 432,
+     "n": 4,
+     "query": "<1.9s of speech>"
+    },
+    {
+     "t": "spec",
+     "id": "f2",
+     "lane": "local",
+     "state": "done",
+     "ms": 2661,
+     "took": 157,
+     "n": 4,
+     "query": "commentator long"
+    },
+    {
+     "t": "spec",
+     "id": "f2",
+     "lane": "local",
+     "state": "stale",
+     "ms": 2856,
+     "query": "commentator long"
+    },
+    {
+     "t": "spec",
+     "id": "f3",
+     "lane": "local",
+     "state": "fired",
+     "ms": 2856,
+     "query": "commentator lonzo"
+    },
+    {
+     "t": "spec",
+     "id": "f4",
+     "lane": "local",
+     "state": "fired",
+     "ms": 2969,
+     "query": "commentator lonzo ball"
+    },
+    {
+     "t": "spec",
+     "id": "f5",
+     "lane": "audio",
+     "state": "fired",
+     "ms": 3003,
+     "query": "<2.8s of speech>"
+    },
+    {
+     "t": "spec",
+     "id": "f3",
+     "lane": "local",
+     "state": "done",
+     "ms": 3058,
+     "took": 202,
+     "n": 4,
+     "query": "commentator lonzo"
+    },
+    {
+     "t": "spec",
+     "id": "f4",
+     "lane": "local",
+     "state": "done",
+     "ms": 3196,
+     "took": 228,
+     "n": 4,
+     "query": "commentator lonzo ball"
+    },
+    {
+     "t": "spec",
+     "id": "d6",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3403,
+     "query": "what did the commentator say about lonzo ball"
+    },
+    {
+     "t": "spec",
+     "id": "f7",
+     "lane": "local",
+     "state": "fired",
+     "ms": 3449,
+     "query": "commentator lonzo ball game"
+    },
+    {
+     "t": "spec",
+     "id": "d6",
+     "lane": "draft",
+     "state": "stale",
+     "ms": 3449,
+     "query": "what did the commentator say about lonzo ball"
+    },
+    {
+     "t": "spec",
+     "id": "f7",
+     "lane": "local",
+     "state": "done",
+     "ms": 3574,
+     "took": 125,
+     "n": 4,
+     "query": "commentator lonzo ball game"
+    },
+    {
+     "t": "spec",
+     "id": "f5",
+     "lane": "audio",
+     "state": "done",
+     "ms": 3721,
+     "took": 718,
+     "n": 4,
+     "query": "<2.8s of speech>"
+    },
+    {
+     "t": "spec",
+     "id": "d8",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3788,
+     "query": "what did the commentator say about lonzo ball in the game"
+    },
+    {
+     "t": "spec",
+     "id": "f9",
+     "lane": "audio",
+     "state": "fired",
+     "ms": 3804,
+     "query": "<3.6s of speech>"
+    },
+    {
+     "t": "endpoint",
+     "ms": 3908,
+     "by": "semantic"
+    },
+    {
+     "t": "spec",
+     "id": "d8",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 4120,
+     "query": "what did the commentator say about lonzo ball in the game"
+    },
+    {
+     "t": "sources",
+     "ms": 4120
+    },
+    {
+     "t": "spec",
+     "id": "f9",
+     "lane": "audio",
+     "state": "done",
+     "ms": 4488,
+     "took": 684,
+     "n": 4,
+     "query": "<3.6s of speech>"
+    },
+    {
+     "t": "first_token",
+     "ms": 4436
+    }
+   ],
+   "arc_heard": "what did the commentator say about lonzo ball in the game",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.7,
+   "order": 0
+  },
+  {
+   "id": "local11",
+   "text": "What did the judge say about where in the chair the gun was?",
+   "kind": "local",
+   "voice": "say:Daniel",
+   "mode": "headstart",
+   "ready_ms": 1944,
+   "sources_ms": 1075,
+   "done_ms": 2455,
+   "endpoint_lag_ms": 999,
+   "ready_vad_ms": 1834,
+   "arc_end_s": 3.36,
+   "vad_end_s": 3.47,
+   "path": "draft-reuse",
+   "correct": true,
+   "answer": "At 00:53 the judge asked whether \"in the chair\" is the same thing as \"on the chair,\" and said \"It's on the chair. Unless you stuff it in the chair, I assume you\u2026\" [3]. At 01:03 the judge said, \"I think it's pretty clear you'll stalk of something that's being in the chair\" [1].",
+   "error": null,
+   "endpoint_by": "ear",
+   "endpoint_trigger": null,
+   "ear": "flux",
+   "ear_fallback": null,
+   "answers": 1,
+   "answer_idx": 0,
+   "phantom_answers": 0,
+   "question_heard": "what did the judge say about where in the chair the gun was",
+   "hedged": true,
+   "q_wer": 0.0,
+   "web_calls": 0,
+   "spec_fires": 5,
+   "spec_used": 4,
+   "paid_calls": 0,
+   "web_skipped": {},
+   "search_cached": 0,
+   "cover": null,
+   "first_fire_lead_ms": 1258,
+   "used_fire_lead_ms": 359,
+   "credits": 0.0,
+   "credits_spec": 0,
+   "credits_final": 0.0,
+   "web_cached": 0,
+   "web_backend": "wikipedia",
+   "answer_by": "draft",
+   "stale": 1,
+   "drafts": 1,
+   "draft_reused": true,
+   "draft_match": "exact",
+   "query": "judge chair gun",
+   "intent": "discourse.intent.qa_factoid",
+   "spec_queries": [
+    "<1.9s of speech>",
+    "judge wearing chair",
+    "<2.8s of speech>",
+    "judge chair gun",
+    "<3.6s of speech>"
+   ],
+   "sources": [
+    "Supreme Court argument \u00b7 01:04",
+    "Supreme Court argument \u00b7 00:13",
+    "Supreme Court argument \u00b7 00:53",
+    "Supreme Court argument \u00b7 01:14",
+    "Supreme Court argument \u00b7 00:49"
+   ],
+   "plan": null,
+   "verify": {
+    "status": "supported",
+    "label": "\u2713 matches 1 source",
+    "n_claims": 2,
+    "found": 2,
+    "ms": 0.29
+   },
+   "web_paid": 0,
+   "free_calls": 0,
+   "tiers": {},
+   "ans_in": 1361,
+   "ans_out": 106,
+   "waste_in": 1361,
+   "waste_out": 5,
+   "llm_requests": 2,
+   "tokens_est": true,
+   "usd": 0.000328,
+   "usd_web": 0.0,
+   "usd_llm": 0.0003277,
+   "usd_llm_waste": 0.0001386,
+   "wasted_fires": 1,
+   "answer_tier": "local",
+   "route_plan": "web",
+   "route_conf": 0.0,
+   "answer_src": "local",
+   "routes": [],
+   "route_why": null,
+   "trace": [
+    {
+     "t": "spec",
+     "id": "f10",
+     "lane": "audio",
+     "state": "fired",
+     "ms": 2102,
+     "query": "<1.9s of speech>"
+    },
+    {
+     "t": "spec",
+     "id": "f10",
+     "lane": "audio",
+     "state": "done",
+     "ms": 2391,
+     "took": 289,
+     "n": 4,
+     "query": "<1.9s of speech>"
+    },
+    {
+     "t": "spec",
+     "id": "f11",
+     "lane": "local",
+     "state": "fired",
+     "ms": 3001,
+     "query": "judge wearing chair"
+    },
+    {
+     "t": "spec",
+     "id": "f12",
+     "lane": "audio",
+     "state": "fired",
+     "ms": 3001,
+     "query": "<2.8s of speech>"
+    },
+    {
+     "t": "spec",
+     "id": "f11",
+     "lane": "local",
+     "state": "done",
+     "ms": 3181,
+     "took": 180,
+     "n": 4,
+     "query": "judge wearing chair"
+    },
+    {
+     "t": "spec",
+     "id": "f11",
+     "lane": "local",
+     "state": "stale",
+     "ms": 3241,
+     "query": "judge wearing chair"
+    },
+    {
+     "t": "spec",
+     "id": "f13",
+     "lane": "local",
+     "state": "fired",
+     "ms": 3241,
+     "query": "judge chair gun"
+    },
+    {
+     "t": "spec",
+     "id": "f12",
+     "lane": "audio",
+     "state": "done",
+     "ms": 3312,
+     "took": 310,
+     "n": 4,
+     "query": "<2.8s of speech>"
+    },
+    {
+     "t": "spec",
+     "id": "f13",
+     "lane": "local",
+     "state": "done",
+     "ms": 3477,
+     "took": 236,
+     "n": 4,
+     "query": "judge chair gun"
+    },
+    {
+     "t": "spec",
+     "id": "d14",
+     "lane": "draft",
+     "state": "fired",
+     "ms": 3613,
+     "query": "what did the judge say about where in the chair the gun was"
+    },
+    {
+     "t": "spec",
+     "id": "f15",
+     "lane": "audio",
+     "state": "fired",
+     "ms": 3805,
+     "query": "<3.6s of speech>"
+    },
+    {
+     "t": "spec",
+     "id": "f15",
+     "lane": "audio",
+     "state": "done",
+     "ms": 3992,
+     "took": 187,
+     "n": 4,
+     "query": "<3.6s of speech>"
+    },
+    {
+     "t": "endpoint",
+     "ms": 4359,
+     "by": "ear"
+    },
+    {
+     "t": "spec",
+     "id": "d14",
+     "lane": "draft",
+     "state": "reused",
+     "ms": 4435,
+     "query": "what did the judge say about where in the chair the gun was"
+    },
+    {
+     "t": "sources",
+     "ms": 4435
+    },
+    {
+     "t": "first_token",
+     "ms": 5304
+    }
+   ],
+   "arc_heard": "what did the judge say about where in the chair the gun was",
+   "arc_wer": 0.0,
+   "n_finals": 1,
+   "endpoint_via": "pause",
+   "feed_late_p95_ms": 3.8,
+   "order": 0
+  }
+ ]
+}

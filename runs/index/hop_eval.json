@@ -1,0 +1,78 @@
+{
+ "summary": {
+  "n": 6,
+  "answered": 3,
+  "correct": 3,
+  "cold_ms_p50": 1251,
+  "warm_us_p50": 7.5
+ },
+ "rows": [
+  {
+   "id": "mp21",
+   "key": "inception(@founded_by(amazon))",
+   "hop": "Jeff Bezos",
+   "answer": [],
+   "correct": false,
+   "hop_correct": null,
+   "cold_ms": 665,
+   "warm_us": 25.7
+  },
+  {
+   "id": "mp22",
+   "key": "born_place(@author_of(pride and prejudice))",
+   "hop": "Jane Austen",
+   "answer": [
+    "Steventon (village in Hampshire, England)",
+    "Steventon (village and civil parish in Vale of White Horse district, Oxfordshire, England, UK)"
+   ],
+   "correct": true,
+   "hop_correct": true,
+   "cold_ms": 836,
+   "warm_us": 10.6
+  },
+  {
+   "id": "mp23",
+   "key": "born_date(@director_of(jaws))",
+   "hop": "Steven Spielberg",
+   "answer": [
+    "December 18, 1946"
+   ],
+   "correct": true,
+   "hop_correct": true,
+   "cold_ms": 1367,
+   "warm_us": 7.5
+  },
+  {
+   "id": "mp24",
+   "key": "population_of(@capital_of(japan))",
+   "hop": "Tokyo (capital and largest city of Japan)",
+   "answer": [
+    "14,264,798"
+   ],
+   "correct": true,
+   "hop_correct": true,
+   "cold_ms": 914,
+   "warm_us": 2.7
+  },
+  {
+   "id": "mp25",
+   "key": "born_place(@ceo_of(nvidia))",
+   "hop": "Colette Kress",
+   "answer": [],
+   "correct": false,
+   "hop_correct": false,
+   "cold_ms": 1251,
+   "warm_us": 3.0
+  },
+  {
+   "id": "mp26",
+   "key": "inception(@founded_by(microsoft))",
+   "hop": "Paul Allen",
+   "answer": [],
+   "correct": false,
+   "hop_correct": false,
+   "cold_ms": 1944,
+   "warm_us": 3.0
+  }
+ ]
+}
