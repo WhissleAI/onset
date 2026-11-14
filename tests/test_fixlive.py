@@ -250,3 +250,38 @@ def test_llm_rewrite_gate_timeout_and_result(monkeypatch):
     monkeypatch.setattr(ellipsis, "LLM_TIMEOUT_S", 0.05)
     g, m2 = fr("who did he run against"), {}
     assert not asyncio.run(ellipsis.llm_rewrite(g, ctx, m2)) and m2["result"] == "timeout" and not g.inline
+
+
+# ----------------------------------------------------------------------------- the anchor of a relative reference
+def test_anchor_is_the_person_not_the_questions_own_country():
+    # recorded run: the answer's entities came back as [United States, Donald Trump]; the rewrite used "united states"
+    c = Conv()
+    c.ask("who is the president of usa", [(PL, 5, 6)],
+          "Donald Trump is the president of the United States, serving his second term.",
+          [("place", "United States"), ("person", "Donald Trump")])
+    f = c.ask("you know the old one")
+    assert f.inline == "who was the previous president of usa before the current president donald trump"
+    assert "united" not in f.query()
+
+
+def test_ceo_of_apple_the_one_before():
+    c = Conv()
+    c.ask("who is the ceo of apple", [(O, 4, 5)], "Apple Inc.'s CEO is Tim Cook, who took over in 2011.",
+          [("organization", "Apple Inc."), ("person", "Tim Cook")])
+    f = c.ask("and the one before")
+    assert f.inline == "who was the previous ceo of apple before the current ceo tim cook" and "inc" not in f.query()
+
+
+def test_anchor_rules():
+    from server.ellipsis import _same, anchor
+    assert _same("usa", "United States") and _same("United States of America", "usa") and _same("Apple Inc.", "apple")
+    assert not _same("Donald Trump", "usa")
+    prev = {"question": "who is the president of france", "entities": ["france"],
+            "answer": "The president of France is Emmanuel Macron. He succeeded François Hollande.",
+            "answer_ents": [{"name": "France", "kind": "place"}, {"name": "François Hollande", "kind": "person"},
+                            {"name": "Emmanuel Macron", "kind": "person"}]}
+    assert anchor(prev, ("president", "france")) == "emmanuel macron"      # first sentence's person, not the country
+    prev = {"question": "what is the capital of australia", "entities": ["australia"],
+            "answer": "Canberra is the capital of Australia.", "answer_ents": [{"name": "Canberra", "kind": "person"}]}
+    assert anchor(prev, ("capital", "australia")) == "canberra"            # kind misread: the first sentence decides
+    assert anchor({"entities": ["usa"], "answers": ["united states"]}, ("president", "usa")) == ""

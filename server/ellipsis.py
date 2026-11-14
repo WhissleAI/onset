@@ -42,6 +42,57 @@ def head_of(question: str) -> tuple[str, str] | None:
     return (h, c) if h and c else None
 
 
+# the kind of entity a question head asks for ("president of usa" -> a person): the answer's entity of that kind is the
+# anchor "the old one" is relative to
+HEAD_KIND = {w: "person" for w in """president vice-president ceo cfo cto coo chairman chairwoman chair founder king queen
+monarch emperor empress pope prime minister chancellor mayor governor senator leader head director coach captain
+manager owner author editor host anchor speaker secretary premier ruler sultan chief commissioner principal dean
+champion winner mvp""".split()}
+HEAD_KIND.update({"capital": "place", "city": "place", "largest city": "place", "headquarters": "place",
+                  "parent company": "org", "owner company": "org", "team": "org", "company": "org"})
+_ALIASES = [{"usa", "us", "u s", "u s a", "united states", "united states of america", "america", "the us", "the usa"},
+            {"uk", "u k", "united kingdom", "britain", "great britain", "england"},
+            {"uae", "united arab emirates"}, {"eu", "european union"}, {"un", "united nations"},
+            {"ussr", "soviet union"}, {"nyc", "new york city", "new york"}]
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", (s or "").lower())).strip()
+
+
+def _same(a: str, b: str) -> bool:
+    """Same thing under another name: equal, an alias pair, initials ("united states of america" ~ "usa"), or one name
+    inside the other ("france" ~ "republic of france")."""
+    a, b = _norm(a), _norm(b)
+    if not a or not b:
+        return False
+    if a == b or any(a in g and b in g for g in _ALIASES):
+        return True
+    ini = lambda x: "".join(w[0] for w in x.split() if w not in ("of", "the", "and"))
+    if len(a.split()) > 1 and ini(a) == b.replace(" ", "") or len(b.split()) > 1 and ini(b) == a.replace(" ", ""):
+        return True
+    return f" {a} " in f" {b} " or f" {b} " in f" {a} "
+
+
+def anchor(prev: dict, ho: tuple | None) -> str:
+    """The previous answer's entity "the old one" is relative to: never the question's own object ("usa" / "united
+    states"); of the kind the question head asks for (president -> person) when the kinds are known; then the subject of
+    the answer's first sentence (the earliest named), then the answer's order."""
+    cands = [dict(c) for c in prev.get("answer_ents") or []] or [{"name": a, "kind": ""} for a in prev.get("answers") or []]
+    objs = list(prev.get("entities") or []) + ([ho[1]] if ho else [])
+    cands = [c for c in cands if c.get("name") and not any(_same(c["name"], o) for o in objs)]
+    if not cands:
+        return ""
+    want = HEAD_KIND.get(ho[0]) if ho else None
+    first = _norm(re.split(r"(?<=[.!?])\s", prev.get("answer") or "", maxsplit=1)[0])
+
+    def key(ic):
+        i, c = ic
+        pos = f" {first} ".find(f" {_norm(c['name'])} ")
+        return (0 if want and c.get("kind") == want else 1, pos if pos >= 0 else 10 ** 6, i)
+    return sorted(enumerate(cands), key=key)[0][1]["name"].lower()
+
+
 def _which(toks: list[str]) -> tuple[str, str] | None:
     """(kind, phrase): kind in prev | next | first, phrase = the reference as said ("the old one")."""
     for i, t in enumerate(toks):
@@ -93,7 +144,7 @@ def resolve(toks: list[str], prev: dict | None) -> dict | None:
     if kind == "other":
         kind = "prev"               # one subject so far: "the other one" = the one before the answer ("the other guy")
     ho = head_of(prev.get("inline") or prev.get("question") or "")
-    ans = next((a for a in prev.get("answers") or [] if a), "")
+    ans = anchor(prev, ho)
     if ho is None:
         if kind == "first" or not ans:
             return None

@@ -449,6 +449,9 @@ class Memory:
         # thing it named first), how long ago, how many subjects the conversation has
         base["prev"] = {**base["prev"],
                         "answers": [self.ents[k]["name"].lower() for k in prev.get("a_new") or [] if k in self.ents][:2],
+                        "answer_ents": [{"name": self.ents[k]["name"], "kind": self.ents[k].get("kind", "")}
+                                        for k in prev.get("a_new") or [] if k in self.ents][:6],
+                        "answer": prev.get("answer", ""),
                         "age_s": max(0.0, time.time() - prev["at"]) if prev.get("at") else None,
                         "n_subjects": len(self.subjects())}
         return base
