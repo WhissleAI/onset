@@ -170,7 +170,7 @@ def main(argv=None) -> dict:
     ap.add_argument("--current-run", default="", help="the current model's recipe run (default: registry meta / shipped)")
     ap.add_argument("--force", action="store_true", help="train even with < MIN_NEW new traces")
     a = ap.parse_args(argv)
-    out = Path(a.out)
+    out = Path(a.out).resolve()                 # the recipe's scripts run in the recipe dir
     out.mkdir(parents=True, exist_ok=True)
     D.mkdir(parents=True, exist_ok=True)
     rep: dict = {}

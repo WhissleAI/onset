@@ -1817,3 +1817,31 @@ Model versions: search director v000 (2026-11-13) · Keystone director v000 (202
   main checkout or swap used > 16 GB; a cycle every 75 min (`TRAIN_EVERY_MIN`).
 - **Results**: runs/train/latest.json every cycle; after a promotion a "Training cycle N" section here and the Results
   view's "Model versions · last trained" line (server/scorecard.json "models"), in the same step.
+- **Dry run (cycle 0, 2026-11-14 12:32-12:44) and first measurements** (both models on the same fixed sets):
+  - Real rows harvested: 8,194 (8,160 eval-replay rows from every checkout's runs/, 34 app request-log questions;
+    the app collector starts filling once the app runs this build). PII check: no 5+ digit run, email or handle left.
+  - Calibrator: refit on the same 461 base rows reproduces the shipped model exactly (test ECE 0.0342, Brier 0.1605,
+    AUC 0.721 on 186 held-out answers): the pipeline is faithful. Gate: no gain, kept.
+  - Keystone director: one DAgger round under the shipped policy (6,696 new decisions, 48,132 in all), R re-picked
+    on dev replays (R 30). Test 2,000 q: paid/q 0.490 -> 0.4955, regret 0.75 % -> 0.55 %, replay p50 189 -> 205 ms;
+    old test 800 q: 0.341 -> 0.354, regret 1.25 % -> 0.63 %. Lower regret but more paid calls and +15 ms p50: kept.
+  - Search director: skipped (no new traces in a dry run).
+- **Real-Tavily slice** (eval/train/tavily_slice.py): 40 of the 100-credit cap spent (ledger runs/train/tavily/
+  ledger.json; basic depth, 1 credit / search): 40 labelled answers with Tavily relevance scores (39 right), added to
+  the calibrator's TRAIN rows so src_top / src_margin are no longer constant.
+- **Cycle 1 (2026-11-14 12:48-13:22, the loop's first real cycle) — promoted nothing:**
+  - Data: 26 synthetic sessions / 43 spoken turns (topic switch 5, elliptical 8, self-correction 7, open mic 2,
+    multi-part 2, live data 2; 30 with Wikidata gold, 2 without), paraphrases $0.0002 (6 Haiku calls); 43 clips
+    streamed through real Flux (3.69 audio min, est. $0.028), featurized, audio deleted; 39 director traces built
+    (4 dropped for message jitter). Calibration labels: 22 synthetic answers ($0.003 est.).
+  - Calibrator (538 train rows: 461 base + 22 synthetic + 40 real-Tavily + 15 real replays): test Brier 0.1605 ->
+    0.1606, ECE 0.034 -> 0.044, AUC 0.721 -> 0.727; live rows (58) Brier 0.037 -> 0.024. Gate (test Brier -0.002):
+    kept.
+  - Keystone director: no new rows since the dry run's refit (same policy): skipped.
+  - TTLs: the public Wikidata SPARQL endpoint timed out on every statement-history query (step timeout): no
+    candidate. Histories are now cached weekly and the queries smaller.
+  - Search director (run by hand on the cycle's 39 traces; the loop waits for 40): retrained v2_s0 recipe + extra
+    traces. Threshold-free eot BCE improved on all three sets (test 0.2483 -> 0.2464, test_v2 0.2844 -> 0.2802,
+    heldout80 0.1895 -> 0.1861; all CIs include 0), but at the val thresholds heldout80 p50 132.5 -> 160.3 ms,
+    test p50 254.9 -> 257.6 ms, test_v2 premature 32.2 -> 35.1 /100 q, addressed AUC 0.902 -> 0.885: **kept**
+    (the gate's no-p50-regression rule).
