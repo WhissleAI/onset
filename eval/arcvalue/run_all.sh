@@ -4,7 +4,7 @@
 #   eval/arcvalue/run_all.sh [step ...]      steps: corr fact show multi live noisy conv
 set -u
 cd "$(dirname "$0")/../.."
-export WEB_BACKEND=wikipedia RUN_AB_LOCK=/Users/karan/Desktop/work/whissle/headstart/runs/.run_ab.lock RUN_AB_OWNER=arcvalue
+export WEB_BACKEND=wikipedia RUN_AB_LOCK=${RUN_AB_LOCK:-$(git rev-parse --show-toplevel)/runs/.run_ab.lock} RUN_AB_OWNER=arcvalue
 PY=.venv/bin/python
 M=baseline,headstart,plain
 R=runs/arcvalue

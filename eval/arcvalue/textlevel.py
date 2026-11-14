@@ -20,6 +20,7 @@ Inputs (all transcripts are what Deepgram Flux heard, not the scripts):
 """
 from __future__ import annotations
 
+import os
 import json
 import sys
 import time
@@ -34,8 +35,9 @@ from server import config, frame as framemod, lanes, narrow, router  # noqa: E40
 from server.session import clean, open_mic_skip  # noqa: E402
 from server.tagger import Tagger  # noqa: E402
 
-DIRECTOR = Path("/Users/karan/Desktop/work/whissle/arc_tagger_handoff/data/from_director")
-GOLD = Path("/Users/karan/Desktop/work/whissle/arc_tagger_handoff/data/gold/gold.jsonl")
+HANDOFF = Path(os.environ.get("ARC_HANDOFF", Path(__file__).resolve().parents[3] / "arc_tagger_handoff"))
+DIRECTOR = HANDOFF / "data" / "from_director"
+GOLD = HANDOFF / "data" / "gold" / "gold.jsonl"
 OUT = ROOT / "runs" / "arcvalue" / "textlevel.json"
 
 _T: Tagger | None = None
