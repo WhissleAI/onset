@@ -48,6 +48,13 @@
       <svg class="mem-svg" id="memSvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Knowledge graph of this conversation"></svg>
       <div class="mem-empty" id="memEmpty">Ask a question, then a follow-up ("when was it founded?"). The people, places and companies you talk about appear here.</div>
       <div class="mem-foot" id="memFoot"></div>
+      <div class="pers" id="pers" hidden>
+        <div class="pers-head"><b>For you</b><span class="pers-sub" id="persSub"></span><span class="mem-sp"></span>
+          <button class="mem-btn mem-x" id="persExport" title="Download what Onset learned about how you ask (JSON; no audio, no transcripts)">export</button>
+          <button class="mem-btn" id="persClear" title="Clear what Onset learned about how you ask, here and on the server">clear</button>
+        </div>
+        <div class="pers-body" id="persBody"></div>
+      </div>
     </div>`;
   document.body.appendChild(dock);
   const $ = (id) => document.getElementById(id);
@@ -60,6 +67,74 @@
     graph = { nodes: [], edges: [], user: [] }; focus = null; pos = {}; note = "";
     paint();
   });
+
+  // ------------------------------------------------------------------ persona (server/persona.py, PERSONA=1)
+  // "Answered for you": why this answer was shaped for this user (shorter: you asked quickly; Jaguar Cars: you asked
+  // about the Ford Mustang earlier). The profile itself sits in this panel with export / clear.
+  let persOn = false, profile = null, persWhy = { q: null, style: "", sense: "" };
+  $("persClear").addEventListener("click", () => {
+    if (send) send({ t: "persona_clear" });
+    profile = null; persWhy = { q: null, style: "", sense: "" };
+    paintPersona(); paintPersNote();
+  });
+  $("persExport").addEventListener("click", () => { if (send) send({ t: "persona_export" }); });
+  function download(obj) {
+    try {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = "onset-profile.json";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) { console.error("export", err); }
+  }
+  function paintPersona() {
+    const box = $("pers");
+    box.hidden = !persOn;
+    if (!persOn) return;
+    const p = profile || {};
+    const bits = [];
+    if (p.length && p.length !== "normal") bits.push(p.length === "short" ? "short answers" : "detailed answers");
+    if (p.expertise) bits.push(p.expertise === "beginner" ? "plain words" : "expert");
+    if (p.units) bits.push(p.units === "imperial" ? "miles · feet · °F" : "km · metres · °C");
+    $("persSub").textContent = p.turns ? `${p.turns} question${p.turns === 1 ? "" : "s"} · kept on this device` : "nothing learned yet";
+    const topics = (p.topics || []).slice(0, 6).map((t) => `<span class="mem-fact" title="${esc(t.cat ? "interest: " + t.cat : "interest")}">${esc(t.label)}</span>`).join("");
+    $("persBody").innerHTML = (bits.length ? `<div class="pers-line">${bits.map(esc).join(" · ")}</div>` : "")
+      + (p.sense ? `<div class="pers-line muted">lately: ${esc(p.sense)}s</div>` : "")
+      + (topics ? `<div class="mem-foot">${topics}</div>` : "")
+      + (!p.turns ? `<div class="pers-line muted">Answers adapt to how you ask (quick, unsure, units) and what you asked about before.</div>` : "");
+  }
+  function persNoteEl() {
+    let n = document.getElementById("persNote");
+    const after = noteEl();
+    if (!n && after) {
+      n = document.createElement("div");
+      n.id = "persNote";
+      n.className = "mem-note pers-note";
+      n.hidden = true;
+      after.insertAdjacentElement("afterend", n);
+    }
+    return n;
+  }
+  function paintPersNote() {
+    const n = persNoteEl();
+    if (!n) return;
+    const why = [persWhy.style, persWhy.sense].filter(Boolean);
+    n.hidden = !why.length;
+    n.innerHTML = why.length ? `<i>answered for you</i> ${why.map(esc).join(" · ")}` : "";
+  }
+  function personaEvent(e) {
+    if (e.on !== undefined) persOn = !!e.on;
+    if (e.profile) { profile = e.profile; persOn = true; }
+    if (e.cleared) { profile = null; persWhy = { q: null, style: "", sense: "" }; paintPersNote(); }
+    if (e.export) download(e.export);
+    if (e.q != null && (e.why !== undefined || e.sense !== undefined)) {
+      if (persWhy.q !== e.q) persWhy = { q: e.q, style: "", sense: "" };
+      if (e.why !== undefined) persWhy.style = e.why || "";
+      if (e.sense !== undefined) persWhy.sense = e.sense || "";
+      paintPersNote();
+    }
+    paintPersona();
+  }
 
   // a one-line note under the transcript: what memory did to this question ("using: you live in Denver")
   function noteEl() {
@@ -215,6 +290,8 @@
   function primaryMode(e) { return e.mode === primary || e.mode === "sys"; }
   function event(e) {
     if (!e || !primaryMode(e)) return;
+    if (e.t === "persona") { personaEvent(e); return; }
+    if (e.t === "frame" && persWhy.q != null && e.q !== persWhy.q) { persWhy = { q: null, style: "", sense: "" }; paintPersNote(); }
     if (e.t === "memory") {
       if (e.persist !== undefined) persist = !!e.persist;
       if (e.forgot) { focus = null; note = ""; }
@@ -252,7 +329,8 @@
   function start(kind, modes) {
     primary = (modes && modes[0]) || "headstart";
     note = ""; noteQ = null;
-    paintNote();
+    persWhy = { q: null, style: "", sense: "" };
+    paintNote(); paintPersNote();
   }
   function connected(fn) {
     send = fn;

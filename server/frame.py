@@ -236,6 +236,7 @@ class Frame:
     # name, words[a+1:b] are "" so token indices stay aligned
     resolved: tuple = ()
     sconf: tuple = ()                # per-word "is it right": min(ear confidence, fused), heard.suspect_conf
+    persona_hint: str = ""           # how to answer this user (server/persona.py, PERSONA=1): one short line
 
     @property
     def n(self):
@@ -368,11 +369,11 @@ class Frame:
         dollars in euros"): sources usually list a rate (often the inverse one, 1 EUR = 1.16 USD), and the answer must
         be the converted AMOUNT, in the direction asked."""
         if not self.convert:
-            return ""
+            return self.persona_hint
         amount, src, dst = self.convert
         return (f"This asks to convert an amount: {amount} into {dst}. Start with the converted amount in {dst} "
                 f"(from {src} to {dst}, not the reverse), then give the rate used and cite it. If a source only gives the "
-                f"inverse rate ({dst} to {src}), divide by it.")
+                f"inverse rate ({dst} to {src}), divide by it." + (" " + self.persona_hint if self.persona_hint else ""))
 
     def has_content(self) -> bool:
         return len(self.content) >= 2 or bool(self.slots)

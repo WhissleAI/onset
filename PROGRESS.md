@@ -1469,3 +1469,25 @@ Read-only audit of main 411a69f against the organizers' 6 problems, 9 tracks and
   load (it showed Speed until the first render after a run).
 - Tests: tests/test_results_view.py (21); full suite 499 passed. Shots (1280x720, light + dark, no console errors, no horizontal scroll):
   scratchpad feature_shots/results/.
+
+## Personalization: answers for who is asking (branch feat/persona; server/persona.py, docs/PERSONALIZATION.md)
+Organizers' problem 04 ("results ignore who's asking and why"). Flag `PERSONA=1`, **default off** (see below).
+- **Style per question** from how it was said: syllable pace over the ear's word times (≥ 7 syl/s → "shorter: you
+  asked quickly"), in-question pauses / fillers / hedges / a definition ask / Arc throat-clear (→ "a little fuller: you
+  sounded unsure"), "no, that's not what I meant" after an answer (→ starts with "Sorry,"), "just the …" / "tell me
+  more" and units (also learned for later turns). One answer-model note, 15-50 tokens (exact `count_tokens`), on
+  drafts and finals alike; most questions get none (13.5 est. tokens / q on the eval set).
+- **Profile per browser** (`<data dir>/persona/`, 30-day TTL, same random client id as memory): cited public source
+  titles + their embeddings + a coarse category, length / expertise / units / pace. No audio, no transcripts, no
+  user words, no demographics (Arc emits no age / gender here), nothing from turns with redacted data. Export / clear in
+  the memory panel's new "For you" row; "forget" clears it too.
+- **Retrieval**: category-gated interest rerank (+0.25 × cos) that may only overturn a top source of another named
+  sense (Cheetah while you ask about cars), plus one free parallel Wikipedia "<subject> <category>" search kept only for
+  articles named by the subject. Under the answer: "Answered for you · Jaguar XJ220: you asked about Ford Mustang
+  earlier".
+- **Eval** (`eval/persona/`, 15 spoken sessions / 41 turns, Flux ear, Wikipedia lane, arms alternating; ab4):
+  sense 6/9 → **8/9**, style 7/12 → **11/12**, content 30/31 both, blind Haiku judge 3.78 → **3.98** ($0.0045 / run),
+  p50 2,505 → 2,373 ms (noisy, loaded machine). Single rep: small numbers.
+- Per-speaker acoustic baselines are not persona's: `persona.relative()` reads feat/arcstate's
+  `arcstate.relative(session)` when it exists (absolute bars until then).
+- Tests: tests/test_persona.py (18).
