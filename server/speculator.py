@@ -1116,6 +1116,9 @@ class Speculator:
         if fplan is not None:
             m["route"], m["route_conf"], m["route_why"] = fplan.lane, fplan.conf, fplan.why[:80]
         qvec_task = asyncio.create_task(embed.arun(embed.encode_queries, [qtext]))
+        if config.INDEX:
+            from .keystone import hook as _ks
+            _ks.share_qvec(qtext, qvec_task)      # Keystone's endpoint lookup reuses this embedding (no second one)
         reuse_draft = None
         alt = None
         mp = None

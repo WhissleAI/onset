@@ -296,3 +296,26 @@ def test_cached_wikidata_neighbourhoods_answer_two_hop_questions(index_on):
     _, vals = hook.store().g.lookup(k.subject, k.relation)
     assert vals and vals[0]["value"].startswith("Steventon")
     knowledge._cache.clear()
+
+
+def test_endpoint_lookup_reuses_the_speculators_query_embedding(index_on, monkeypatch):
+    from server import embed
+    ks = hook.store()
+    f = F("what's the boiling point of water in fahrenheit")
+    d = Doc("b", "Boiling point", "Water boils at 212 degrees Fahrenheit at sea level.")
+    v = vec(99)
+    q = hook.q_of(f, "q", v)
+    ks.write(q, [d], {"b": v})
+    calls = []
+    monkeypatch.setattr(embed, "arun", lambda *a: calls.append(a) or asyncio.sleep(0, [v]))
+
+    async def go():
+        fut = asyncio.get_running_loop().create_future()
+        fut.set_result([v])
+        hook.share_qvec(f.resolved_text, fut)
+        m = {}
+        r = await hook.local_first(f, "q", m, final=True)
+        return r, m
+    r, m = asyncio.run(go())
+    assert not calls and m.get("index_qvec") == "shared"
+    hook._QV.clear()

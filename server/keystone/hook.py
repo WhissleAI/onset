@@ -168,8 +168,20 @@ async def local_first(f, query: str, meter: dict | None = None, final: bool = Tr
                 return None
             from .. import embed
             budget = max(0.005, config.INDEX_TIMEOUT_MS / 1000 - (time.perf_counter() - t0))
+            shared = _QV.get(q.text) or _QV.get(getattr(f, "resolved_text", ""))
+            if shared is not None and shared.done() and (shared.cancelled() or shared.exception() is not None):
+                shared = None
             try:
-                qv = (await asyncio.wait_for(embed.arun(embed.encode_queries, [q.text]), budget))[0]
+                qv = None
+                if shared is not None:      # the speculator is already embedding this question: wait for it
+                    done, _ = await asyncio.wait({shared}, timeout=budget)
+                    if shared in done and not shared.cancelled() and shared.exception() is None:
+                        qv = shared.result()[0]
+                        meter["index_qvec"] = "shared"
+                    elif shared not in done:
+                        raise asyncio.TimeoutError
+                if qv is None:
+                    qv = (await asyncio.wait_for(embed.arun(embed.encode_queries, [q.text]), budget))[0]
             except asyncio.TimeoutError:
                 STATS["timeouts"] += 1
                 meter["index_why"] = "timeout"
@@ -203,6 +215,18 @@ async def local_first(f, query: str, meter: dict | None = None, final: bool = Tr
         STATS["errors"] += 1
         meter["index_error"] = f"{type(e).__name__}: {e}"[:120]
         return None
+
+
+_QV: dict = {}
+
+
+def share_qvec(text: str, task):
+    """The speculator's endpoint query-embedding task for `text` (finalize): the local lookup awaits it instead of
+    embedding the same question a second time on the same single-worker pool."""
+    if len(_QV) > 32:
+        for k in list(_QV)[:16]:
+            del _QV[k]
+    _QV[text] = task
 
 
 def wrap_web(web_fn, f, query: str, meter: dict, final: bool = True):
