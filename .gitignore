@@ -13,3 +13,5 @@ eval/audio_multipart/
 dist/
 build/
 eval/audio
+eval/audio_arcvalue/
+eval/audio_arcvalue_noisy/

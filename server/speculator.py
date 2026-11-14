@@ -185,7 +185,7 @@ class Speculator:
                     fire.landed.set()                       # PLAN: the endpoint / a bridge part needn't wait for vectors
                     self._part_raw(fire)
                 await self._add_docs(docs)                  # vectors first, then "done": drafts rank on vectors
-                if config.INDEX and f is not None:
+                if config.INDEX and f is not None and not f.plain:
                     from .keystone import hook as _ks       # Keystone ingest (server/keystone/): passages, typed
                     _ks.ingest(f, query, docs, self.vecs, fire.meter)   # edges, value cell; no network, no embedding
                 fire.docs = docs                            # (a fire cancelled mid-embed keeps none: never revived
@@ -600,6 +600,12 @@ class Speculator:
                 same.state = "done" if same.task is None or same.task.done() else "fired"
                 self._ev(id=same.id, lane=same.lane, query=same.query, state=same.state, ms=self.ms(), revived=True)
             same.part = text
+            if same.landed is None:
+                # a whole-sentence fire adopted as a part has no landed event: its run() (still in flight) would raise
+                # on landed.set() and never add its docs (seen in the arcvalue conversation run)
+                same.landed = asyncio.Event()
+                if same.task is None or same.task.done():
+                    same.landed.set()
             self.part_fire[text] = same
             return same
         plan = self._plan(pf, final)
@@ -787,8 +793,8 @@ class Speculator:
         when the plan includes "web"; a cheap-only plan (card / facts) fires free lookups instead. None = no router:
         the frame's own route decides."""
         plan = getattr(lanes, "plan", None)
-        if plan is None:
-            return None
+        if plan is None or getattr(f, "plain", False):
+            return None                     # Arc-off arm: no router plan (the frame has no read-out to plan on)
         try:
             return plan(f, final=final)
         except Exception:
@@ -1145,13 +1151,13 @@ class Speculator:
         if fplan is not None:
             m["route"], m["route_conf"], m["route_why"] = fplan.lane, fplan.conf, fplan.why[:80]
         qvec_task = asyncio.create_task(embed.arun(embed.encode_queries, [qtext]))
-        if config.INDEX:
+        if config.INDEX and not f.plain:     # (Arc-off: Keystone is Arc-keyed; it neither learns from nor serves it)
             from .keystone import hook as _ks
             _ks.share_qvec(qtext, qvec_task)      # Keystone's endpoint lookup reuses this embedding (no second one)
         reuse_draft = None
         alt = None
         mp = None
-        if config.PLAN:
+        if config.PLAN and not f.plain:
             try:
                 mp = planner.decompose(f)
             except Exception:
@@ -1168,6 +1174,14 @@ class Speculator:
                     return superseded()
                 qvec = (qvec_task.result()[0] if qvec_task.done() and not qvec_task.cancelled()
                         and qvec_task.exception() is None else None)     # not on the critical path
+            elif self.mode == "plain":
+                # Arc-off arm: one web search of the raw transcript after the endpoint. No router (cards / facts),
+                # no topic / freshness / domain hints, no entity query, no search cache, no local lane.
+                pm: dict = {}
+                await asyncio.gather(self._fire("final-web", q, f, lambda: lanes.web(
+                    q, final=True, ledger=self.ledger, meter=pm), meter=pm).task, return_exceptions=True)
+                qvec = (await qvec_task)[0]
+                m["path"] = "plain-search"
             elif self.mode == "baseline":
                 alt = self._answer_race(q, f)
                 waits = []
@@ -1275,7 +1289,7 @@ class Speculator:
         ranked = self._rank_for(f, qvec, 5) if plan_ranked is None else [(d, sc) for d, sc, _ in plan_ranked]
         if fplan is not None and fplan.lane == "card" and plan_ranked is None:
             ranked = self._card_first(ranked, qtext, qvec)
-        if config.INDEX and qvec is not None:
+        if config.INDEX and qvec is not None and not f.plain:
             from .keystone import hook as _ks
             _ks.note_qvec(f, q, qvec)                    # Keystone: this question's vector on the value cell it wrote
         if config.CACHE_SEM and qvec is not None:

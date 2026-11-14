@@ -367,3 +367,11 @@ COST_DRAFT_DEDUP = os.environ.get("COST_DRAFT_DEDUP", "1") == "1"
 COST_CACHE = os.environ.get("COST_CACHE", "1") == "1"
 COST_CACHE_WRITE_MULT = float(os.environ.get("COST_CACHE_WRITE_MULT", "1.25"))
 COST_CACHE_READ_MULT = float(os.environ.get("COST_CACHE_READ_MULT", "0.1"))
+# ---------------------------------------------------------------------------------------------------- Arc-off arm
+# "Plain voice search" (mode="plain"; docs/ARC_VALUE.md): what a typical voice assistant does, to measure what Arc's
+# understanding adds. The raw final transcript (punctuation stripped) is the web query; no tagger read-out at all (no
+# correction handling, entity carry / memory, router lanes / cards, PII redaction, freshness / topic, open-mic gate,
+# planner). Same ear, same web lane, same reranker, same answer model and prompt minus the frame hints.
+# ARC_OFF=1 makes every Session plain (e.g. the live demo); eval/run_ab.py / run_conv.py use --modes ...,plain.
+ARC_OFF = os.environ.get("ARC_OFF", "0") == "1"
+PLAIN_CONTEXT = os.environ.get("PLAIN_CONTEXT", "0") == "1"   # plain arm: give the answer model the previous Q + A

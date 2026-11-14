@@ -1,0 +1,16 @@
+{"id": "ld01", "file": "ld01.wav", "text": "what's the temperature in Denver right now", "voice": "kokoro:af_heart@1.0", "kind": "live_weather", "expect": [], "truth": {"city": "Denver"}}
+{"id": "ld02", "file": "ld02.wav", "text": "how hot is it in Phoenix right now", "voice": "say:Samantha@175", "kind": "live_weather", "expect": [], "truth": {"city": "Phoenix"}}
+{"id": "ld03", "file": "ld03.wav", "text": "what's the weather like in London right now", "voice": "kokoro:am_michael@1.0", "kind": "live_weather", "expect": [], "truth": {"city": "London"}}
+{"id": "ld04", "file": "ld04.wav", "text": "how cold is it in Chicago today", "voice": "say:Daniel@175", "kind": "live_weather", "expect": [], "truth": {"city": "Chicago"}}
+{"id": "ld05", "file": "ld05.wav", "text": "what's the temperature in Tokyo right now", "voice": "kokoro:af_nova@1.0", "kind": "live_weather", "expect": [], "truth": {"city": "Tokyo"}}
+{"id": "ld06", "file": "ld06.wav", "text": "what's a hundred US dollars in euros", "voice": "kokoro:am_fenrir@1.0", "kind": "live_fx", "expect": [], "truth": {"amount": 100, "src": "USD", "dst": "EUR"}}
+{"id": "ld07", "file": "ld07.wav", "text": "how much is fifty British pounds in US dollars", "voice": "say:Karen@175", "kind": "live_fx", "expect": [], "truth": {"amount": 50, "src": "GBP", "dst": "USD"}}
+{"id": "ld08", "file": "ld08.wav", "text": "convert a thousand Japanese yen to dollars", "voice": "kokoro:af_bella@1.0", "kind": "live_fx", "expect": [], "truth": {"amount": 1000, "src": "JPY", "dst": "USD"}}
+{"id": "ld09", "file": "ld09.wav", "text": "what's two hundred euros in Canadian dollars", "voice": "kokoro:af_aoede@1.0", "kind": "live_fx", "expect": [], "truth": {"amount": 200, "src": "EUR", "dst": "CAD"}}
+{"id": "ld10", "file": "ld10.wav", "text": "what time is it in Tokyo right now", "voice": "say:Reed (English (US))@175", "kind": "live_time", "expect": [], "truth": {"tz": "Asia/Tokyo"}}
+{"id": "ld11", "file": "ld11.wav", "text": "what time is it in London", "voice": "kokoro:am_michael@1.0", "kind": "live_time", "expect": [], "truth": {"tz": "Europe/London"}}
+{"id": "ld12", "file": "ld12.wav", "text": "what's the time in Sydney right now", "voice": "kokoro:af_heart@1.0", "kind": "live_time", "expect": [], "truth": {"tz": "Australia/Sydney"}}
+{"id": "ld13", "file": "ld13.wav", "text": "how many kilometers is twenty six miles", "voice": "say:Samantha@170", "kind": "live_units", "expect": [], "truth": {"value": 41.842944, "unit": "km"}}
+{"id": "ld14", "file": "ld14.wav", "text": "what's seventy two fahrenheit in celsius", "voice": "kokoro:am_fenrir@1.0", "kind": "live_units", "expect": [], "truth": {"value": 22.22222222222222, "unit": "c"}}
+{"id": "ld15", "file": "ld15.wav", "text": "how many ounces are in three pounds", "voice": "kokoro:af_nova@1.0", "kind": "live_units", "expect": [], "truth": {"value": 48, "unit": "oz"}}
+{"id": "ld16", "file": "ld16.wav", "text": "how many cups are in a liter", "voice": "say:Daniel@170", "kind": "live_units", "expect": [], "truth": {"value": 4.226752837730375, "unit": "cups", "alt": 4.0}}

@@ -25,7 +25,7 @@ QS = {json.loads(l)["id"]: json.loads(l) for l in (ROOT / "eval/multipart/questi
 def summarize(path: str) -> dict:
     res = json.loads(Path(path).read_text())
     out = {}
-    for mode in ("headstart", "baseline"):
+    for mode in ("headstart", "baseline", "plain"):
         rows = [r for r in res["rows"] if r["mode"] == mode and r["id"] in QS]
         if not rows:
             continue
