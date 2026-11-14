@@ -1,4 +1,4 @@
-/* Cost-and-speed meter: per question, Outpost Luna vs plain search (Baseline) side by side, plus running session totals.
+/* Cost-and-speed meter: per question, Head Start vs plain search (Baseline) side by side, plus running session totals.
 
    Fed by app.js: HSMeter.start(run) on every run, HSMeter.event(e, run) on every server event. Reads the per-question
    "metric" event (ready_ms, paid_calls, free_calls, wasted_fires, answer-model tokens ans_* / waste_*, est. $ from
@@ -12,7 +12,7 @@
   "use strict";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const MODES = ["headstart", "baseline"];
-  const NAME = { headstart: "Outpost Luna", baseline: "Baseline" };
+  const NAME = { headstart: "Head Start", baseline: "Baseline" };
   const SHORT = { headstart: "HS", baseline: "BL" };
   const TOK_KEYS = ["ans_in", "ans_out", "waste_in", "waste_out", "llm_requests", "waste_streams", "tokens_est", "usd",
     "usd_web", "usd_llm", "usd_llm_waste", "price_verified"];
@@ -152,7 +152,7 @@
       const avg = P.saved / P.n;
       const tp = Math.abs(avg) < 50 ? "same speed" : `${fmtS(Math.abs(avg))} ${avg >= 0 ? "faster" : "slower"}`;
       hero = `${tp} · ${costPhrase(P.hsUsd, P.blUsd)}`;
-      heroSub = `Outpost Luna vs plain search · avg of ${P.n} question${P.n > 1 ? "s" : ""} · $ est.`;
+      heroSub = `Head Start vs plain search · avg of ${P.n} question${P.n > 1 ? "s" : ""} · $ est.`;
     } else {
       const m = modes[0], t = T[m];
       hero = `${fmtUsd(t.usd / t.n)} per question`;
@@ -266,7 +266,7 @@
       if (a.ready != null && b.ready != null) bits.push(`p50 ${fmtS(b.ready - a.ready)} ${b.ready >= a.ready ? "faster" : "slower"}`);
       bits.push(costPhrase(a.usd, b.usd));
       bits.push(callsPhrase(+a.paid.toFixed(2), +b.paid.toFixed(2)).replace(/(\d+\.\d{3,})/g, (s) => (+s).toFixed(2)));
-      h += `<p class="res-note">Outpost Luna vs plain search: <b>${esc(bits.join(" · "))}</b></p>`;
+      h += `<p class="res-note">Head Start vs plain search: <b>${esc(bits.join(" · "))}</b></p>`;
     }
     if (ms.some((m) => !S[m].hasTok)) h += `<p class="res-note muted">* web calls only: this file has no answer-model token counts (recorded before the meter); the model's share at list price is well under a cent per question.</p>`;
     const be = rs.find((r) => r.web_backend)?.web_backend;

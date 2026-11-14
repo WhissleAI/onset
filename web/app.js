@@ -1,4 +1,4 @@
-/* Outpost Luna UI: plain JS, no build. Talks to server/app.py over /ws (protocol in its docstring). */
+/* Head Start UI: plain JS, no build. Talks to server/app.py over /ws (protocol in its docstring). */
 (() => {
   "use strict";
 
@@ -9,7 +9,7 @@
   // Minimal comparison view by default: question, the two answers with their times, full search results.
   // Press D to show the details (pipeline strip, replay list, Arc read-out, timeline, stats).
   document.body.classList.toggle("minimal", store.get("hs_details") !== "1");
-  const MODE_NAME = { headstart: "Outpost Luna", baseline: "Baseline" };
+  const MODE_NAME = { headstart: "Head Start", baseline: "Baseline" };
   const fmtS = (ms) => (ms == null || !isFinite(ms) ? "—" : (ms < 0 ? "−" : "") + (Math.abs(ms) / 1000).toFixed(Math.abs(ms) < 9950 ? 2 : 1) + " s");
   const stripIntent = (s) => String(s || "").replace(/^discourse\.intent\./, "").replace(/^intent\./, "").replace(/_/g, " ");
 
@@ -418,7 +418,7 @@
     if (!run) return;
     const done = run.modes.filter((m) => q.metric[m]);
     if (!done.length) return;
-    const SHORT = { headstart: "Outpost Luna", baseline: "Baseline" };
+    const SHORT = { headstart: "Head Start", baseline: "Baseline" };
     setPipe("answer", run.modes.map((m) => q.metric[m] ? `${SHORT[m]} ${fmtS(readyAdj(q, m))}` : `${SHORT[m]} streaming…`).join(" · "));
     const hm = q.metric.headstart;
     if (hm) {
@@ -455,7 +455,7 @@
     pipe("lanes", Object.entries(cnt).map(([l, n]) => `${l} ${n}`).join(" · "));
   }
 
-  // both sessions emit the same words; follow whichever is still listening (Outpost Luna stops after an early endpoint)
+  // both sessions emit the same words; follow whichever is still listening (Head Start stops after an early endpoint)
   function acceptWords(q, mode, e) {
     const sig = (e.words || []).map((w) => w.w).join(" ");
     if (mode !== primary() && q.wordsMode === primary() && q.endpointMs[primary()] == null) return false;
@@ -780,7 +780,7 @@
   }
 
   // results view: when were results for the FINAL meaning first on screen? The earliest landed search (not stale) whose
-  // query is the endpoint frame's query, or the final ranked list. For Outpost Luna this is often before the endpoint.
+  // query is the endpoint frame's query, or the final ranked list. For Head Start this is often before the endpoint.
   function resultsAt(q, m) {
     const fq = q.epQuery[m];
     if (fq == null) return null;
@@ -1515,12 +1515,12 @@
     if (fasterN != null && fasterN > 0 && fasterN <= 1 && nPair > 1) fasterN = Math.round(fasterN * nPair);   // a rate
     if (fasterN == null && both.length) fasterN = both.filter((r) => r.h < r.b).length;
     const fasterTxt = fasterN != null && nPair ? ` <small>faster on ${fasterN}/${nPair}</small>` : "";
-    let html = `<div class="res-tiles">${tile("Outpost Luna p50", R.hs50, "hs")}${tile("Baseline p50", R.bl50)}${tile("median saving per question", saved, "hs", fasterTxt)}${tile("p90 HS / BL", R.hs90, "", ` <small>/ ${fmtS(R.bl90)}</small>`)}</div>`;
+    let html = `<div class="res-tiles">${tile("Head Start p50", R.hs50, "hs")}${tile("Baseline p50", R.bl50)}${tile("median saving per question", saved, "hs", fasterTxt)}${tile("p90 HS / BL", R.hs90, "", ` <small>/ ${fmtS(R.bl90)}</small>`)}</div>`;
     const acc = (m) => num(R.summary[m]?.accuracy);
     if (acc("headstart") != null || acc("baseline") != null) {
       const a = (v) => (v == null ? "—" : Math.round(v * 100) + "%");
       const n = R.summary.headstart?.n ?? R.summary.baseline?.n ?? R.pairs.length;
-      html += `<p class="res-note">answer correct: Outpost Luna <b>${a(acc("headstart"))}</b> · Baseline <b>${a(acc("baseline"))}</b> (n=${n})` +
+      html += `<p class="res-note">answer correct: Head Start <b>${a(acc("headstart"))}</b> · Baseline <b>${a(acc("baseline"))}</b> (n=${n})` +
         (R.summary.headstart?.draft_reuse_rate != null ? ` · draft reuse <b>${Math.round(R.summary.headstart.draft_reuse_rate * 100)}%</b>` : "") +
         (R.summary.headstart?.mean_web_calls != null ? ` · web calls/question <b>${R.summary.headstart.mean_web_calls}</b> vs <b>${R.summary.baseline?.mean_web_calls ?? "—"}</b>` : "") +
         (R.raw?.created ? ` · <span class="muted">${esc(R.raw.created)}</span>` : "") + `</p>`;
@@ -1531,7 +1531,7 @@
     body.innerHTML = html;
   }
 
-  // dumbbell chart: one row per question, Outpost Luna vs Baseline ready ms
+  // dumbbell chart: one row per question, Head Start vs Baseline ready ms
   function chart(pairs) {
     const rows = pairs.slice().sort((a, b) => (b.b ?? b.h) - (a.b ?? a.h));
     const W = 960, L = 330, R = 70, rh = 24, top = 26, H = top + rows.length * rh + 8;
@@ -1546,7 +1546,7 @@
     rows.forEach((r, i) => {
       const y = top + i * rh + rh / 2;
       const label = r.text.length > 52 ? r.text.slice(0, 50) + "…" : r.text;
-      g += `<g class="row"><title>${esc(r.text)}\nOutpost Luna ${fmtS(r.h)}${r.hsPath ? " (" + r.hsPath + ")" : ""} · Baseline ${fmtS(r.b)}</title>`;
+      g += `<g class="row"><title>${esc(r.text)}\nHead Start ${fmtS(r.h)}${r.hsPath ? " (" + r.hsPath + ")" : ""} · Baseline ${fmtS(r.b)}</title>`;
       g += `<text x="${L - 12}" y="${y + 4}" text-anchor="end" class="lbl">${esc(label)}</text>`;
       if (r.h != null && r.b != null) g += `<line class="conn" x1="${x(r.h)}" x2="${x(r.b)}" y1="${y}" y2="${y}"/>`;
       if (r.b != null) g += `<circle class="pb${r.blOk === false ? " bad" : ""}" cx="${x(r.b)}" cy="${y}" r="5.5"/>`;
@@ -1555,8 +1555,8 @@
       if (r.h != null && r.b != null) g += `<text x="${x(far) + 10}" y="${y + 4}" class="num">${r.b >= r.h ? "saved " + fmtS(r.b - r.h) : "lost " + fmtS(r.h - r.b)}</text>`;
       g += `</g>`;
     });
-    return `<div class="res-legend"><span><i style="background:var(--hs)"></i>Outpost Luna</span><span><i style="background:var(--bl)"></i>Baseline</span><span class="muted">answer ready after the last spoken word · hollow = wrong answer</span></div>
-      <div class="res-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ready time per question, Outpost Luna vs Baseline">${g}</svg></div>`;
+    return `<div class="res-legend"><span><i style="background:var(--hs)"></i>Head Start</span><span><i style="background:var(--bl)"></i>Baseline</span><span class="muted">answer ready after the last spoken word · hollow = wrong answer</span></div>
+      <div class="res-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ready time per question, Head Start vs Baseline">${g}</svg></div>`;
   }
   $("#resReload").addEventListener("click", () => { loadResults(); loadQuestions(); });
 

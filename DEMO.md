@@ -1,4 +1,4 @@
-# Outpost Luna: 3-minute demo script
+# Head Start: 3-minute demo script
 
 Setup: `./run_demo.sh` (starts the server, preflights, prints GO / NO-GO, opens http://localhost:8770); 1280×720,
 mode **Race**. Full pre-demo list and recovery steps: DEMO_CHECKLIST.md.
@@ -9,7 +9,7 @@ Warm-up takes ~40 s; check the header shows ready. Have the replay list ready in
 2. **Live race (60 s).** Press Space and ask: *"Who founded the company Nvidia?"* (or replay q01).
    Point at: words arriving; the **Tagger** stage lighting up with intent `qa_factoid` at word 3; web searches firing
    on the timeline *while you are still talking*; the stale "acronis" search (ASR mishearing) cancelled the moment
-   the word was revised; the Outpost Luna pane answering first and the delta in big type.
+   the word was revised; the Head Start pane answering first and the delta in big type.
 3. **Self-correction (40 s).** *"What's the capital of Canada, actually make that Turkey."* (q27) The Canada search
    goes stale, Turkey fires, the answer is still first. "It's not just faster; it understands corrections mid-sentence."
 4. **Moments search (30 s).** Switch to Local moments, replay local_05: *"In the hearing, where was the gun found?"*
@@ -18,7 +18,7 @@ Warm-up takes ~40 s; check the header shows ready. Have the replay list ready in
 5. **Evidence (30 s).** Results panel: real-audio A/B over 58 spoken questions (13 voices; factoids, fillers,
    corrections, 20 local moments; runs/ab_full5.json): p50 1.16 vs 1.54 s, p90 1.76 vs 2.13 s, faster on 44/58
    (median 348 ms saved), accuracy 96.6 % in both modes, web calls 2.38 vs 0.66 per question.
-   At 20 dB room babble Outpost Luna is still faster on 35/48 (440 ms saved; runs/robustness.md). "Same ASR, same search, same
+   At 20 dB room babble Head Start is still faster on 35/48 (440 ms saved; runs/robustness.md). "Same ASR, same search, same
    reranker, same answer model; the only difference is when we start."
 
 Lines for judges: "10-million-parameter tagger in C, ~1 ms per word, on the laptop: routing for free."

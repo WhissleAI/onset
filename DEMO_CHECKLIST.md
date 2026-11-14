@@ -1,4 +1,4 @@
-# Outpost Luna: demo checklist
+# Head Start: demo checklist
 
 One command does the technical part: `./run_demo.sh`. It checks prerequisites, frees the port, starts the server,
 waits for the warm-up, replays q01 in Race mode against the real backends and prints **GO**, **GO (DEGRADED)** or
@@ -79,7 +79,7 @@ extracted is ever shown as live: every such result carries a label.
 | NO-GO: server exited during warm-up | `tail -40 runs/server_8770.log`. Port taken by something else: `./run_demo.sh --port 8771`. |
 | NO-GO: web lane down **and** no cache | `git pull` / copy `runs/web_cache.json`; or record on a working network: `.venv/bin/python eval/record_web_cache.py`. Demo the Local tab meanwhile. |
 | NO-GO: answers empty | Anthropic key missing or invalid: check `.env` has `ANTHROPIC_API_KEY` (don't paste it on screen). |
-| NO-GO: latency (Outpost Luna > 2.5 s) | something is eating the CPU (benchmark lock, Docker, a second server); close it and rerun `./run_demo.sh`. |
+| NO-GO: latency (Head Start > 2.5 s) | something is eating the CPU (benchmark lock, Docker, a second server); close it and rerun `./run_demo.sh`. |
 | status dot red "offline" in the page | the server died: rerun `./run_demo.sh` (it kills the stale one), reload the page. |
 | words don't appear when talking | mic permission or wrong input device (above); switch to replays, don't debug on stage. |
 | a replay hangs or looks wrong | press another replay: each one starts a fresh run. Reload the page if the timeline is stuck. |
