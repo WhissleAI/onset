@@ -38,6 +38,7 @@ from fastapi.staticfiles import StaticFiles
 from . import answer, config, embed, ear, lanes
 from . import cost as costmod
 from . import memory as memmod
+from . import persona as personamod
 from .session import Session
 
 ROOT = config.ROOT
@@ -81,6 +82,7 @@ async def startup():
     t = time.perf_counter()
     await loop.run_in_executor(None, ear.warmup)
     await embed.arun(embed.warmup)
+    await embed.arun(personamod.warmup)
     lanes.index()
     await lanes.warm_web()
     await answer.warm()
@@ -326,6 +328,11 @@ async def ws_endpoint(ws: WebSocket):
     memory: dict = {}          # per mode: conversation memory carried across mic runs on this connection
     client = {"id": None}      # this browser's id ("hello"): memory persists across reconnects
     store = memmod.Store()
+    pstore = personamod.Store()
+    prof = {"p": personamod.Profile()}   # this browser's persona (PERSONA=1; server/persona.py)
+
+    async def send_persona(**kw):
+        await send({"t": "persona", "mode": "sys", "on": personamod.ENABLED, "profile": prof["p"].summary(), **kw})
 
     def persist():
         """Save the browser's memory (the first mode's: both modes hear the same words)."""
@@ -359,6 +366,10 @@ async def ws_endpoint(ws: WebSocket):
                 for s in r.sessions:
                     memory[s.mode] = s.export_memory()
                 persist()
+            for s in r.sessions:
+                if s.mode == "headstart" and personamod.ENABLED:
+                    prof["p"] = s.persona
+                    pstore.save(client["id"], s.persona)
 
     await send({"t": "ready", "mode": "sys", **status_payload()})
     try:
@@ -388,6 +399,18 @@ async def ws_endpoint(ws: WebSocket):
                 client["id"] = cid if memmod.Store.valid(cid) else None
                 await send({"t": "memory", "mode": "sys", "persist": bool(client["id"] and config.MEM_PERSIST),
                             "graph": store.load(cid).graph() if client["id"] else None})
+                prof["p"] = pstore.load(client["id"]) if client["id"] else personamod.Profile()
+                await send_persona()
+                continue
+            if t in ("persona_clear", "persona_export"):
+                if t == "persona_clear":
+                    prof["p"] = personamod.Profile()
+                    pstore.forget(client["id"])
+                    for s in (run.sessions if run is not None else []):
+                        s.set_persona(prof["p"])
+                    await send_persona(cleared=True)
+                else:
+                    await send_persona(export=prof["p"].export())
                 continue
             if t == "forget":
                 memory.clear()
@@ -398,6 +421,12 @@ async def ws_endpoint(ws: WebSocket):
                         s.mem.clear()
                         s.carry, s.context, s.carry_pool = {}, "", {}
                 await send({"t": "memory", "mode": "sys", "forgot": True, "graph": memmod.Memory().graph()})
+                prof["p"] = personamod.Profile()
+                pstore.forget(client["id"])
+                if run is not None:
+                    for s in run.sessions:
+                        s.set_persona(prof["p"])
+                await send_persona(cleared=True)
                 continue
             if t in ("start", "replay"):
                 conn_runs += 1
@@ -418,6 +447,8 @@ async def ws_endpoint(ws: WebSocket):
                         memory.clear()                # a scripted conversation starts a new one (user facts stay)
                     for s in run.sessions:            # push-to-talk: follow-ups keep the conversation
                         s.import_memory(memory.get(s.mode) or stored_memory(fresh))
+                        if s.mode == "headstart":
+                            s.set_persona(prof["p"])
                         if s.mem:
                             s.emit_memory(why="restored")
                         # open mic (clicked, keeps listening; not push-to-talk): statements are heard, not answered
@@ -426,6 +457,8 @@ async def ws_endpoint(ws: WebSocket):
                     memory.clear()                    # a replay starts a fresh conversation (user facts stay)
                     for s in run.sessions:
                         s.import_memory(stored_memory(fresh=True))
+                        if s.mode == "headstart":
+                            s.set_persona(prof["p"])
                 if t == "replay":
                     async def go(r=run, p=p):
                         await replay(r, p)

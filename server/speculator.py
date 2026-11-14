@@ -130,6 +130,7 @@ class Speculator:
         self.last_qvec: np.ndarray | None = None
         self.used_ids: list[str] = []
         self.context = ""                      # previous turn (question + answer), for follow-ups
+        self.persona = None                    # persona.View (PERSONA=1, Onset arm): interest rerank + sense search
         self.audio_qvec: np.ndarray | None = None   # the audio lane's latest (longest) spoken-question vector
         self.audio_qdur = 0.0
         self.last_frame: Frame | None = None
@@ -278,6 +279,10 @@ class Speculator:
             if doms:
                 hints["include_domains"], hints["domains_mode"] = doms, mode
                 meter["narrow"] = narrow.family(f)
+        if self.persona is not None and config.WEB_BACKEND != "cache":
+            sq = self.persona.sense_query(f)           # + one free Wikipedia "<subject> <category>" search (persona.py)
+            if sq:
+                hints["sense_q"] = sq
         key = searchcache.qkey(f)
 
         async def go():
@@ -446,7 +451,44 @@ class Speculator:
         """The final / draft ranking: the fused local ranker for local-routed questions, else pool cosine."""
         if f.route == "local" and config.RERANK_LOCAL and len(lanes.index()):
             return self.rank_local(f.resolved_text, qvec, k)
+        if self.persona is not None and self.persona.vec is not None:
+            try:
+                return self._rank_persona(qvec, k)
+            except Exception as e:                  # personalization must never break the answer path
+                self._ev(id="persona", lane="persona", query="", state="error", ms=self.ms(),
+                         reason=f"{type(e).__name__}: {e}"[:120])
         return self.rank(qvec, k)
+
+    def _rank_persona(self, qvec: np.ndarray, k: int):
+        """rank() plus the user's interest vector (server/persona.py): + PERSONA_BIAS x cos(doc, interests). When that
+        changes the top source, the View records why (the "Answered for you" chip) and the answer gets a one-line hint."""
+        from . import persona
+        plain = self.rank(qvec, k)
+        if not plain:
+            return plain
+        ids = [i for i in self.pool if i in self.vecs]
+        fresh = set(self.carried_ids)
+        for x in self.fires:
+            if x.state in ("done", "fired"):
+                fresh |= {d.id for d in x.docs}
+        keep = [i for i in ids if i in fresh]
+        ids = keep if len(keep) >= 3 else ids
+        # carried docs (earlier turns' sources) get no bias: they ARE the history, and would win by construction
+        only = self.persona.eligible(ids, self.vecs, skip=self.carried_ids)
+        out = plain if not only else \
+            [(self.pool[i], sc) for i, sc in persona.bias_rank(ids, self.vecs, qvec, self.persona.vec, k, only=only)]
+        before = self.persona.changed
+        ch = self.persona.note_rank(plain[0][0], out[0][0], self.vecs.get(out[0][0].id))
+        if ch is not before:
+            self.emit({"t": "persona", "sense": self.persona.why(), "title": (ch or {}).get("title"),
+                       "instead": (ch or {}).get("instead"), "ms": self.ms()})
+        return out
+
+    def _hint(self, f: Frame) -> str:
+        """The answer model's note: the frame's (conversion, persona style) + the persona's sense line."""
+        h = f.answer_hint()
+        p = self.persona.hint() if self.persona is not None else ""
+        return f"{h} {p}".strip() if p else h
 
     # ------------------------------------------------------------------ live updates
     @staticmethod
@@ -1113,7 +1155,7 @@ class Speculator:
                 own = {d.id for x in ready for d in x.docs}
                 if not own & {d.id for d in top}:
                     return                          # don't draft from other questions' results
-                st = answer.Stream(f.resolved_text, top, tag="draft", context=self.context, hint=f.answer_hint())
+                st = answer.Stream(f.resolved_text, top, tag="draft", context=self.context, hint=self._hint(f))
                 self.streams.append(st)
                 d = Draft(id=f"d{next(_ids)}", meaning_sig=f.meaning_sig, question=f.text, qvec=qvec, stream=st,
                           t_start=time.perf_counter(), doc_ids=tuple(x.id for x in top), content=f.content,
@@ -1324,10 +1366,10 @@ class Speculator:
             if plan_ranked is not None:
                 groups = [(self._part_text(p) or p.fallback, [j + 1 for j, (_, _, pi) in enumerate(plan_ranked) if pi == i])
                           for i, p in enumerate(mp.parts)]
-                hint = planner.answer_hint(mp, groups, qtext) + (" " + f.answer_hint() if f.answer_hint() else "")
+                hint = planner.answer_hint(mp, groups, qtext) + (" " + self._hint(f) if self._hint(f) else "")
                 st = PlanStream(qtext, docs, tag="final", context=self.context, hint=hint)
             else:
-                st = answer.Stream(qtext, docs, tag="final", context=self.context, hint=f.answer_hint())
+                st = answer.Stream(qtext, docs, tag="final", context=self.context, hint=self._hint(f))
             self.streams.append(st)
             if alt is not None:
                 st = answer.Race(st, alt)

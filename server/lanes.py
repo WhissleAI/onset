@@ -133,6 +133,41 @@ async def wikipedia(query: str, k: int = 4, entity: str = "", k_entity: int = 2)
     return main + [d for d in extra if d.id not in seen]
 
 
+async def with_sense(coro, sense_q: str):
+    """Any lane call plus, in parallel, the persona's "<subject> <category>" Wikipedia search (server/persona.py,
+    PERSONA=1; free). Its articles are added only when the subject is ambiguous on Wikipedia (a disambiguation page or
+    a "Subject (sense)" title among all results); the reranker, biased toward the user's interests, then picks. The
+    base call's result (and its type, WebResult) is kept; a failed sense search changes nothing."""
+    from . import persona
+    base, extra = await asyncio.gather(coro, _wiki_search(sense_q, 2), return_exceptions=True)
+    if isinstance(base, BaseException):
+        raise base
+    if isinstance(extra, BaseException) or not extra:
+        return base
+    subj = sense_q.rsplit(" ", 1)[0] if " " in sense_q else sense_q
+    for c in persona.CATEGORIES:
+        if sense_q.endswith(" " + c):
+            subj = sense_q[: -len(c) - 1]
+    seen = {d.id for d in base}
+    titles = {(d.title or "").split(" · ")[0].lower() for d in base}
+    # only articles NAMED by the subject ("Jaguar Cars", "Mercury (planet)"), never a neighbour ("google car" ->
+    # "Waymo"), and only when Wikipedia shows the name has several senses or this one isn't among the results yet
+    named = [d for d in extra if d.id not in seen and (d.title or "").lower().startswith(subj.lower())
+             and (d.title or "").lower() not in titles]
+    if not named or not (persona.ambiguous(list(base) + extra, subj) or len(named) == len(extra)):
+        return base
+    add = named
+    for d in add:
+        d.meta["persona_sense"] = sense_q
+        d.lane = d.lane or "persona"
+    base.extend(add)
+    return base
+
+
+async def wikipedia_sense(query: str, entity: str, sense_q: str, k: int = 4) -> list[Doc]:
+    return await with_sense(wikipedia(query, k=k, entity=entity), sense_q)
+
+
 # ----------------------------------------------------------------------------------------------------------- Tavily
 # Verified against https://docs.tavily.com/documentation/api-reference/endpoint/search (2026-11-12):
 #   search_depth ultra-fast | fast | basic (1 credit) | advanced (2 credits); chunks_per_source 1-3 (not ultra-fast);
@@ -650,6 +685,12 @@ async def web(query: str, topic: str = "general", *, intent: str = "", text: str
     With `frame` (the query frame) and ROUTER=on, the tiered router (server/router.py) decides first: a live-data card
     or a local fact can answer for free, and the paid web search below runs only as its fallback."""
     meter = meter if meter is not None else {}
+    if hints and hints.get("sense_q"):
+        hints = dict(hints)
+        sq = hints.pop("sense_q")
+        meter["persona_sense"] = sq
+        return await with_sense(web(query, topic, intent=intent, text=text, final=final, ledger=ledger, meter=meter,
+                                    entity=entity, hints=hints, frame=frame), sq)
     if frame is not None and config.ROUTER:
         from . import router
         return await router.route(query, frame, final=final, meter=meter, web_fn=lambda: web(

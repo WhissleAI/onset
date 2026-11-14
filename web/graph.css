@@ -54,3 +54,12 @@
 .mem-dock.in-side .mem-body { width: 100%; box-shadow: var(--shadow); padding: 6px; }
 .mem-dock.in-side .mem-head .mem-sub { display: none; }
 body.has-meter .mem-dock:not(.in-side) { bottom: 74px; }   /* above the cost meter bar (web/meter.css) */
+/* persona (web/graph.js "For you"): profile row in the memory panel + the "answered for you" note */
+.pers { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); }
+.pers[hidden] { display: none; }
+.pers-head { display: flex; align-items: baseline; gap: 6px; padding: 0 2px 3px; }
+.pers-head b { white-space: nowrap; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-2); }
+.pers-sub { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pers-line { font-size: 11.5px; color: var(--ink-2); padding: 1px 2px; line-height: 1.35; }
+.pers-line.muted { color: var(--ink-3); }
+.pers-note i { color: var(--gold); }

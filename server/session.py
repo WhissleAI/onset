@@ -18,6 +18,7 @@ import numpy as np
 from . import frame as framemod
 from . import config, confidence, director, heard, lanes
 from . import memory as memmod
+from . import persona as personamod
 from .speculator import Speculator
 from .tagger import Tagger
 
@@ -121,6 +122,7 @@ class Session:
         self.ans_tagger = Tagger(domain="talk")
         self.bg_tasks: list = []
         self.mem = memmod.Memory()           # entity memory across turns + user facts (server/memory.py)
+        self.persona = personamod.Profile()  # who is asking + how to answer them (server/persona.py, PERSONA=1)
         self.prewarm_task: asyncio.Task | None = None
         self.carry_pool: dict = {}           # its documents + vectors, seeded into the next speculator
         self.ledger = lanes.Ledger()         # Tavily credits + response cache, across this session's questions
@@ -158,6 +160,7 @@ class Session:
         if self.carry_pool:
             self.spec.seed(self.carry_pool)
         self.spec.context = self.context
+        self.spec.persona = personamod.View(self.persona) if self._persona_on() else None
         self.spec.bg = self.bg_tasks                 # after-answer re-checks of every question (VERIFY_RESEARCH)
         self.soft = None
         self.final_task = None
@@ -401,7 +404,27 @@ class Session:
             f.sconf = tuple(heard.suspect_conf(ear, self.wconf if len(self.wconf) == f.n else None))
         if config.LOOP_ASR_FIX:
             self._loop_fix(f)
+        if self._persona_on():
+            ws = [{"text": w, "start": t[0], "end": t[1], "conf": c}
+                  for w, t, c in zip(self.words, getattr(self, "times", []) or [], getattr(self, "confs", []) or [])]
+            self._persona_style(f, ws)
         return f
+
+    def _persona_on(self) -> bool:
+        return personamod.ENABLED and self.mode == "headstart" and not self.plain
+
+    def _persona_style(self, f, ws: list[dict]) -> dict | None:
+        """How to answer this question (server/persona.py): sets f.persona_hint; returns {sig, style}. Never raises."""
+        try:
+            sig = personamod.signals(f.words, ws, followup=bool(f.carried or f.inline or f.followup_of),
+                                     prev_answered=bool(self.context), arc=self.arc,
+                                     arc_x2=getattr(self, "arc_x2", None), intent=f.intent)
+            st = personamod.style(sig, self.persona) if personamod.STYLE else {"kind": "", "hint": "", "why": ""}
+            f.persona_hint = st["hint"]
+            return {"sig": sig, "style": st}
+        except Exception as e:
+            self.emit({"t": "error", "where": "persona", "error": f"{type(e).__name__}: {e}"[:300]})
+            return None
 
     def _loop_candidates(self) -> heard.Pool:
         """The names this question may have meant: speculative results so far, conversation memory, Wikidata labels
@@ -907,6 +930,12 @@ class Session:
                                local_ok=bool(len(lanes.index())), carry=self._carry(job["words"]))
             if config.DIRECTOR_PII:
                 director.apply_pii(f, job.get("director"))
+            pst = self._persona_style(f, ws) if self._persona_on() else None
+            if pst is not None:
+                job["persona"] = pst
+                if pst["style"]["why"]:
+                    self.emit({"t": "persona", "style": pst["style"]["kind"], "why": pst["style"]["why"],
+                               "ms": spec.ms(), "q": q})
             spec.context = self.context
             if learned and self.user_statement(f) and soft is None:
                 return self._ack_user(job, spec, f, learned, last_end, q)
@@ -952,6 +981,8 @@ class Session:
             self.superseded.append(m)
             return m
         job["metric"] = m
+        if job.get("persona") is not None and not m.get("failed"):
+            self._persona_learn(f, m, spec, job["persona"])
         if not m.get("failed") and f is not None:
             self.last_request_end = max(self.last_request_end, last_end)
             self.last_request_speaker = (self.arc or {}).get("speaker")
@@ -1102,6 +1133,27 @@ class Session:
         except Exception as e:
             self.emit({"t": "error", "where": "memory", "error": f"{type(e).__name__}: {e}"[:300]})
 
+    def _persona_learn(self, f, m: dict, spec, pst: dict):
+        """The answered turn updates the profile: the top public sources the answer used become interests (with their
+        embeddings), plus pace / length / expertise / units from how it was asked. Never raises."""
+        try:
+            st, v = pst["style"], spec.persona
+            m["persona"] = {"style": st["kind"], "why": st["why"], "hint_tok": personamod.hint_tokens(spec._hint(f)),
+                            "sense": v.why() if v is not None else "", "pace": pst["sig"].get("pace"),
+                            "sig": {k: pst["sig"][k] for k in ("fillers", "hedges", "pauses", "wrong", "less", "more", "quick",
+                                                                "units", "definition")}}
+            srcs = personamod.interest_sources(f, m.get("answer") or "",
+                                               [spec.pool.get(i) for i in spec.used_ids], spec.vecs)
+            if m.get("answer_by") == "card":
+                srcs = []
+            self.persona.observe(pst["sig"], srcs, private=bool(f.redacted))
+            for s_ in [self.spec] + [j["spec"] for j in self.pending_finals]:
+                if s_.persona is not None:          # the question already being heard: the updated interests
+                    s_.persona = personamod.View(self.persona)
+            self.emit({"t": "persona", "profile": self.persona.summary(), "ms": spec.ms()})
+        except Exception as e:
+            self.emit({"t": "error", "where": "persona", "error": f"{type(e).__name__}: {e}"[:300]})
+
     def _answer_fix(self, f, ans_spans):
         """The loop after the answer: the answer's names re-resolve the question's misheard ones ("who was mari guri"
         answered "Marie Curie was ...": memory keeps Marie Curie, so "where was she born" finds her). Returns a fixed
@@ -1136,17 +1188,25 @@ class Session:
     def export_memory(self) -> dict:
         """Conversation memory to carry into the next run on the same connection (push-to-talk turns)."""
         return {"carry": self.carry, "context": self.context, "carry_pool": self.carry_pool, "at": time.time(),
-                "mem": self.mem.to_json()}
+                "mem": self.mem.to_json(), "persona": self.persona.to_json()}
 
     def import_memory(self, mem: dict | None):
         if mem and mem.get("mem"):
             self.mem = memmod.Memory.from_json(mem["mem"])     # (its own TTLs: conversation vs user facts)
+        if mem and mem.get("persona"):
+            self.set_persona(personamod.Profile.from_json(mem["persona"]))
         if not mem or time.time() - mem.get("at", 0) > config.MEMORY_TTL_S:
             return
         self.carry, self.context, self.carry_pool = mem["carry"], mem["context"], mem["carry_pool"]
         if self.carry_pool:
             self.spec.seed(self.carry_pool)
         self.spec.context = self.context
+
+    def set_persona(self, prof):
+        """Use this profile (a stored one, or a fresh one after "clear") from the question being heard on."""
+        self.persona = prof
+        if self.spec is not None:
+            self.spec.persona = personamod.View(prof) if self._persona_on() else None
 
     def end_of_audio(self):
         """No more audio is coming (the user released push-to-talk, the replay ended): a held final has no
