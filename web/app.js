@@ -259,6 +259,7 @@
     if (window.HSMeter && run) { try { window.HSMeter.event(e, run); } catch (err) { console.error("meter", err); } }
     if (window.HSGraph) { try { window.HSGraph.event(e); } catch (err) { console.error("graph", err); } }
     if (window.HSPlan && run) { try { window.HSPlan.event(e); } catch (err) { console.error("plan", err); } }
+    if (window.HSConf && run) { try { window.HSConf.event(e); } catch (err) { console.error("conf", err); } }
     if (e.mode === "sys") {
       if (e.t === "ready") {
         if (e.warm !== undefined) warm = !!e.warm;
@@ -590,6 +591,7 @@
     if (!keepEar) { $("#earState").textContent = run && run.kind === "mic" ? "listening" : "starting…"; $("#earState").className = "ear live"; }
     renderFrame(null);
     if (window.HSPlan) window.HSPlan.reset();
+    if (window.HSConf) window.HSConf.reset();
     for (const m of ["headstart", "baseline"]) {
       const p = $("#pane-" + m);
       p.classList.toggle("off", !!run && !run.modes.includes(m));

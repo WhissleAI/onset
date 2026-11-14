@@ -304,6 +304,8 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         "recheck": m.get("recheck"), "answer_patched": m.get("answer_patched"),   # VERIFY_RESEARCH (recheck.py)
         "correct_patched": score(m["answer_patched"], q.get("expect") or []) if m.get("answer_patched") else None,
         "heard_fix": m.get("heard"),                                              # LOOP_ASR_FIX (heard.py)
+        **{k: m.get(k) for k in ("conf", "conf_band", "conf_reason", "conf_pre", "conf_pre_band", "conf_feats",
+                                 "calib_route", "calib_error") if k in m},               # server/calibrate.py
         "web_paid": m.get("web_paid"), "free_calls": m.get("free_calls"), "tiers": m.get("tiers"),
         # cost meter (server/meter.py): answer-model tokens (used answer + thrown-away drafts / hedges) and est. $
         **{k: m.get(k) for k in ("ans_in", "ans_out", "waste_in", "waste_out", "llm_requests", "tokens_est",

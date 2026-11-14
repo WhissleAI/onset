@@ -320,6 +320,9 @@ def tavily_body(query: str, plan: dict) -> dict:
     if plan.get("include_domains"):
         body["include_domains"] = list(plan["include_domains"])[:300]
         body["include_domains_mode"] = plan.get("include_domains_mode") or "prefer"
+    from . import calibrate
+    if calibrate.CALIB_PUBDATE:
+        body["include_published_date"] = True       # no extra credit; the source's age feeds calibrate.py
     return body
 
 
