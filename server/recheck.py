@@ -35,6 +35,20 @@ def key_claim(v: dict) -> dict | None:
     return None
 
 
+def _full(c: dict) -> dict:
+    """verify.check's public claims drop value / year / dec: rebuild them from the claim text."""
+    c = dict(c)
+    if c.get("kind") in ("year", "number", "computed") and "value" not in c:
+        ns = verify.numbers(c.get("text", ""))
+        if ns:
+            v, y, d, *_ = ns[0]
+            c.update(value=v, year=y, dec=d)
+        else:
+            c.update(value=float("nan"), year=False, dec=0)
+    c.setdefault("pred", [])
+    return c
+
+
 def needs(v: dict) -> bool:
     return bool(config.VERIFY_RESEARCH and v and v.get("status") in ("disagree", "unverified", "partial")
                 and key_claim(v))
@@ -86,6 +100,7 @@ async def run(answer: str, docs: list, question: str, v: dict, web=None, paid_ok
     out = {"status": "skip", "claim": claim and claim["text"], "lanes": [], "paid": 0}
     if not claim:
         return out
+    claim = _full(claim)
     tried = []
     new_docs, src = [], ""
     try:

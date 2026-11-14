@@ -108,3 +108,17 @@ def test_speculator_recheck_updates_metric_and_counts_paid(monkeypatch):
     m = asyncio.run(go())
     assert m["recheck"]["status"] == "corrected" and m["paid_calls"] == 1 and "answer_patched" in m
     assert [e for e in ev if e.get("t") == "recheck"]
+
+
+def test_public_verify_claims_are_rechecked_without_crashing(monkeypatch):
+    """verify.check's output claims carry no value / year fields: the re-check rebuilds them (a leads source states
+    the year -> re-checked)."""
+    ans = "Harvard was founded in 1636 [1]."
+    q = "when was harvard founded"
+    v = verify.check(ans, [D("Ivy League", "Eight private universities.")], q)
+    assert v["status"] == "unverified" and "value" not in v["claims"][0]
+    _facts(monkeypatch, [])
+    _leads(monkeypatch, [D("Harvard University · local Wikipedia", "Harvard University was founded in 1636.")])
+    monkeypatch.setattr(recheck, "_leads", lambda sub, q: knowledge.leads(q))
+    r = asyncio.run(recheck.run(ans, [], q, v))
+    assert r["status"] == "rechecked" and "error" not in r
