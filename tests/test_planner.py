@@ -146,9 +146,14 @@ def test_verify_agree_disagree_unverified():
             D("b", "Founded in April 1993, Nvidia makes GPUs; Jensen Huang is CEO.", "u2")]
     v = verify.check("Nvidia was founded in 1993 by Jensen Huang [1][2].", docs, "when was nvidia founded")
     assert v["status"] == "agree" and v["label"] == "✓ 2 sources agree"
-    docs2 = [D("a", "He was born in 1993 in Lyon.", "u1"), D("b", "Some say he was born in 1991 in Lyon.", "u2")]
-    v = verify.check("He was born in 1993 [1].", docs2, "when was he born")
+    T = lambda t, x, u: lanes.Doc(id=u, title=t, text=x, url=u)
+    docs2 = [T("Jean Dupont", "Jean Dupont was born in 1993 in Lyon.", "u1"),
+             T("Jean Dupont (painter)", "Some say Dupont was born in 1991 in Lyon.", "u2"),
+             T("Lyon Football", "The club was founded in 1950; Dupont was born nearby.", "u3")]
+    v = verify.check("Jean Dupont was born in 1993 [1].", docs2, "when was jean dupont born")
     assert v["status"] == "disagree" and "1993 vs 1991" in v["label"]
+    v = verify.check("Jean Dupont was born in 1993 [1].", [docs2[0], docs2[2]], "when was jean dupont born")
+    assert v["status"] == "supported"          # another page's year (a club, not Dupont) is not a disagreement
     v = verify.check("Revenue was $60.9 billion [1].", [D("a", "Revenue: US$60,922 million (FY2024)", "u")], "q")
     assert v["status"] == "supported"
     v = verify.check("It is about 4,200 km long [1].", [D("a", "A river in Africa.", "u")], "q")

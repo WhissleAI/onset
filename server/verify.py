@@ -116,13 +116,20 @@ def _supports(c: dict, text: str) -> bool:
     return any(_num_match(c["value"], c["year"], c["dec"], v, y) for v, y, *_ in numbers(text))
 
 
-def _conflict(c: dict, text: str, subject: list[str]) -> str | None:
-    """A different year next to the same predicate (and the same subject) in a source that never states the claim."""
-    if c["kind"] != "year" or not c["pred"]:
+def _about(title: str, context: str) -> bool:
+    """Is this source about the claim's subject? Every word of its title (minus "(company)", "· Wikidata") is said in
+    the claim's sentence or the question: "Amazon (company)" yes, "Amazon Web Services" no (another 2010 is fine)."""
+    t = re.sub(r"\s*\(.*?\)|\s*·.*$", "", title or "")
+    toks = [w for w in re.findall(r"[a-z0-9]+", fold(t)) if len(w) > 1]
+    ctx = " " + " ".join(re.findall(r"[a-z0-9]+", fold(context))) + " "
+    return bool(toks) and all(f" {w} " in ctx for w in toks)
+
+
+def _conflict(c: dict, text: str, title: str, context: str) -> str | None:
+    """A different year next to the same predicate, in a source about the same subject that never states the claim."""
+    if c["kind"] != "year" or not c["pred"] or not _about(title, context):
         return None
     low = fold(text)
-    if subject and not any(s in low for s in subject):
-        return None
     for v, y, _, pos, raw in numbers(text):
         if not y or v == c["value"]:
             continue
@@ -140,8 +147,7 @@ def check(answer: str, docs, question: str = "") -> dict:
     t0 = time.perf_counter()
     texts = [f"{getattr(d, 'title', '')}. {getattr(d, 'text', '')}" for d in docs]
     cl = claims(answer or "", question)
-    subject = [w for w in re.findall(r"[a-z]{4,}", fold(question)) if w not in ("what", "when", "where", "which",
-                                                                                  "does", "born", "founded")][:4]
+    sents = {c["text"]: s_ for s_ in re.split(r"(?<=[.!?])\s+", answer or "") for c in cl if c["text"] in s_}
     found, conflicts = 0, []
     agree_counts = []
     for c in cl:
@@ -154,7 +160,8 @@ def check(answer: str, docs, question: str = "") -> dict:
         for i, t in enumerate(texts):
             if i in sup:
                 continue
-            other = _conflict(c, t, subject)
+            other = _conflict(c, getattr(docs[i], "text", ""), getattr(docs[i], "title", ""),
+                              sents.get(c["text"], "") + " " + question)
             if other:
                 c["conflict"] = {"source": i + 1, "value": other}
                 conflicts.append((c["text"], other))
