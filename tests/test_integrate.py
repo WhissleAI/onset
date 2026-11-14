@@ -126,7 +126,9 @@ def test_card_plan_baseline_also_free():
 
 def test_web_plan_spends_paid_calls_within_budget():
     m = _speak("who founded the company Nvidia and when did it go public")
-    assert 1 <= m["paid_calls"] <= config.SPEC_PAID_MAX
+    # a two-part question (PLAN, server/planner.py): each extra part may spend PLAN_EXTRA_PAID more
+    extra = config.PLAN_EXTRA_PAID * (len(m["plan"]["parts"]) - 1) if m.get("plan") else 0
+    assert 1 <= m["paid_calls"] <= config.SPEC_PAID_MAX + extra
     assert m["paid_calls"] == sum(c["paid"] for c in CALLS)
 
 

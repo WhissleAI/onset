@@ -1010,4 +1010,7 @@ Known gaps: ASR spellings break sub-questions ("K2" heard "k two" -> no Wikidata
 value is used when there are several founders (Microsoft -> Bill Gates or Paul Allen); "compare X and Y" without an
 attribute searches the bare names; per-part keyword accuracy rewards the model's own knowledge as well as sources
 (verify shows which). Tests: tests/test_planner.py (20 cases: decomposition, single-part non-splits, Head Start fires parts
-mid-sentence, baseline after the endpoint, correction re-plan, bridge, reused whole-sentence search, verify).
+mid-sentence, baseline after the endpoint, correction re-plan, bridge, reused whole-sentence search, verify);
+tests/test_integrate.py's paid-budget test now allows PLAN_EXTRA_PAID per extra part (its question is two-part).
+After the last verify fixes, a re-shot of mp21 shows "✓ 2 sources agree · 30 computed" (was a false "⚠ 1964 vs 1994");
+one remaining false alarm seen: mp02 baseline "1756 vs 1979" (another page titled Mozart).
