@@ -39,6 +39,7 @@ from . import answer, config, embed, ear, lanes
 from . import cost as costmod
 from . import memory as memmod
 from . import persona as personamod
+from . import arcstate as arcstatemod
 from .session import Session
 
 ROOT = config.ROOT
@@ -210,13 +211,16 @@ def _mic_debug(d) -> str:
 class Run:
     """One run: an ear feeding one Session per mode, and a sender task draining their events to the socket."""
 
-    def __init__(self, ws: WebSocket, modes, domain, cost_mode: str | None = None):
+    def __init__(self, ws: WebSocket, modes, domain, cost_mode: str | None = None, arcstate=None,
+                 keyterms: list[str] | None = None):
         self.id = next(_run_ids)
         self.ws = ws
         self.q: asyncio.Queue = asyncio.Queue()
         t0 = time.perf_counter()
-        self.sessions = [Session(self._emitter(m), mode=m, domain=domain, t0=t0, cost_mode=cost_mode) for m in modes]
-        self.ear = ear.make_ear(self.sessions, domain=domain, on_event=self._emitter("ear"))
+        self.sessions = [Session(self._emitter(m), mode=m, domain=domain, t0=t0, cost_mode=cost_mode, arcstate=arcstate)
+                         for m in modes]
+        self.ear = ear.make_ear(self.sessions, domain=domain, on_event=self._emitter("ear"), keyterms=keyterms,
+                                arcstate=arcstate)
         self.sender = asyncio.create_task(self._send())
         self.clock_set = False           # mic runs: the clock starts at the first audio frame, not at "start"
         self._stop: asyncio.Task | None = None
@@ -350,6 +354,9 @@ async def ws_endpoint(ws: WebSocket):
 
     async def send_persona(**kw):
         await send({"t": "persona", "mode": "sys", "on": personamod.ENABLED, "profile": prof["p"].summary(), **kw})
+    # Arc state across presses (server/arcstate.py): one per connection = one conversation; per session in memory
+    # unless ARC_STATE_PERSIST=1 (then <data dir>/arcstate/, keyed like memory by the client id)
+    astate = arcstatemod.ArcState() if arcstatemod.ENABLED else None
 
     def persist():
         """Save the browser's memory (the first mode's: both modes hear the same words)."""
@@ -383,6 +390,7 @@ async def ws_endpoint(ws: WebSocket):
                 for s in r.sessions:
                     memory[s.mode] = s.export_memory()
                 persist()
+                arcstatemod.save(client["id"], astate)
             for s in r.sessions:
                 if s.mode == "headstart" and personamod.ENABLED:
                     prof["p"] = s.persona
@@ -414,6 +422,8 @@ async def ws_endpoint(ws: WebSocket):
             if t == "hello":
                 cid = data.get("client")
                 client["id"] = cid if memmod.Store.valid(cid) else None
+                if astate is not None and arcstatemod.PERSIST and client["id"] and not astate.turns:
+                    astate = arcstatemod.load(client["id"])
                 await send({"t": "memory", "mode": "sys", "persist": bool(client["id"] and config.MEM_PERSIST),
                             "graph": store.load(cid).graph() if client["id"] else None})
                 prof["p"] = pstore.load(client["id"]) if client["id"] else personamod.Profile()
@@ -437,6 +447,9 @@ async def ws_endpoint(ws: WebSocket):
                     for s in run.sessions:
                         s.mem.clear()
                         s.carry, s.context, s.carry_pool = {}, "", {}
+                if astate is not None:                # "forget" clears the voice state too
+                    astate.reset("all")
+                arcstatemod.forget(client["id"])
                 await send({"t": "memory", "mode": "sys", "forgot": True, "graph": memmod.Memory().graph()})
                 prof["p"] = personamod.Profile()
                 pstore.forget(client["id"])
@@ -444,6 +457,13 @@ async def ws_endpoint(ws: WebSocket):
                     for s in run.sessions:
                         s.set_persona(prof["p"])
                 await send_persona(cleared=True)
+                continue
+            if t == "arc_reset":                      # "Reset voice": Arc state only, memory stays
+                if astate is not None:
+                    astate.reset("all")
+                arcstatemod.forget(client["id"])
+                await send({"t": "arcstate", "mode": "sys", "reset": "all",
+                            **(astate.summary() if astate is not None else {"on": False})})
                 continue
             if t in ("start", "replay"):
                 conn_runs += 1
@@ -454,7 +474,21 @@ async def ws_endpoint(ws: WebSocket):
                         await send({"t": "error", "mode": "sys", "error": f"no such file {p.name}"})
                         continue
                 modes = data.get("modes") or ["headstart", "baseline"]
-                run = Run(ws, modes, data.get("domain", "assistant"), cost_mode=costmod.valid(data.get("cost")))
+                rstate, kt = None, None
+                if astate is not None and t == "start":
+                    if astate.touch() == "idle":
+                        await send({"t": "arcstate", "mode": "sys", "reset": "idle", **astate.summary()})
+                    rstate = astate
+                    if arcstatemod.KEYTERMS:
+                        src = None if data.get("fresh") else (memory.get(modes[0]) or stored_memory())
+                        try:
+                            kt = astate.keyterms(memmod.Memory.from_json((src or {}).get("mem"))) or None
+                        except Exception:
+                            kt = None
+                elif astate is not None:
+                    rstate = arcstatemod.ArcState()   # a replay (demo file): its own state, never the user's voice
+                run = Run(ws, modes, data.get("domain", "assistant"), cost_mode=costmod.valid(data.get("cost")),
+                          arcstate=rstate, keyterms=kt)
                 run.kind = "mic" if t == "start" else "replay"
                 rid = data.get("rid")
                 run.rid = rid if isinstance(rid, int) and not isinstance(rid, bool) else None

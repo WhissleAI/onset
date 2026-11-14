@@ -21,6 +21,7 @@ from . import memory as memmod
 from . import persona as personamod
 from .speculator import Speculator
 from .tagger import Tagger
+from . import arcstate as arcstatemod
 
 _END = re.compile(r"[.?!]+$")
 CC = "discourse.assistant.command_complete"
@@ -90,7 +91,7 @@ def clean(w: str) -> str:
 
 class Session:
     def __init__(self, emit, mode: str = "headstart", domain: str = "assistant", t0: float | None = None,
-                 open_mic: bool = False, cost_mode: str | None = None):
+                 open_mic: bool = False, cost_mode: str | None = None, arcstate=None):
         # every event carries "q": the id of the question (utterance) it belongs to, so a client can tell this turn's
         # events from a previous turn's late ones (its answer streaming while the next question is heard)
         self._out = emit
@@ -98,6 +99,7 @@ class Session:
         if config.ARC_OFF:
             mode = "plain"
         self.mode = mode
+        self.arcstate = arcstate                 # Arc state across presses (server/arcstate.py, ARC_STATE); may be None
         self.cost_mode = cost_mode               # COST_MODE override for this session (server/cost.py); None = config
         self.plain = mode == "plain"           # Arc-off arm: no tagger read-out anywhere (frame.plain)
         self.open_mic = open_mic                 # open mic: statements are heard, not answered (open_mic_skip)
@@ -861,6 +863,7 @@ class Session:
             self.emit({"t": "frame", **f.to_json(), "final": True, "spans": [
                 {"type": s["type"], "start": s["start"], "end": s["end"], "text": s["text"]} for s in self.spans],
                 "cc_word": self.cc_at, "ms": self.spec.ms()})
+            self._arc_observe(f)
         except Exception as e:
             job["error"] = e
         self.last_answered_end = max(self.last_answered_end, ws[-1].get("end") or 0.0)
@@ -869,6 +872,34 @@ class Session:
                             "trailing": framemod.unfinished([framemod.norm(clean(w["text"])) for w in ws])}
         self._new_question()
         return job
+
+    def _arc_observe(self, f):
+        """ArcState (server/arcstate.py): measure the closed question against this voice's usual, fold it in, show it."""
+        st = arcstatemod.of(self)
+        if st is None or not self.words:
+            return
+        try:
+            t0 = self.times[0][0] if self.times and self.times[0] else None
+            key = (None if t0 is None else round(float(t0), 1), tuple(self.words))
+            r = st.observe(key, list(self.words), list(self.times), list(self.q_levels), self.question_audio(),
+                           intent=f.intent, acts=tuple(f.acts))
+            if r is not None:
+                self.emit({"t": "arcstate", **st.summary(), "rel": r.get("rel"), "voice": r.get("voice"),
+                           "sim": r.get("sim"), "ms": self.spec.ms()})
+        except Exception as e:  # noqa: BLE001 (state is optional)
+            self.emit({"t": "error", "where": "arcstate", "error": f"{type(e).__name__}: {e}"[:300]})
+
+    def _arc_turn(self, f):
+        st = arcstatemod.of(self)
+        if st is None:
+            return
+        try:
+            subj = next((txt for t, txt in f.slots if t not in framemod.NUMBER_TYPES), "") or (f.carried or "")
+            follow = bool(f.carried or f.inline or f.followup_of or f.mem_ref)
+            if st.note_turn(f, follow, framemod.norm(subj) if subj else "", key=f.clean_text):
+                self.emit({"t": "arcstate", **st.summary(), "reset": "topic"})
+        except Exception as e:  # noqa: BLE001
+            self.emit({"t": "error", "where": "arcstate", "error": f"{type(e).__name__}: {e}"[:300]})
 
     async def on_final(self, ws: list[dict], early: bool = False) -> dict | None:
         """Answer a closed utterance. Finals are answered one at a time in arrival order; a final that arrives while
@@ -993,6 +1024,7 @@ class Session:
             self.last_request_speaker = (self.arc or {}).get("speaker")
             job["mem_before"] = (self.carry, self.context, self.carry_pool, self.mem.snapshot())
             self._remember(f, m, spec, q)
+            self._arc_turn(f)
             if job.get("levels"):
                 self.answered_level = float(np.median(job["levels"]))
             self.carry_pool = spec.export_pool()

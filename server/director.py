@@ -141,7 +141,9 @@ def session_record(sess, f, ws: list[dict], ev: str) -> dict:
             # v2 streams (None = not running: the model reads them as missing)
             "starts": [(t[0] or 0.0) for t in (getattr(sess, "times", None) or [])], "t": sess._audio_end,
             "x2": getattr(sess, "arc_x2", None), "aw": getattr(sess, "arc_aw", None),
-            "af": getattr(sess, "arc_af", None)}
+            "af": getattr(sess, "arc_af", None),
+            # ArcState across presses (server/arcstate.py): recorded now, read by the "state" group once retrained
+            "arcstate": (sess.arcstate.features() if getattr(sess, "arcstate", None) is not None else None)}
 
 
 # ---------------------------------------------------------------------------------------------- v2 input streams
@@ -171,6 +173,11 @@ GROUPS = {
             "aw_n_final"],
 }
 GROUP_ORDER = ["pros", "tag", "arc", "ear"]
+# "state": ArcState carried across presses (server/arcstate.py ArcState.features: enrolled voice / another voice,
+# this question vs the voice's usual pace / hesitation / level). Not in GROUP_ORDER: the shipped director weights were
+# trained without it; a retrain adds it with step_feats2(..., groups=GROUP_ORDER + ["state"]).
+ARCSTATE_F = ["as_ok", "as_other", "as_sim", "as_nvoices", "as_pace_rel", "as_hes_rel", "as_level_rel", "as_turns"]
+GROUPS["state"] = ARCSTATE_F
 WF2 = 6          # per-word features of the pii head: in a PII span, hidden by frame._pii_hide, in an entity mention,
                  # has a digit, digit count, email-ish token
 
@@ -273,7 +280,9 @@ def step_feats2(r: dict, prev: dict | None, f=None, plan=None, groups=GROUP_ORDE
             d["aw_final_recent"] = float(any(u[2] is not None and abs(u[2] - ends[-1]) <= 0.6 for u in fin))
             d["aw_open"] = float(bool(aw))
             d["aw_n_final"] = min(len(fin), 3) / 3
-    names = [k for g in GROUP_ORDER if g in groups for k in GROUPS[g]]
+    if "state" in groups:
+        d.update({k: float(v) for k, v in (r.get("arcstate") or {}).items() if k in ARCSTATE_F})
+    names = [k for g in GROUP_ORDER + ["state"] if g in groups for k in GROUPS[g]]
     return np.array([d.get(k, 0.0) for k in names], np.float32)
 
 

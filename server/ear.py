@@ -76,12 +76,15 @@ def describe() -> dict:
     return d
 
 
-def make_ear(sinks: list, domain: str = "assistant", on_event=None):
+def make_ear(sinks: list, domain: str = "assistant", on_event=None, keyterms: list[str] | None = None, arcstate=None):
+    """keyterms / arcstate (server/arcstate.py, ARC_STATE): the conversation's names as Flux keyterm prompts, and the
+    Arc state ArcMeta feeds (voice embeddings). Both optional."""
     on_event = on_event or (lambda e: None)
     if config.EAR in DG_EARS:
         if config.DEEPGRAM_API_KEY:
-            cls = FluxEar if config.EAR == "flux" else DeepgramEar
-            return cls(sinks, domain=domain, on_event=on_event)
+            if config.EAR == "flux":
+                return FluxEar(sinks, domain=domain, on_event=on_event, keyterms=keyterms, arcstate=arcstate)
+            return DeepgramEar(sinks, domain=domain, on_event=on_event)
         on_event({"t": "ear", "kind": "warning", "ear": "arc",
                   "text": f"EAR={config.EAR} but DEEPGRAM_API_KEY is not set: using the Arc ear"})
     elif config.EAR not in ("arc", ""):
@@ -495,7 +498,7 @@ def flux_eager() -> float | None:
     return min(float(v), config.FLUX_EOT)          # Flux rejects eager > eot
 
 
-def flux_url(base: str | None = None) -> str:
+def flux_url(base: str | None = None, keyterms: list[str] | None = None) -> str:
     """Flux /v2/listen query (developers.deepgram.com/reference/speech-to-text/listen-flux): raw PCM16 at 16 kHz needs
     encoding + sample_rate; no language/interim/endpointing params (Flux's turn model replaces them)."""
     q = [("model", config.FLUX_MODEL), ("encoding", "linear16"), ("sample_rate", 16000),
@@ -503,7 +506,11 @@ def flux_url(base: str | None = None) -> str:
     e = flux_eager()
     if e is not None:
         q.append(("eager_eot_threshold", e))
-    q += [("keyterm", t) for t in config.FLUX_KEYTERMS]
+    terms = list(config.FLUX_KEYTERMS)
+    for t in keyterms or []:                       # the conversation's names (arcstate.keyterms), after the fixed ones
+        if t and t.lower() not in {x.lower() for x in terms}:
+            terms.append(t)
+    q += [("keyterm", t) for t in terms]
     return (base or config.FLUX_URL) + "?" + urlencode(q)
 
 
@@ -531,8 +538,10 @@ class FluxEar(DeepgramEar):
     name = "flux"
 
     def __init__(self, sinks: list, domain: str = "assistant", on_event=None, key: str | None = None,
-                 url: str | None = None):
-        super().__init__(sinks, domain=domain, on_event=on_event, key=key, url=url or flux_url())
+                 url: str | None = None, keyterms: list[str] | None = None, arcstate=None):
+        self.keyterms = list(keyterms or [])
+        self.arcstate = arcstate
+        super().__init__(sinks, domain=domain, on_event=on_event, key=key, url=url or flux_url(keyterms=self.keyterms))
         self.meta = None
         self.meta_task = None
         if arcmeta.variant() != "off":
@@ -550,10 +559,10 @@ class FluxEar(DeepgramEar):
     async def _start_meta(self, domain):
         try:
             if arcmeta.ready():
-                m = arcmeta.ArcMeta(self._on_meta, domain=domain, offset_s=self.at_s)
+                m = arcmeta.ArcMeta(self._on_meta, domain=domain, offset_s=self.at_s, state=self.arcstate)
             else:
                 m = await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: arcmeta.ArcMeta(self._on_meta, domain=domain))
+                    None, lambda: arcmeta.ArcMeta(self._on_meta, domain=domain, state=self.arcstate))
                 m.offset = self.at_s
             if self.closed:
                 m.close()

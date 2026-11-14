@@ -26,6 +26,7 @@
 
   let send = null, primary = "headstart", graph = { nodes: [], edges: [], user: [] }, focus = null, pos = {};
   let persist = false, note = "", noteQ = null;
+  let voice = null;               // Arc state across questions (server/arcstate.py "arcstate" events)
   const turnsOf = {};
 
   // ------------------------------------------------------------------ DOM
@@ -41,10 +42,12 @@
       <div class="mem-head">
         <b>Memory</b><span class="mem-sub" id="memSub">this conversation</span>
         <span class="mem-sp"></span>
-        <button class="mem-btn" id="memForget" title="Forget everything remembered for this browser (conversation and your facts), here and on the server">forget</button>
+        <button class="mem-btn" id="memVoiceReset" title="Forget how your voice sounds (who is speaking, your usual pace and pitch). What was said stays in memory." hidden>reset voice</button>
+        <button class="mem-btn" id="memForget" title="Forget everything remembered for this browser (conversation, your facts and your voice), here and on the server">forget</button>
         <button class="mem-btn mem-x" id="memClose" title="Collapse" aria-label="Collapse memory panel">–</button>
       </div>
       <div class="mem-using" id="memUsing" hidden></div>
+      <div class="mem-voice" id="memVoice" hidden></div>
       <svg class="mem-svg" id="memSvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Knowledge graph of this conversation"></svg>
       <div class="mem-empty" id="memEmpty">Ask a question, then a follow-up ("when was it founded?"). The people, places and companies you talk about appear here.</div>
       <div class="mem-foot" id="memFoot"></div>
@@ -62,7 +65,13 @@
   function setOpen(v) { open = v; store.set(OPEN, v ? "1" : "0"); paintDock(); }
   $("memPill").addEventListener("click", () => setOpen(true));
   $("memClose").addEventListener("click", () => setOpen(false));
+  $("memVoiceReset").addEventListener("click", () => {
+    if (send) send({ t: "arc_reset" });
+    voice = null;
+    paintVoice();
+  });
   $("memForget").addEventListener("click", () => {
+    voice = null; paintVoice();
     if (send) send({ t: "forget" });
     graph = { nodes: [], edges: [], user: [] }; focus = null; pos = {}; note = "";
     paint();
@@ -286,6 +295,21 @@
     }
   }
 
+  function paintVoice() {
+    const el = $("memVoice"), btn = $("memVoiceReset");
+    if (!el) return;
+    const on = !!(voice && voice.on && voice.enrolled);
+    btn.hidden = !on;
+    if (!on) { el.hidden = true; el.innerHTML = ""; return; }
+    const who = voice.who === "other" ? "<b>another voice</b> asked this" : "<b>you</b>";
+    const n = voice.turns || 0;
+    const notes = (voice.notes || []).map(esc).join(" · ");
+    el.innerHTML = `<span class="muted">voice</span> ${who}` +
+      (voice.voices > 1 ? ` <span class="muted">· ${voice.voices} voices heard</span>` : "") +
+      (notes ? ` · ${notes}` : (n ? ` <span class="muted">· learned from ${n} question${n === 1 ? "" : "s"}</span>` : ""));
+    el.hidden = false;
+  }
+
   // ------------------------------------------------------------------ events
   function primaryMode(e) { return e.mode === primary || e.mode === "sys"; }
   function event(e) {
@@ -302,6 +326,11 @@
         noteQ = e.q;
       }
       paint();
+      return;
+    }
+    if (e.t === "arcstate") {
+      voice = e.reset === "all" ? null : e;
+      paintVoice();
       return;
     }
     if (e.t === "frame") {

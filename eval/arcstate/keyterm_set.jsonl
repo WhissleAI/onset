@@ -1,0 +1,32 @@
+{"id": "kt01", "voice": "Samantha", "name": "Rafael Nadal", "memory": ["Rafael Nadal", "Roland Garros", "Carlos Alcaraz"], "say": "How many times did Rafael Nadal win the French Open?"}
+{"id": "kt02", "voice": "Daniel", "name": "Carlos Alcaraz", "memory": ["Carlos Alcaraz", "Jannik Sinner", "Wimbledon"], "say": "How old is Carlos Alcaraz?"}
+{"id": "kt03", "voice": "Karen", "name": "Novak Djokovic", "memory": ["Novak Djokovic", "Serbia", "Australian Open"], "say": "When did Novak Djokovic turn pro?"}
+{"id": "kt04", "voice": "Moira", "name": "Schiphol", "memory": ["Schiphol", "Amsterdam", "KLM"], "say": "How far is Schiphol from the city center?"}
+{"id": "kt05", "voice": "Rishi", "name": "Keukenhof", "memory": ["Keukenhof", "Lisse", "tulips"], "say": "When does Keukenhof open this year?"}
+{"id": "kt06", "voice": "Tessa", "name": "Ljubljana", "memory": ["Ljubljana", "Slovenia", "Lake Bled"], "say": "How do I get from Ljubljana to Lake Bled?"}
+{"id": "kt07", "voice": "Fred", "name": "Hozier", "memory": ["Hozier", "Take Me to Church", "Ireland"], "say": "When is Hozier touring next?"}
+{"id": "kt08", "voice": "Samantha", "name": "Shohei Ohtani", "memory": ["Shohei Ohtani", "Dodgers", "Los Angeles"], "say": "How many home runs did Shohei Ohtani hit last season?"}
+{"id": "kt09", "voice": "Daniel", "name": "Studio Ghibli", "memory": ["Studio Ghibli", "Hayao Miyazaki", "Spirited Away"], "say": "What was the first Studio Ghibli film?"}
+{"id": "kt10", "voice": "Karen", "name": "Bayern Munich", "memory": ["Bayern Munich", "Harry Kane", "Bundesliga"], "say": "Who is the coach of Bayern Munich?"}
+{"id": "kt11", "voice": "Moira", "name": "McKinsey", "memory": ["McKinsey", "Bain", "Boston Consulting Group"], "say": "How many people work at McKinsey?"}
+{"id": "kt12", "voice": "Rishi", "name": "Jaisalmer", "memory": ["Jaisalmer", "Rajasthan", "Thar Desert"], "say": "What is the best time to visit Jaisalmer?"}
+{"id": "kt13", "voice": "Tessa", "name": "Franschhoek", "memory": ["Franschhoek", "Stellenbosch", "Cape Town"], "say": "How long is the drive to Franschhoek?"}
+{"id": "kt14", "voice": "Fred", "name": "Cascais", "memory": ["Cascais", "Lisbon", "Sintra"], "say": "Is there a train from Lisbon to Cascais?"}
+{"id": "kt15", "voice": "Samantha", "name": "Sintra", "memory": ["Sintra", "Pena Palace", "Lisbon"], "say": "What are the opening hours in Sintra?"}
+{"id": "kt16", "voice": "Daniel", "name": "Zomato", "memory": ["Zomato", "Swiggy", "Gurugram"], "say": "Who founded Zomato?"}
+{"id": "kt17", "voice": "Karen", "name": "Taapsee Pannu", "memory": ["Taapsee Pannu", "Bollywood", "Pink"], "say": "What is Taapsee Pannu's latest movie?"}
+{"id": "kt18", "voice": "Moira", "name": "Jollibee", "memory": ["Jollibee", "Manila", "Chickenjoy"], "say": "How many Jollibee stores are in the United States?"}
+{"id": "kt19", "voice": "Rishi", "name": "Hongdae", "memory": ["Hongdae", "Seoul", "Itaewon"], "say": "What is there to do in Hongdae at night?"}
+{"id": "kt20", "voice": "Tessa", "name": "Machu Picchu", "memory": ["Machu Picchu", "Cusco", "Peru"], "say": "How high is Machu Picchu?"}
+{"id": "kt21", "voice": "Fred", "name": "Cusco", "memory": ["Cusco", "Machu Picchu", "Sacred Valley"], "say": "What is the altitude of Cusco?"}
+{"id": "kt22", "voice": "Samantha", "name": "Ouagadougou", "memory": ["Ouagadougou", "Burkina Faso", "Bobo-Dioulasso"], "say": "What is the population of Ouagadougou?"}
+{"id": "kt23", "voice": "Daniel", "name": "Marrakech", "memory": ["Marrakech", "Jemaa el-Fnaa", "Morocco"], "say": "What is the weather like in Marrakech in April?"}
+{"id": "kt24", "voice": "Karen", "name": "Bukhara", "memory": ["Bukhara", "Samarkand", "Uzbekistan"], "say": "How far is Bukhara from Samarkand?"}
+{"id": "kt25", "voice": "Moira", "name": "Medellin", "memory": ["Medellin", "Colombia", "Pablo Escobar"], "say": "Is Medellin safe for tourists?"}
+{"id": "kt26", "voice": "Rishi", "name": "Narendra Modi", "memory": ["Narendra Modi", "India", "BJP"], "say": "When did Narendra Modi become prime minister?"}
+{"id": "kt27", "voice": "Tessa", "name": "Beyonce", "memory": ["Beyonce", "Jay-Z", "Renaissance"], "say": "How many Grammys has Beyonce won?"}
+{"id": "kt28", "voice": "Fred", "name": "Nobu", "memory": ["Nobu", "Nobu Matsuhisa", "Malibu"], "say": "Who owns Nobu?"}
+{"id": "kt29", "voice": "Samantha", "name": "Moana", "memory": ["Moana", "Disney", "Auli'i Cravalho"], "say": "When does the Moana sequel come out?"}
+{"id": "kt30", "voice": "Daniel", "name": "Kochi", "memory": ["Kochi", "Kerala", "Fort Kochi"], "say": "What is the best beach near Kochi?"}
+{"id": "kt31", "voice": "Karen", "name": "Nasser", "memory": ["Nasser", "Egypt", "Suez Canal"], "say": "When did Nasser nationalize the canal?"}
+{"id": "kt32", "voice": "Moira", "name": "Gilroy", "memory": ["Gilroy", "garlic festival", "California"], "say": "When is the garlic festival in Gilroy?"}

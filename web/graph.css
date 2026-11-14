@@ -26,6 +26,8 @@
 .mem-svg { display: block; width: 100%; height: auto; background: var(--card-2); border-radius: 8px; }
 .mem-empty { color: var(--ink-3); font-size: 11.5px; padding: 12px 8px; border: 1px dashed var(--line); border-radius: 8px; line-height: 1.4; }
 .mem-empty[hidden] { display: none; }
+.mem-voice { font-size: 11.5px; margin: 2px 0 4px; color: var(--ink, inherit); }
+.mem-voice[hidden] { display: none; }
 .mem-foot { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .mem-foot:empty { display: none; }
 .mem-fact { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--hs-soft); color: var(--ink-2); }
