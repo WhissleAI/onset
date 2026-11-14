@@ -48,6 +48,8 @@ body.sc-on { overflow: hidden; }
 
 .sc-foot { margin-top: 12px; font-size: 11.5px; color: var(--ink-3); }
 .sc-foot p { margin: 0 0 4px; }
+.sc-models { margin: 6px 0 0; }
+.sc-models span { display: block; color: var(--ink-3); opacity: .85; }
 .sc-foot ol { margin: 0; padding-left: 18px; display: flex; flex-wrap: wrap; gap: 0 22px; }
 
 @media (max-width: 900px) {

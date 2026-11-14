@@ -1,0 +1,58 @@
+{
+ "_doc": "Seed templates for eval/train/synth.py: spoken-question sessions for the failure classes users hit. {slot} values come from 'slots'; gold answers come from Wikidata (relation on the slot's QID, see synth.RELATIONS); must_query = words the search query must keep, never = words it must not carry. Small and public: no personal data.",
+ "voices": ["Samantha", "Daniel", "Karen", "Moira", "Rishi", "Tessa", "Fred", "Ralph", "Kathy", "Albert",
+            "Flo (English (US))", "Eddy (English (US))", "Reed (English (UK))", "Aman (English (India))",
+            "Grandma (English (US))", "Grandpa (English (UK))"],
+ "slots": {
+  "country": [["the united states", "Q30"], ["usa", "Q30"], ["france", "Q142"], ["germany", "Q183"], ["india", "Q668"],
+              ["brazil", "Q155"], ["mexico", "Q96"], ["south korea", "Q884"], ["argentina", "Q414"], ["kenya", "Q114"],
+              ["italy", "Q38"], ["ireland", "Q27"]],
+  "company": [["nvidia", "Q182477"], ["apple", "Q312"], ["microsoft", "Q2283"], ["amazon", "Q3884"], ["google", "Q95"],
+              ["tesla", "Q478214"], ["netflix", "Q907311"], ["spotify", "Q689141"], ["ikea", "Q54078"], ["samsung", "Q20718"]],
+  "film": [["inception", "Q25188"], ["titanic", "Q44578"], ["parasite", "Q61448040"], ["jaws", "Q189505"],
+           ["the godfather", "Q47703"], ["pulp fiction", "Q104123"], ["the matrix", "Q83495"], ["casablanca", "Q132689"]],
+  "book": [["pride and prejudice", "Q170583"], ["nineteen eighty four", "Q208460"], ["dune", "Q190192"],
+           ["the great gatsby", "Q214371"], ["moby dick", "Q174596"], ["frankenstein", "Q150827"]],
+  "city": ["san jose", "austin", "denver", "seattle", "chicago", "boston", "portland", "miami", "toronto", "oakland"],
+  "cuisine": ["mexican", "thai", "indian", "italian", "sushi", "vegan", "korean", "ethiopian"],
+  "chatter": ["i like to eat pancakes", "you always burn the first one", "did you feed the dog",
+              "hang on let me find my keys", "that show was so good last night", "we should leave by six",
+              "honestly i'm just thinking out loud", "can you pass me the salt", "yeah yeah i know",
+              "my sister called earlier", "this coffee is cold again", "ok so where was i"]
+ },
+ "sessions": [
+  {"cls": "topic_switch", "turns": [
+    {"say": "what's the capital of {country}", "rel": "capital", "of": "country", "must_query": ["{country}"]},
+    {"say": "any good {cuisine} restaurants in {city}", "route": "web", "must_query": ["{city}"], "never": ["{country}"]}]},
+  {"cls": "topic_switch", "turns": [
+    {"say": "who founded {company}", "rel": "founder", "of": "company", "must_query": ["{company}"]},
+    {"say": "what's the weather in {city} right now", "route": "live", "must_query": ["{city}"], "never": ["{company}"]}]},
+  {"cls": "elliptical", "turns": [
+    {"say": "who is the president of {country}", "rel": "head_of_state", "of": "country", "must_query": ["{country}"]},
+    {"say": "you know the old one", "rel": "prev_head_of_state", "of": "country", "followup": true, "must_query": ["{country}"]}]},
+  {"cls": "elliptical", "turns": [
+    {"say": "who is the president of {country}", "rel": "head_of_state", "of": "country", "must_query": ["{country}"]},
+    {"say": "and the one before that", "rel": "prev_head_of_state", "of": "country", "followup": true, "must_query": ["{country}"]}]},
+  {"cls": "elliptical", "turns": [
+    {"say": "who directed {film}", "rel": "director", "of": "film", "must_query": ["{film}"]},
+    {"say": "and who wrote it", "rel": "screenwriter", "of": "film", "followup": true, "must_query": ["{film}"]}]},
+  {"cls": "self_correction", "turns": [
+    {"say": "who directed {film}, sorry i mean {film2}", "rel": "director", "of": "film2", "must_query": ["{film2}"], "never": ["{film}"]}]},
+  {"cls": "self_correction", "turns": [
+    {"say": "who wrote {book} no wait {book2}", "rel": "author", "of": "book2", "must_query": ["{book2}"], "never": ["{book}"]}]},
+  {"cls": "self_correction", "turns": [
+    {"say": "what's the capital of {country}, uh, actually {country2}", "rel": "capital", "of": "country2", "must_query": ["{country2}"], "never": ["{country}"]}]},
+  {"cls": "open_mic", "turns": [
+    {"say": "{chatter}", "addressed": false},
+    {"say": "who is the ceo of {company}", "rel": "ceo", "of": "company", "addressed": true, "must_query": ["{company}"]},
+    {"say": "{chatter2}", "addressed": false}]},
+  {"cls": "multi_part", "turns": [
+    {"say": "who founded {company} and what's the capital of {country}", "rel": "founder", "of": "company", "rel2": "capital", "of2": "country", "must_query": ["{company}"]}]},
+  {"cls": "multi_part", "turns": [
+    {"say": "who directed {film} and who wrote {book}", "rel": "director", "of": "film", "rel2": "author", "of2": "book", "must_query": ["{film}"]}]},
+  {"cls": "live_data", "turns": [
+    {"say": "what's the weather in {city} today", "route": "live", "must_query": ["{city}"]}]},
+  {"cls": "live_data", "turns": [
+    {"say": "how is {company} stock doing today", "route": "live", "must_query": ["{company}"]}]}
+ ]
+}

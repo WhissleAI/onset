@@ -135,8 +135,18 @@
       <footer class="sc-foot">
         <p>${esc(d.lane_note || "")}</p>
         <ol>${refs.map((s) => `<li>${esc(s.doc)} · ${esc(s.section)}${s.date ? ` · ${esc(s.date)}` : ""}</li>`).join("")}</ol>
+        ${modelsLine(d.models)}
       </footer>
     </div>`;
+  }
+  // "Model versions · last trained <date>" (server/scorecard.json "models", written by the training loop after a
+  // promoted cycle, quoted from its PROGRESS.md section like every other number here)
+  function modelsLine(m) {
+    if (!m || !m.line) return "";
+    const by = Object.values(m.by_model || {}).filter((x) => x && x.version)
+      .map((x) => `${esc(x.name)} ${esc(x.version)}${x.trained ? ` (${esc(x.trained)})` : ""}`).join(" · ");
+    const src = m.source ? `${m.source.doc} · ${m.source.section}` : "";
+    return `<p class="sc-models" title="${esc(src)}">${esc(m.line)}${by ? `<span>${by}</span>` : ""}</p>`;
   }
   function actions(png) {
     return `<div class="sc-actions">${png ? `<button type="button" class="sc-btn" data-sc="png">Save as image</button>` : ""}` +

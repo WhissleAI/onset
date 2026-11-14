@@ -40,6 +40,7 @@ from . import cost as costmod
 from . import memory as memmod
 from . import persona as personamod
 from . import arcstate as arcstatemod
+from . import trainlog
 from .session import Session
 
 ROOT = config.ROOT
@@ -237,6 +238,7 @@ class Run:
                     log_event(e, mode, self.id)
                 except Exception:          # logging must never break a run
                     pass
+            trainlog.record(e, mode, self.id)    # TRAIN_COLLECT: redacted metric row (never raises)
         return emit
 
     def set_clock(self, t0: float):
@@ -489,6 +491,7 @@ async def ws_endpoint(ws: WebSocket):
                     rstate = arcstatemod.ArcState()   # a replay (demo file): its own state, never the user's voice
                 run = Run(ws, modes, data.get("domain", "assistant"), cost_mode=costmod.valid(data.get("cost")),
                           arcstate=rstate, keyterms=kt)
+                trainlog.bind(run.id, client.get("id"), "mic" if t == "start" else "replay")
                 run.kind = "mic" if t == "start" else "replay"
                 rid = data.get("rid")
                 run.rid = rid if isinstance(rid, int) and not isinstance(rid, bool) else None

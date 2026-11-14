@@ -1786,3 +1786,62 @@ the same value for over an hour), so the per-call numbers are the ledger.
   install the site into the Mac app with `HEADSTART_DATA_DIR=<app data dir> .venv/bin/python index/build_site.py
   --rebuild` (or copy `runs/sites/docs.tavily.com`), not done while the user was testing; scoped questions add one
   query embedding (~40 ms idle, up to the 800 ms cap under load) to their paid-lane fallback.
+## Continuous training (branch feat/trainer; scripts/train_cycle.sh, eval/train/, tests/test_train_loop.py)
+A background loop retrains the learned parts on new real + synthetic data and promotes a model only when it beats the
+current one on fixed held-out sets. `scripts/train_cycle.sh start | stop | status | once | dry-run`; log
+runs/train/cycle.log; everything it writes (data, candidates, versions) stays in git-ignored runs/train and runs/models.
+Model versions: search director v000 (2026-11-13) · Keystone director v000 (2026-11-14) · calibrator v000 (2026-11-14) · TTLs v000 (2026-11-14)
+- **Real data** (eval/train/collect.py): the Mac app's per-question rows (`TRAIN_COLLECT=1`, default on in this dev
+  build, Settings > Improve Onset; server/trainlog.py: timings, route, tiers, paid / free, verify / re-check,
+  calibration features, endpoint trigger, ear; question / query with PII masked by the PII_YEARS rules + 5+ digit runs,
+  emails, handles; no audio, no answer text, salted client-id hash), the app's request log, and every agent's eval
+  replays (runs/**.json rows). De-duplicated by content hash; local only.
+- **Synthetic data** (eval/train/synth.py, seeds in eval/train/seeds/sessions.json): spoken sessions for topic switch
+  (France -> San Jose restaurants), elliptical follow-ups ("you know the old one" -> the previous president),
+  self-corrections, open-mic chatter, multi-part, live data. Gold from Wikidata (SPARQL per relation), Haiku
+  paraphrases (token usage x listed price, capped at $2 / cycle), `say` voices (16, 150-215 wpm), babble + pink noise
+  at 8-25 dB on ~40 %, Flux-style word timings; real Flux traces for the director (capped at 10 audio min / cycle).
+- **Per cycle** (eval/train/cycle.py): calibrator refit on base + labelled synthetic rows (eval/calib_data.py
+  pipeline); Keystone director: one DAgger round under the current policy + tree refit + R re-picked on dev replays;
+  TTLs (every 6th cycle): Wikidata statement histories, 1/5 held out; Mamba director: recipe train.py (shipped v2_s0
+  recipe) + the new traces as extra train, recipe evaluate / evaluate2 / eot_loss / export.
+- **Gates** (eval/train/gates.py, one per model, both models measured on the same fixed sets): calibrator: test Brier
+  -0.002, ECE / AUC no worse (186 held-out answers + live rows); kdir: paid/q -0.003 on the kdir test streams (2,000 +
+  800 q) with regret, accuracy and replay p50 no worse; TTLs: held-out log-likelihood up, test-stream replay no worse;
+  director: test_v2 eot BCE -0.002, test BCE no worse, endpoint p50 (val thresholds, @10, @20 premature) no worse on
+  test / test_v2 / heldout80, premature +1 at most, addressed AUC no worse. Then install + regression suites (fixlive,
+  persona, calibrate, kdir, director_v2, train_loop pytest) and, with `TRAIN_E2E=1`, the 58-set real-audio replay with
+  the model's flag on (no accuracy loss, p50 within 25 ms). Any failure rolls back
+  (`.venv/bin/python eval/train/registry.py rollback <model>`).
+- **Scheduling**: `nice -n 10`, one model-loading step at a time, no new heavy step while `runs/.quiet` exists in the
+  main checkout or swap used > 16 GB; a cycle every 75 min (`TRAIN_EVERY_MIN`).
+- **Results**: runs/train/latest.json every cycle; after a promotion a "Training cycle N" section here and the Results
+  view's "Model versions · last trained" line (server/scorecard.json "models"), in the same step.
+- **Dry run (cycle 0, 2026-11-14 12:32-12:44) and first measurements** (both models on the same fixed sets):
+  - Real rows harvested: 8,194 (8,160 eval-replay rows from every checkout's runs/, 34 app request-log questions;
+    the app collector starts filling once the app runs this build). PII check: no 5+ digit run, email or handle left.
+  - Calibrator: refit on the same 461 base rows reproduces the shipped model exactly (test ECE 0.0342, Brier 0.1605,
+    AUC 0.721 on 186 held-out answers): the pipeline is faithful. Gate: no gain, kept.
+  - Keystone director: one DAgger round under the shipped policy (6,696 new decisions, 48,132 in all), R re-picked
+    on dev replays (R 30). Test 2,000 q: paid/q 0.490 -> 0.4955, regret 0.75 % -> 0.55 %, replay p50 189 -> 205 ms;
+    old test 800 q: 0.341 -> 0.354, regret 1.25 % -> 0.63 %. Lower regret but more paid calls and +15 ms p50: kept.
+  - Search director: skipped (no new traces in a dry run).
+- **Real-Tavily slice** (eval/train/tavily_slice.py): 40 of the 100-credit cap spent (ledger runs/train/tavily/
+  ledger.json; basic depth, 1 credit / search): 40 labelled answers with Tavily relevance scores (39 right), added to
+  the calibrator's TRAIN rows so src_top / src_margin are no longer constant.
+- **Cycle 1 (2026-11-14 12:48-13:22, the loop's first real cycle) — promoted nothing:**
+  - Data: 26 synthetic sessions / 43 spoken turns (topic switch 5, elliptical 8, self-correction 7, open mic 2,
+    multi-part 2, live data 2; 30 with Wikidata gold, 2 without), paraphrases $0.0002 (6 Haiku calls); 43 clips
+    streamed through real Flux (3.69 audio min, est. $0.028), featurized, audio deleted; 39 director traces built
+    (4 dropped for message jitter). Calibration labels: 22 synthetic answers ($0.003 est.).
+  - Calibrator (538 train rows: 461 base + 22 synthetic + 40 real-Tavily + 15 real replays): test Brier 0.1605 ->
+    0.1606, ECE 0.034 -> 0.044, AUC 0.721 -> 0.727; live rows (58) Brier 0.037 -> 0.024. Gate (test Brier -0.002):
+    kept.
+  - Keystone director: no new rows since the dry run's refit (same policy): skipped.
+  - TTLs: the public Wikidata SPARQL endpoint timed out on every statement-history query (step timeout): no
+    candidate. Histories are now cached weekly and the queries smaller.
+  - Search director (run by hand on the cycle's 39 traces; the loop waits for 40): retrained v2_s0 recipe + extra
+    traces. Threshold-free eot BCE improved on all three sets (test 0.2483 -> 0.2464, test_v2 0.2844 -> 0.2802,
+    heldout80 0.1895 -> 0.1861; all CIs include 0), but at the val thresholds heldout80 p50 132.5 -> 160.3 ms,
+    test p50 254.9 -> 257.6 ms, test_v2 premature 32.2 -> 35.1 /100 q, addressed AUC 0.902 -> 0.885: **kept**
+    (the gate's no-p50-regression rule).
