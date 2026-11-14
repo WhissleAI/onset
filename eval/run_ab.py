@@ -295,6 +295,8 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         "first_fire_lead_ms": m.get("first_fire_lead_ms"), "used_fire_lead_ms": m.get("used_fire_lead_ms"),
         "credits": m.get("credits"), "credits_spec": m.get("credits_spec"), "credits_final": m.get("credits_final"),
         "web_cached": m.get("web_cached"), "web_backend": m.get("web_backend"), "answer_by": m.get("answer_by"),
+        "answer_fallback": m.get("answer_fallback"),     # "extractive": the answer model was unreachable (not scored as a
+        "plan_part_wait_ms": m.get("plan_part_wait_ms"), "plan_hedged": m.get("plan_hedged"),   # routing miss)
         "stale": m.get("stale"), "drafts": m.get("drafts"), "draft_reused": m.get("draft_reused"),
         "draft_match": m.get("draft_match"), "query": m.get("query"), "intent": m.get("intent"),
         "spec_queries": spec_q, "sources": m.get("sources"),

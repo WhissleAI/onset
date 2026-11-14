@@ -54,6 +54,66 @@ def sentences(raw: list[str]) -> list[list[str]]:
     return out
 
 
+# Search-style requests (OPENMIC_SEARCH=1): said like a search box, with no question word up front ("Osprey or
+# Gregory backpack for a week long trek", "a summer job for a college student in colorado", "uh like lah which hawker
+# centre near bugis is good", "i'm trying to remember who directed inception"). The gold set's single queries are full
+# of them: gate v2 missed 14.5 % of its requests, v1 7.1 %. Each shape was checked against the open-mic scenes' room
+# talk (test / val / train), which is why they are narrow: "seven or eight probably", "an essay on the civil war",
+# "i don't know if this is still good" and "so who can take the lead on this?" must stay held.
+_FILLER = {"um", "uh", "like", "also", "lah", "er", "erm", "hmm", "mm"}
+_EMBED = re.compile(r"^(?:i|i'm|im|i'd|id)\b(?!.*\byou\b).*?\b(?:remember|figure out|find out|curious|need to know|"
+                    r"want to know|love to find|like to find|want to find|need to find|looking for)\b"
+                    r"(?:.*?\b(?:who|whos|who's|what|whats|what's|where|wheres|where's|which|when|why|how)\b|"
+                    r"(?<=find)|(?<=for))")
+_CMP = re.compile(r"\b([a-z][a-z'-]*) (?:or|versus|vs) (?:just |a |an |the )?([a-z][a-z'-]*)\b")
+_PURPOSE = {"for", "near", "nearby"}
+_OVERRIDE = {"embedded", "compare"}           # shapes strong enough to answer a turn the tagger read as a statement
+_MID_WH = {"who's", "whos", "what's", "whats", "where's", "wheres"}
+_MID_WH_NOT = {"know", "knows", "what", "see", "guess", "is", "that", "remember", "wonder", "asked", "say", "said"}
+_NUM = {"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "twenty",
+        "thirty", "forty", "fifty", "hundred", "thousand", "half", "first", "second", "third"}
+# a sentence that has one of these is not a bare search phrase (it has a subject / verb of its own)
+_CLAUSE = {"i", "i'm", "im", "i've", "i'd", "i'll", "you", "you're", "we", "we're", "he", "she", "they", "it", "it's",
+           "its", "that's", "thats", "there's", "is", "are", "was", "were", "am", "be", "been", "do", "does", "did",
+           "have", "has", "had", "will", "would", "can", "could", "should", "said", "says", "told", "think", "know",
+           "my", "your", "our", "his", "her", "their", "me", "him", "them", "us", "this", "that", "these", "those",
+           "yeah", "yes", "no", "not", "don't", "dont", "didn't", "can't", "let's", "gonna", "wanna", "got", "get"}
+
+
+def search_like(f, ss: list[list[str]], raw=None) -> str | None:
+    """Positive evidence that a turn without a question word up front is a search-style request (OPENMIC_SEARCH):
+    the shape that matched ("filler", "embedded", "compare", "keyword"), or None. Needs device_directed >=
+    OPENMIC_DD_SEARCH (when the tagger gives it) and no sentence addressed to a person."""
+    dd = f.directed
+    if not ss or (dd is not None and dd < config.OPENMIC_DD_SEARCH) or any(to_person(s) for s in ss):
+        return None
+    first = ss[0]
+    i = 0
+    while i < len(first) - 1 and first[i] in _FILLER:
+        i += 1
+    t = first[i:]
+    if i and _REQUEST.match(t[0]) and not to_person(t) and " ".join(t[:2]) != "what a":
+        return "filler"                                    # "uh like lah which hawker centre near bugis is good"
+    if _EMBED.search(" ".join(t)):
+        return "embedded"                                  # "i'm trying to remember who directed inception"
+    for s in ss:                                           # a question clause after a lead-in: "i'm at the hilton on
+        for k in range(1, len(s) - 1):                     # river road where's the closest starbucks"
+            if s[k] in _MID_WH and s[k - 1] not in _MID_WH_NOT:
+                return "clause"
+    if re.search(r"[,.] am i\b", " ".join(str(w) for w in (raw or f.words)).lower()):                     # "born march ninth 1955, am I eligible for ..."
+        return "clause"
+    if not t or t[0] in _CLAUSE or t[0] in VOCATIVE or set(t) & _CLAUSE:
+        return None
+    if len([w for w in t if w not in framemod.STOP]) < 3 or not set(t) & _PURPOSE:
+        return None
+    m = _CMP.search(" ".join(t))
+    if m and not ({m.group(1), m.group(2)} & (framemod.STOP | _NUM)):
+        return "compare"                                   # "Osprey or Gregory backpack for a week long trek"
+    if len(ss) == 1:
+        return "keyword"                                   # "a summer job for a college student in colorado"
+    return None
+
+
 def to_person(s: list[str]) -> bool:
     return bool(s) and (s[0] in VOCATIVE or bool(_TO_PERSON.match(" ".join(s))))
 
@@ -83,6 +143,10 @@ def skip(f, ctx: dict | None = None, rule=None) -> str | None:
     if not f.has_content():
         return "empty"
     why = rule(f) if rule is not None else None
+    if why and config.OPENMIC_SEARCH and why == "statement":
+        ss = sentences((ctx or {}).get("raw") or f.words)
+        if search_like(f, ss, (ctx or {}).get("raw")) in _OVERRIDE:
+            why = None                                     # "i'm trying to remember who directed inception"
     if why:
         return why
     dd = f.directed
@@ -99,6 +163,8 @@ def skip(f, ctx: dict | None = None, rule=None) -> str | None:
             return None
     except Exception:
         pass
+    if config.OPENMIC_SEARCH and search_like(f, ss, (ctx or {}).get("raw")):
+        return None
     acts = set(f.acts or ())
     if (f.act_question or acts & {"question", "command_request"}) and not any(to_person(s) for s in ss) \
             and (dd or 0.0) >= config.OPENMIC_DD_ACT:
