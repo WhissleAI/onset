@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 
 from server import answer, config  # noqa: E402
 
-DQ = Path("/Users/karan/Desktop/work/whissle/headstart/runs/director_queries")
+DQ = Path(__file__).resolve().parents[2] / "runs" / "director_queries"
 SKIP_KINDS = {"not_search", "work_email_calendar", "smart_home_devices", "in_car_navigation", "names_homophones"}
 STYLES = {"plain", "filler", "numbers", "short"}
 
