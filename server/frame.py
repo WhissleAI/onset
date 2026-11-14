@@ -611,6 +611,10 @@ autumn monday tuesday wednesday thursday friday saturday sunday january february
 september october november december week month year next last this""".split())
 TIME_WORDS = MODIFIERS - {"next", "last", "this", "week", "month", "year"}
 _POSS = {"its", "his", "their", "her"}
+# an elliptical follow-up said with no content word: only these words ("when?", "and why?", "where exactly?", "how so?")
+ELLIPSIS_WH = {"when", "where", "why", "who", "whom", "whose", "how"}
+ELLIPSIS_WORDS = ELLIPSIS_WH | {"and", "also", "so", "exactly", "then", "come", "though", "again", "else", "about",
+                                "ok", "okay", "um", "uh", "hmm", "but", "or"}
 _REF_PRONOUN = ["it", "he", "she", "him", "they", "them", "its", "his", "her", "their", "it's", "there", "that", "this"]
 
 
@@ -846,8 +850,18 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
     # elliptical follow-ups with no pronoun: "and when?", "what about Nvidia?", "how about in 2020?", "and the CEO?"
     prev = (carry or {}).get("prev")
     head2 = toks[:2]
+    # a bare question word with nothing else said ("when?", "why?", "where exactly?") is an ellipsis; a question
+    # OPENER ("what", "what are some", "who is the", "how many") is not: it is a new question still being spoken.
+    # (live P0: "what are some good food places in San Jose" after a France turn carried France on its first three
+    # partial words; the speculator looked up "capital france" and the answer shipped from the France article)
+    said = [t for t in toks if t]
+    bare = (len(content) == 0 and 0 < len(said) <= 4 and all(t in ELLIPSIS_WORDS for t in said)
+            and any(t in ELLIPSIS_WH for t in said)
+            # one word alone: "why?" / "when?" / "where?" said as a question (the ear's "?") are follow-ups; the same
+            # word without it is the first word of a new question ("When was ...")
+            and (len(said) > 1 or (said[0] in ("why", "when", "where") and str(words[-1]).rstrip().endswith("?"))))
     elliptic = bool(prev) and (toks[:1] in (["and"], ["also"]) or head2 in (["what", "about"], ["how", "about"])
-                               or (len(content) == 0 and len(toks) <= 4))
+                               or bare)
     prev_q = [norm(w) for w in ((prev or {}).get("inline") or (prev or {}).get("question", "")).split() if norm(w)]
     if elliptic and not ent:
         pc = list(prev.get("content") or [])

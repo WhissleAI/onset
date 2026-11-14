@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, confidence, config, cost, director, embed, lanes, meter, narrow, planner, recheck, rerank, searchcache, verify
+from . import answer, confidence, config, cost, coverage, director, embed, lanes, meter, narrow, planner, recheck, rerank, searchcache, verify
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
@@ -1299,7 +1299,19 @@ class Speculator:
             return superseded()
         if qvec is not None:
             self.last_qvec = qvec
+        terms = None
+        if (coverage.ENABLED and self.mode == "headstart" and plan_ranked is None and qvec is not None
+                and not f.plain and f.route in ("web", "both")):
+            terms = coverage.key_terms(f)
+            reuse_draft = await self._cover_guard(f, q, qvec, terms, reuse_draft, m, live)
+            if not live():
+                return superseded()
         ranked = self._rank_for(f, qvec, 5) if plan_ranked is None else [(d, sc) for d, sc, _ in plan_ranked]
+        if terms and m.get("cover_guard") and reuse_draft is None:
+            # the pool was about something else: answer only from sources that name the question's subject (none
+            # landed in time -> no sources, the answer says so; never the unrelated article)
+            ranked = coverage.split(self._rank_for(f, qvec, 20), terms)[0][:5]
+            m["cover_guard"]["covered"] = bool(ranked)
         if fplan is not None and fplan.lane == "card" and plan_ranked is None:
             ranked = self._card_first(ranked, qtext, qvec)
         if config.INDEX and qvec is not None and not f.plain:
@@ -1395,6 +1407,8 @@ class Speculator:
             "answer_fallback_reason": getattr(st, "fallback_reason", None),
             **self._credits(),
             "answer": st.text(),
+            # post-answer signal (the pre-answer check is _cover_guard): the model said its sources miss the question
+            "answer_admits_uncovered": coverage.admits_uncovered(st.text()),
             "sources": [d.title for d in docs],
             "error": st.error,
         })
@@ -1468,6 +1482,54 @@ class Speculator:
         await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True, qvec_task=qvec_task)).task,
                              return_exceptions=True)
         return alt
+
+    async def _cover_guard(self, f: Frame, q: str, qvec, terms: list, reuse_draft, m: dict, live):
+        """COVER_GUARD (server/coverage.py): the sources about to answer must name the question's subject. When the
+        draft / top of the pool doesn't (it was searched on early words, or a slow web search hadn't landed after
+        PENDING_CAP_S), wait for the web search of this question that is still on the wire, else fire one (parity's
+        one paid call: the pool's free lookups bought nothing for this question), up to COVER_WAIT_S. Returns the
+        draft to reuse (None when it was about something else). Never raises."""
+        if not terms:
+            return reuse_draft
+        try:
+            if reuse_draft is not None:
+                ddocs = [self.pool[i] for i in reuse_draft.doc_ids if i in self.pool]
+                if any(coverage.covers(d, terms) for d in ddocs):
+                    return reuse_draft
+                m["cover_draft_dropped"] = True
+                reuse_draft.stream.cancel()
+                reuse_draft = None
+            if any(coverage.covers(d, terms) for d, _ in self._rank_for(f, qvec, 5)):
+                return None
+            t0 = time.perf_counter()
+            g = m["cover_guard"] = {"terms": terms, "action": "wait"}
+
+            def covered():
+                return any(coverage.covers(d, terms) for d, _ in self._rank_for(f, qvec, 20))
+
+            async def wait(tasks, until):
+                tasks = set(tasks)
+                while tasks and not covered() and live() and time.perf_counter() < until:
+                    _, tasks = await asyncio.wait(tasks, timeout=until - time.perf_counter(),
+                                                  return_when=asyncio.FIRST_COMPLETED)
+
+            until = t0 + coverage.WAIT_S
+            pending = [x.task for x in self.fires if x.lane in ("web", "final-web") and x.task and not x.task.done()]
+            if pending:
+                await wait(pending, until)
+            if not covered() and live() and time.perf_counter() < until and \
+                    not any(x.query == q and x.lane in ("web", "final-web") and x.state in ("fired", "done")
+                            for x in self.fires):     # the same search already answered: re-asking buys nothing
+                g["action"] = "web" if not pending else "wait+web"
+                if self._paid() >= self.prof.final_max:
+                    m["budget_override"] = "uncovered"
+                m["path"] = (m.get("path") or "") + "+cover-web"
+                fire = self._fire("final-web", q, f, *self._web(q, f, final=True))
+                await wait([fire.task], until)
+            g["ms"] = round((time.perf_counter() - t0) * 1000)
+        except Exception as e:                   # the guard must never cost the answer
+            m["cover_guard_error"] = f"{type(e).__name__}: {e}"[:120]
+        return reuse_draft
 
     async def _wait_or_hedge(self, fires: list, f: Frame, q: str, m: dict):
         """A speculative FACT lookup still in flight at the endpoint (Wikidata's SPARQL tail): wait for it until

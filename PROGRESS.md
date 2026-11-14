@@ -1469,3 +1469,33 @@ Read-only audit of main 411a69f against the organizers' 6 problems, 9 tracks and
   load (it showed Speed until the first render after a run).
 - Tests: tests/test_results_view.py (21); full suite 499 passed. Shots (1280x720, light + dark, no console errors, no horizontal scroll):
   scratchpad feature_shots/results/.
+
+## Fix/live: wrong memory carry-over + source coverage guard (branch fix/live; tests/test_fixlive.py, 24)
+Live P0 (Flux mic, real Tavily): turn 1 "what is the capital of France", turn 2 "what are some good food places to eat in
+San Jose". Onset showed MEMORY "reference -> France (turn 1)" and answered from the France article ("The sources don't
+cover San Jose restaurants...", 5.3 s); the baseline answered from Yelp etc. Same bug later: "recommend me five fiction
+books" -> "reference -> India".
+- Root cause 1 (server/frame.py): the elliptical follow-up rule treated ANY utterance with no content word and <= 4 words
+  as "and when?"-style ellipsis. Every question opener is like that on its first partials ("what", "what are some",
+  "can you", "okay", "um"), so those partials carried the previous subject; the speculator fired a free facts lookup for
+  "capital france" (local Wikipedia leads) on them. The final frame was correct (no carry, route web "open-ended: places").
+  Fix: a content-free ellipsis must consist only of wh-words / connectors ("when?", "and why", "how so", "where exactly");
+  one word alone only when the ear punctuates it as a question ("Why?"). "SEARCH local" is narrow.family = local
+  businesses (Yelp-type include_domains), a web family; the router sends it to web (test).
+- Root cause 2 (server/speculator.py): the speculative web search of the final words was still on the wire at the
+  endpoint ("speculative-hit"), PENDING_CAP_S = 1.0 s passed (machine load 10-14, swap full), and the answer used the
+  pool's top-5 by cosine: the France article. Fix: COVER_GUARD (server/coverage.py, default on, COVER_WAIT_S = 8): before
+  the answer, the sources must name the question's subject (typed mention, else the carried referent; accent/case
+  insensitive, every word of the name). If the draft / top of the pool doesn't, wait for the in-flight web search, else
+  fire one final web call (budget_override "uncovered"); then answer only from covering sources (none in time -> no
+  sources, never the unrelated ones). Never raises; idle when the question names no entity. Post-answer signal: the
+  metric's answer_admits_uncovered (the model saying "the sources don't cover").
+- Follow-ups: text-level replay of eval/conversations.jsonl (21 conversations, 57 turns, real Arc Tagger + Memory):
+  final frames (query, carried, inline) identical to main on 57/57 turns, so the 32/34 follow-up set can't move from the
+  frame change; wrong-subject partial carries 88 -> 39 (each one could fire a wasted lookup / draft).
+- Latency, restaurants question with real Tavily (5 credits, swap ~20 GB at the time): Tavily fast 507-809 ms (Tavily
+  response_time 0.40-0.42 s), basic 1821 ms, ultra-fast 158 ms; router.plan 0.45 ms; answer model TTFT 982-1033 ms, done
+  ~1.4 s. So ~2 s of the 18.8 s baseline / 5.3 s Onset was network; the rest was machine load (CPU/swap on the embedding
+  + tagger + event loop). No depth change: fast is already the default for places.
+- Open: Arc Tagger read "five" (in "five fiction books") as a DATE span: a typed slot makes the speculator fire on first
+  sight. Not changed here.
