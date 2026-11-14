@@ -1420,3 +1420,16 @@ Tests: tests/test_polish.py (28): parity wait / old switch / bound / speed uncha
 preferred over normal, two current values, the property scope and the switch; open-mic shapes, room-talk negatives,
 the dd bar and the switch. Full suite 478 passed (450 on main 992eb40 + 28).
 
+
+## Audit: Onset as agentic voice search (branch feat/audit; docs/AUDIT.md)
+Read-only audit of main 411a69f against the organizers' 6 problems, 9 tracks and Tavily's 4 endpoints; 0 credits spent.
+- Pipeline mapped from code. Only Tavily `/search` is used (fast, 5 results, 2 chunks, topic / time_range /
+  max_age_hours / include_domains prefer). The result `score` is parsed and then unused; `include_published_date`,
+  `country`, `start_date` / `end_date` are not sent.
+- Top gap: the only real-Tavily A/B (runs/ab_tavily.json = runs/ab_latest.json) predates the router, parity and
+  Keystone (2.43 vs 0.69 credits/q). Parity numbers exist on the Wikipedia lane only. Re-run est. 60-110 credits.
+- Defects: the Results panel serves that pre-parity file (empty with developer copy in the Mac app); PITCH / JUDGE_QA
+  are stale (no-key claim, ≤ 6 calls, 2.38 calls/q, "Head Start", ab_full5 = ab_latest); the endpoint knobs branch on
+  WEB_BACKEND, so the Wikipedia-lane A/Bs don't run the demo's Tavily knobs.
+- Designs (not built): /extract as the verify escalation, /map for site-shaped questions (background, Wikidata P856),
+  /crawl → Keystone "site brain"; no TTS exists yet (spoken answer + barge-in proposed).
