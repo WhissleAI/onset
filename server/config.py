@@ -349,7 +349,7 @@ COST_PARITY_PAID_MAX = int(os.environ.get("COST_PARITY_PAID_MAX", "1"))       # 
 COST_PARITY_FINAL_EXTRA = int(os.environ.get("COST_PARITY_FINAL_EXTRA", "1"))  # + calls the endpoint may add (miss)
 COST_PARITY_EOT = float(os.environ.get("COST_PARITY_EOT", "0.3"))             # "meaning is final" (fused score)
 COST_PARITY_DRAFTS = int(os.environ.get("COST_PARITY_DRAFTS", "1"))
-COST_PARITY_DRAFT_EOT = float(os.environ.get("COST_PARITY_DRAFT_EOT", os.environ.get("COST_PARITY_EOT", "0.3")))
+COST_PARITY_DRAFT_EOT = float(os.environ.get("COST_PARITY_DRAFT_EOT", "0.6"))
 COST_TRACE_EOT = os.environ.get("COST_TRACE_EOT", "0") == "1"   # eval: emit every end-of-turn score (spec_eot events)
 # Both modes: no draft for a meaning an answer (soft or final) is already being generated for (it was pure waste:
 # the draft started after the soft endpoint's own answer and was never read).
