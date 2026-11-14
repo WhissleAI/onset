@@ -158,6 +158,20 @@ def signals(words: list[str], ws: list[dict] | None = None, *, followup: bool = 
     return s
 
 
+def relative(sig: dict, rel: dict | None) -> dict:
+    """Fold in the speaker's own norm from Arc state (feat/arcstate owns per-speaker baselines; persona builds none):
+    rel = {"pace_rel": this pace / the speaker's usual, "hes_rel": hesitation vs usual}. Missing / None: absolute bars."""
+    if not rel:
+        return sig
+    pr, hr = rel.get("pace_rel"), rel.get("hes_rel")
+    if pr is not None and sig["n"] >= 3:
+        sig["quick"] = bool(pr >= 1.25 or (sig["quick"] and pr >= 1.0))
+        sig["pace_rel"] = round(float(pr), 2)
+    if hr is not None and hr >= 1.5:
+        sig["hedges"] += 1                   # noticeably more hesitant than this speaker usually is
+    return sig
+
+
 def style(sig: dict, prof: "Profile | None" = None) -> dict:
     """{"kind", "hint", "why"}: how to answer this question. kind "" = nothing to change (no hint, no chip)."""
     prof = prof or Profile()
@@ -217,7 +231,7 @@ def _dec(s: str) -> np.ndarray:
 class Profile:
     def __init__(self):
         self.turns = 0
-        self.pace: float | None = None       # EMA syllables / s
+        self.pace: float | None = None       # unused: per-speaker baselines live in Arc state (feat/arcstate)
         self.length = 0.0                    # -1 short .. 1 long
         self.expertise = 0.0                 # -1 novice .. 1 expert
         self.units = ""
@@ -234,8 +248,6 @@ class Profile:
         the turn had redacted personal data (nothing from it becomes an interest)."""
         self.turns += 1
         self.updated = time.time()
-        if sig.get("pace"):
-            self.pace = sig["pace"] if self.pace is None else round(0.7 * self.pace + 0.3 * sig["pace"], 2)
         d = 0.0
         if sig.get("less"):
             d -= 1.0

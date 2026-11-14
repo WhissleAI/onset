@@ -262,3 +262,18 @@ def test_quick_turns_lean_the_profile_short():
     p.observe(q)
     slow = persona.signals("atomic number of tungsten".split(), _ws("atomic number of tungsten", gap=0.1, dur=0.35))
     assert not slow["quick"] and persona.style(slow, p)["kind"] == "short"
+
+
+def test_relative_arc_state_signals_fold_in():
+    s = persona.signals("boiling point of ethanol".split(), _ws("boiling point of ethanol", gap=0.1, dur=0.35))
+    assert not s["quick"]
+    r = persona.relative(dict(s), {"pace_rel": 1.4, "hes_rel": None})
+    assert r["quick"] and persona.style(r)["kind"] == "short"          # fast FOR THIS SPEAKER
+    assert persona.relative(dict(s), None) == s
+
+
+def test_store_lives_in_the_app_data_dir(monkeypatch, tmp_path):
+    from server import config
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.delenv("PERSONA_DIR", raising=False)
+    assert persona.Store().root == tmp_path / "persona"

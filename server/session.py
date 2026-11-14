@@ -419,6 +419,11 @@ class Session:
             sig = personamod.signals(f.words, ws, followup=bool(f.carried or f.inline or f.followup_of),
                                      prev_answered=bool(self.context), arc=self.arc,
                                      arc_x2=getattr(self, "arc_x2", None), intent=f.intent)
+            try:                                 # relative Arc signals, when the arcstate module provides them
+                from . import arcstate as _as        # type: ignore[attr-defined]
+                sig = personamod.relative(sig, _as.relative(self))
+            except Exception:
+                pass
             st = personamod.style(sig, self.persona) if personamod.STYLE else {"kind": "", "hint": "", "why": ""}
             f.persona_hint = st["hint"]
             return {"sig": sig, "style": st}
