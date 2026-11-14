@@ -54,7 +54,7 @@ final class ServerManager {
         env["TRANSFORMERS_OFFLINE"] = "1"
         env["HF_HUB_DISABLE_TELEMETRY"] = "1"
         env["PYTHONUNBUFFERED"] = "1"
-        env["PYTHONDONTWRITEBYTECODE"] = "1"        // the bundle is signed: never write into it
+        env["PYTHONDONTWRITEBYTECODE"] = "1"        // the bundle is signed: never write into it (-I ignores this; -B below is what counts)
         env["TOKENIZERS_PARALLELISM"] = "false"
         // reuse earlier searches across launches: the semantic search cache persists to data/search_cache.json
         // (bounded by CACHE_MAX, atomic writes, TTLs live 10 min / general 6 h / stable 3 days; hits labelled "cached")
@@ -76,7 +76,7 @@ final class ServerManager {
     private func runPython(_ args: [String], onLine: ((String) -> Void)? = nil) -> (Int32, String) {
         let p = Process()
         p.executableURL = AppInfo.python
-        p.arguments = ["-I", AppInfo.appRoot.appendingPathComponent("scripts/fetch_models.py").path,
+        p.arguments = ["-I", "-B", AppInfo.appRoot.appendingPathComponent("scripts/fetch_models.py").path,
                        "--dest", AppInfo.modelsDir.path] + args
         p.environment = serverEnvironment()
         p.currentDirectoryURL = AppInfo.appRoot
@@ -177,7 +177,7 @@ final class ServerManager {
 
         let p = Process()
         p.executableURL = AppInfo.python
-        p.arguments = ["-I", AppInfo.appRoot.appendingPathComponent("macapp/server_main.py").path,
+        p.arguments = ["-I", "-B", AppInfo.appRoot.appendingPathComponent("macapp/server_main.py").path,
                        "--port", String(port), "--parent-pid", String(getpid())]
         p.environment = serverEnvironment()
         p.currentDirectoryURL = AppInfo.appRoot
