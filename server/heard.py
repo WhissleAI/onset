@@ -47,7 +47,10 @@ def _num_words(n: int) -> str:
 def spoken(name: str) -> str:
     """A name as it would be said: lower case, letters/digits split ("K2" -> "k two"), small numbers spelled
     ("Apollo 11" -> "apollo eleven"), punctuation and parentheticals dropped ("Mercury (planet)" -> "mercury")."""
-    s = re.sub(r"\s*\(.*?\)", "", name or "")
+    import unicodedata
+    s = unicodedata.normalize("NFKD", name or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))            # "André" -> "andre"
+    s = re.sub(r"\s*\(.*?\)", "", s)
     s = re.sub(r"\s*·.*$", "", s)
     s = re.sub(r"([a-zA-Z])(\d)", r"\1 \2", s)
     s = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", s)
@@ -412,7 +415,7 @@ def propose(f, wconf, pool: Pool | None = None, use_leads: bool = True) -> list[
             if nd > 1 or cs == sp:
                 continue
             cw, sw = set(cs.split()), set(sp.split())
-            if cw <= sw or sw <= cw:
+            if cw <= sw or sw <= cw or letters(cs).rstrip("s") == letters(sp).rstrip("s"):
                 continue                                 # "nasdaq" vs Nasdaq-100, "birch way" vs Birch: not misheard
             if len(re.sub(r"[^a-z]", "", c.name.lower())) < 3:
                 continue                                 # "8½", "C": nothing to spell against
