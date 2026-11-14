@@ -53,3 +53,4 @@
 .mem-dock.in-side { position: static; max-width: none; flex: none; }
 .mem-dock.in-side .mem-body { width: 100%; box-shadow: var(--shadow); padding: 6px; }
 .mem-dock.in-side .mem-head .mem-sub { display: none; }
+body.has-meter .mem-dock:not(.in-side) { bottom: 74px; }   /* above the cost meter bar (web/meter.css) */
