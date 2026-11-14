@@ -185,7 +185,7 @@ class Speculator:
                     fire.landed.set()                       # PLAN: the endpoint / a bridge part needn't wait for vectors
                     self._part_raw(fire)
                 await self._add_docs(docs)                  # vectors first, then "done": drafts rank on vectors
-                if config.INDEX and f is not None:
+                if config.INDEX and f is not None and not f.plain:
                     from .keystone import hook as _ks       # Keystone ingest (server/keystone/): passages, typed
                     _ks.ingest(f, query, docs, self.vecs, fire.meter)   # edges, value cell; no network, no embedding
                 fire.docs = docs                            # (a fire cancelled mid-embed keeps none: never revived
@@ -1151,7 +1151,7 @@ class Speculator:
         if fplan is not None:
             m["route"], m["route_conf"], m["route_why"] = fplan.lane, fplan.conf, fplan.why[:80]
         qvec_task = asyncio.create_task(embed.arun(embed.encode_queries, [qtext]))
-        if config.INDEX:
+        if config.INDEX and not f.plain:     # (Arc-off: Keystone is Arc-keyed; it neither learns from nor serves it)
             from .keystone import hook as _ks
             _ks.share_qvec(qtext, qvec_task)      # Keystone's endpoint lookup reuses this embedding (no second one)
         reuse_draft = None
@@ -1289,7 +1289,7 @@ class Speculator:
         ranked = self._rank_for(f, qvec, 5) if plan_ranked is None else [(d, sc) for d, sc, _ in plan_ranked]
         if fplan is not None and fplan.lane == "card" and plan_ranked is None:
             ranked = self._card_first(ranked, qtext, qvec)
-        if config.INDEX and qvec is not None:
+        if config.INDEX and qvec is not None and not f.plain:
             from .keystone import hook as _ks
             _ks.note_qvec(f, q, qvec)                    # Keystone: this question's vector on the value cell it wrote
         if config.CACHE_SEM and qvec is not None:

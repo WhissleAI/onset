@@ -13,8 +13,8 @@ voice search")**, which is what a typical voice assistant does:
   missing.
 
 Code: `Session(mode="plain")`, or `ARC_OFF=1` for every session. See `frame.plain`, `Session._answer_plain`, and the
-`plain-search` path in `Speculator.finalize`. Tests are in `tests/test_arc_off.py` (12). Nothing changes for the other
-two modes: the full suite passes, 349 tests.
+`plain-search` path in `Speculator.finalize`. Tests are in `tests/test_arc_off.py` (13). Nothing changes for the other
+two modes: the full suite passes, 388 tests (on main with feat/cost + Keystone).
 
 ![accuracy per category, three arms](img/arc_value.png)
 
@@ -401,7 +401,11 @@ fires, so these rows measure whether the card fires and how the web arm compares
   run, and the order of modes alternates per question.
 - The shared lock (`runs/.run_ab.lock`) was held only while each replay ran. A 200 s gap followed each replay, as the
   lead asked.
-- Onset ran in its default mode: feat/cost (Parity mode) is not merged.
+- Onset ran in what was then its default mode (Speed: main 9d06c14, no Keystone index). feat/cost (Parity default)
+  and Keystone were merged into main while these replays ran, and this branch is rebased on that main. The Onset
+  numbers here are **not** re-measured under Parity / Keystone. Parity changes the speculation budget, i.e. paid
+  calls and timing; the accuracy mechanisms compared here (frame, memory, router, planner) are the same. The Arc-off
+  arm never touches Keystone: it is Arc-keyed, and the plain path neither writes to nor reads from it (test).
 - Reps: 2 for the 58 set, the showcase and the corrections, where latency matters. 1 for multi-part, live, noisy and
   conversations.
 - The Arc-off arm keeps the Wikipedia lane's recorded-cache fallback. On a live-call timeout, every arm falls back to

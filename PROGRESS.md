@@ -1139,7 +1139,7 @@ unsure_plan_holds_paid_speculation (timing; passes alone and in test_integrate.p
   tagger read-out: no correction or repair merging, carry or memory, router or cards, redaction, freshness, open-mic
   gate, planner or local routing. Ear, web lane, reranker, answer model and prompt are the same; the frame hints are
   dropped. `PLAIN_CONTEXT=1` gives the plain arm the previous turn (a sensitivity check). Tests:
-  tests/test_arc_off.py (12). Full suite 349.
+  tests/test_arc_off.py (13). Full suite 388.
 - Results: Wikipedia lane, EAR=flux, `--modes baseline,headstart,plain`, runs/arcvalue/. Onset / Baseline / Arc-off:
 
   | category | Onset | Baseline | Arc-off |

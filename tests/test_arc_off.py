@@ -179,3 +179,14 @@ def test_arc_off_env_forces_plain(monkeypatch):
     s = Session(lambda e: None, mode="headstart")
     assert s.mode == "plain" and s.plain and not s.semantic and s.dstream is None
     s.close()
+
+
+def test_plain_never_touches_keystone(monkeypatch):
+    """Keystone (server/keystone) is Arc-keyed: the plain arm neither writes to it nor reads from it."""
+    from server.keystone import hook
+    calls = []
+    monkeypatch.setattr(config, "INDEX", True)
+    for name in ("ingest", "share_qvec", "note_qvec"):
+        monkeypatch.setattr(hook, name, lambda *a, _n=name, **k: calls.append(_n))
+    m, _ = run(speak("who founded the company Nvidia", "plain"))
+    assert m["path"] == "plain-search" and calls == []
