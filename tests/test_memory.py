@@ -312,7 +312,26 @@ def test_fact_value_is_the_asked_entity_and_demonyms_are_not_entities():
             meta={"tier": "facts", "fact": {"prop": "manufacturer", "pid": "P176", "item": "iPhone",
                                             "values": ["Apple Inc."]}})
     c = Conv()
-    c.ask("which company makes the iphone", [(W, 4, 5)], "Foxconn assembles it for Apple Inc.",
-          [("organization", "Foxconn"), ("organization", "Apple Inc")], [d])
+    # the answer named nothing the tagger caught: the Wikidata value is what was asked for
+    c.ask("which company makes the iphone", [(W, 4, 5)], "It is made in California.", [], [d])
     f = c.ask("who is its ceo")
     assert f.carried == "apple inc" and f.inline == "who is the ceo of apple inc"
+
+
+def test_where_questions_keep_it_on_the_subject():
+    c = Conv()
+    c.ask("where is the eiffel tower", [(PL, 3, 5)], "The Eiffel Tower is on the Champ de Mars in Paris.",
+          [("place", "Champ de Mars"), ("place", "Paris")])
+    c2 = Conv()
+    c2.m = memory.Memory.from_json(json.loads(json.dumps(c.m.to_json())))
+    assert c.ask("how tall is it").carried == "eiffel tower"
+    assert c2.ask("what is the weather there").carried in ("champ de mars", "paris")   # "there": the answer's place
+
+
+def test_untagged_subject_and_incidental_people():
+    c = Conv()
+    c.ask("who painted the starry night", (), "Vincent van Gogh painted it in 1889.", [("person", "Vincent van Gogh")])
+    f = c.ask("where is it displayed", (), "At MoMA in New York, near works by Edvard Munch.",
+              [("organization", "MoMA"), ("place", "New York"), ("person", "Edvard Munch")])
+    assert f.carried == "starry night"
+    assert c.ask("when did he die").carried == "vincent van gogh"    # not Munch, only mentioned in passing

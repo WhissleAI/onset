@@ -95,6 +95,16 @@ def kind_of(t: str) -> str:
     return KIND.get(t, "thing")
 
 
+def names_thing(toks: list[str]) -> bool:
+    """The question asks for a THING it names ("which company makes ...", "what is the capital of ...", "who makes
+    ..."): a later "it" means that answer. A "where ..." question asks for a location of its subject: "it" stays the
+    subject ("where is the Eiffel Tower? how tall is it?")."""
+    s = " ".join(toks)
+    m = re.search(r"\b(?:which|what) (\w+)", s)
+    return bool((m and m.group(1) in TYPE_NOUNS and TYPE_NOUNS[m.group(1)] != "person")
+                or re.search(r"\bwho (?:makes|made|manufactures|produces|owns)\b|\bcapital (?:city )?of\b", s))
+
+
 def asked_kind(toks: list[str]) -> str | None:
     """What kind of entity the question asks for: its answer's new entity is that kind."""
     s = " ".join(toks)
@@ -226,6 +236,19 @@ class Memory:
             subject = norm(f.carried)
             if subject in self.ents and turn not in self.ents[subject]["turns"]:
                 self.ents[subject]["turns"].append(turn)
+        if subject is None and not q_ents:
+            # the tagger marked nothing ("who painted the starry night"): the fact parser's subject is the entity
+            try:
+                from . import knowledge
+                fq = knowledge.parse_fact(" ".join(toks))
+                sub = fq.subject if fq else knowledge.parse_whois(" ".join(toks))
+            except Exception:
+                sub = None
+            if sub and len(sub.split()) <= 5:
+                k = self._ent(sub, "thing", turn, "q", 1.0)
+                if k:
+                    q_ents.append(k)
+                    subject = k
         if subject is None and f.phrases:
             subject = next((k for k in q_ents if k == norm(f.phrases[-1])), None) or (q_ents[-1] if q_ents else None)
         elif subject is None and q_ents:
@@ -258,12 +281,14 @@ class Memory:
                 self._edge(subject, k, "mentioned", "co", turn)
         vals = self._facts(docs or [], turn)
         # a Wikidata fact the answer used names the entity asked for ("made by: Apple Inc."): it leads
-        if asked and vals:
+        if asked and vals and not a_new:
+            # the answer named nothing the tagger caught: the Wikidata value is the entity asked for
             v = next((k for k in vals if self._kind(k) == asked), None)
             if v:
-                a_new = [v] + [k for k in a_new if k != v]
+                a_new = [v]
         self.turns.append({"t": turn, "q": f.text, "inline": getattr(f, "inline", "") or "", "content": list(f.content),
                            "intent": f.intent, "q_ents": q_ents, "a_new": a_new, "asked": asked, "subject": subject,
+                           "names": names_thing(toks),
                            "answer": re.sub(r"\[\d+\]", "", answer or "")[:300], "at": time.time()})
         self.turns = self.turns[-config.MEM_MAX_TURNS:]
         self.updated = time.time()
@@ -331,14 +356,15 @@ class Memory:
                 if tr.get("subject") and tr["subject"] not in qs:
                     qs = [tr["subject"]] + qs
                 if personal:
-                    order = (an + qs) if asked == "person" or not any(self._kind(k) == "person" for k in qs) else qs + an
+                    # a person the answer merely mentioned in a turn that did not ask "who" is not "he"
+                    order = (an + qs) if asked == "person" else qs
                     ok = [k for k in order if self._kind(k) == "person"
                           and not (gender and self.ents[k].get("gender") not in (None, gender))]
                 elif want:
                     order = (an if asked == want else []) + qs + an
                     ok = [k for k in order if self._kind(k) == want or (not strict and self._kind(k) != "person")]
                 else:
-                    order = (an if asked in ("org", "place", "thing") else []) + qs + an
+                    order = (an if tr.get("names") else []) + qs + an
                     ok = [k for k in order if self._kind(k) != "person"]
                 if ok:
                     return ok[0]
@@ -582,11 +608,14 @@ async def prewarm(mem: Memory, timeout_s: float | None = None) -> list[str]:
         return []
     from . import knowledge
     subs = mem.prewarm_subjects()
-    done = []
+    if not subs:
+        return []
+    tasks = [asyncio.ensure_future(knowledge.prefetch(x)) for x in subs]
     try:
-        res = await asyncio.wait_for(asyncio.gather(*(knowledge.prefetch(s) for s in subs), return_exceptions=True),
-                                     timeout_s or config.MEM_PREWARM_TIMEOUT_S)
-        done = [s for s, r in zip(subs, res) if r is True]
-    except Exception:
-        pass
-    return done
+        await asyncio.wait(tasks, timeout=timeout_s or config.MEM_PREWARM_TIMEOUT_S)
+    finally:
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)     # (retrieve every outcome: no stray warnings)
+    return [x for x, t in zip(subs, tasks) if t.done() and not t.cancelled() and t.result() is True]
