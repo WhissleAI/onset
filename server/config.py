@@ -364,6 +364,7 @@ KDIR_FREE_TIMEOUT_S = float(os.environ.get("KDIR_FREE_TIMEOUT_S", "1.2"))       
 # the wider shared allowlist (keystone/shared.py SharedCells): verified public question -> answer cells pooled across
 # users (in-process here; a remote store implements the same API). Off by default.
 KDIR_SHARED_CELLS = os.environ.get("KDIR_SHARED_CELLS", "0") == "1"
+KDIR_TTL = os.environ.get("KDIR_TTL", "1" if KDIR else "0") == "1"      # learned relation TTLs (ttl_model.json)
 # ---------------------------------------------------------------------------------------------------- cost parity
 # server/cost.py: COST_MODE picks the speculation budget per question (PROGRESS.md "Cost parity").
 #   speed  = the policy above (SPEC_PAID_MAX paid calls, DRAFT_BUDGET drafts, settle-time release)

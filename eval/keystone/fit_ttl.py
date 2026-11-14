@@ -41,6 +41,7 @@ from server.keystone.relkey import FROM_PROP, RELATIONS, TTL_S  # noqa: E402
 OUT = ROOT / "runs/index"
 MODEL = ROOT / "server/keystone/ttl_model.json"
 P_CHANGE = 0.05
+MIN_GAPS = 100          # point-in-time series need >= 100 successive-value gaps (fewer: edition / noise dates)
 LO, HI = 300.0, 365 * 86400.0
 from server import config  # noqa: E402
 UA = {"User-Agent": config.ROUTER_UA, "Accept": "application/sparql-results+json"}
@@ -100,7 +101,7 @@ async def wikidata_rates():
                 ts = sorted(ts)
                 gaps += [(b - a).days / 365.25 for a, b in zip(ts, ts[1:]) if (b - a).days > 0]
             lam_se = ended / years if years > 0 else 0.0
-            lam_pit = 1.0 / (sum(gaps) / len(gaps)) if len(gaps) >= 20 else 0.0
+            lam_pit = 1.0 / (sum(gaps) / len(gaps)) if len(gaps) >= MIN_GAPS else 0.0
             # qualifier coverage: a property whose statements carry start/end at all (one holder at a time) vs. one
             # that never changes (born, founded): weight the rate by the share of statements that are time-bounded
             share_se = n_with / n_all if n_all else 0.0
@@ -171,7 +172,8 @@ async def observed_live(n=80, waits=(15, 45)):
     return res
 
 
-VERT_REL = {"weather": "weather_in", "fx": "price_of", "web-fresh": "news_about", "time": None, "sun": None,
+VERT_REL = {"weather": "weather_in", "fx": "price_of", "web-fresh": None, "time": None, "sun": None,  # the Wikipedia
+            # stand-in cannot observe news changing: news keeps its fixed TTL
             "units": None}
 
 
@@ -183,6 +185,12 @@ def main(a):
         rep["live"] = asyncio.run(observed_live())
     ttl = {}
     for rel, d in (rep.get("wikidata") or {}).items():
+        if d["pit_gaps"] < MIN_GAPS:          # re-derive without a thin point-in-time series (stored fits)
+            w = 1.0 if d["share_with_start"] > 0.02 else d["share_with_start"] / 0.02
+            lam = d["ended"] / d["years"] * w if d["years"] > 0 else 0.0
+            t = HI if lam <= 0 else -math.log(1 - P_CHANGE) / lam * 365.25 * 86400
+            d.update(lambda_per_year=round(lam, 5), ttl_s=round(min(HI, max(LO, t))),
+                     ttl_days=round(min(HI, max(LO, t)) / 86400, 2))
         ttl[rel] = d["ttl_s"]
     live = (rep.get("live") or {}).get("verticals") or {}
     for v, d in live.items():

@@ -47,6 +47,8 @@ class LocalResult:
 
 def store() -> Keystone:
     global _ks
+    from . import relkey
+    relkey.LEARNED_TTL[0] = bool(config.KDIR and config.KDIR_TTL)
     with _lock:
         if _ks is None:
             _ks = Keystone(Flags(key=config.GRAPH_KEY, act=config.GRAPH_ACT, hash=config.INDEX_HASH),
@@ -513,7 +515,7 @@ def kdir_decide(f, q, ks, cands, feats, now: float, meter: dict):
         lof = bool(q.live or getattr(f, "when", ""))
         plan = {"lane": p.lane, "conf": p.conf}
         qx = kdir.question_vec(q, f, plan, ks, feats, cands, kdir.leads_signal(q.qvec), kdir.director_signal(f))
-        cx = [kdir.cand_vec(c, feats, ks, cands, now) for c in cands]
+        cx = [kdir.cand_vec(c, feats, ks, cands, now, q) for c in cands]
         free_ok_q = p.lane in ("web", "wait") and not lof
         pol.allow_free = config.KDIR_FREE
         act, best, info = pol.decide(qx, cands, cx, 1, free_ok_q)
@@ -592,7 +594,8 @@ async def recheck_cell(f, q, cand) -> str:
             elif any(c.get("conflict") for c in v.get("claims") or []):
                 out = "caught"
             if out != "none" and top.id >= 0:
-                kdir.feedback(store(), top.id, out)
+                fam = q.key.relation if q.key is not None else (getattr(f, "intent", "") or "")
+                kdir.feedback(store(), top.id, out, top.url, fam)
         RECHECKS.append({"t": time.time(), "cell": top.id, "outcome": out, "q": q.text[:80]})
         del RECHECKS[:-200]
     except Exception:  # noqa: BLE001

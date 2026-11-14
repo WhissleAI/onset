@@ -134,7 +134,7 @@ def vectors(fx):
     seen = set(dkeys)
     need = []
     for r in fx.values():
-        for d in r["docs"] + (r.get("alt_paid") or {}).get("docs", []) + (r.get("free") or {}).get("docs", []):
+        for d in r["docs"] + (r.get("free") or {}).get("docs", []):      # alt_paid docs are never written to a store
             if d["id"] not in seen:
                 seen.add(d["id"])
                 need.append(d)
@@ -168,8 +168,49 @@ def vectors(fx):
     print(f"fixture {len(fx)} questions, tiers {tiers}, docs {len(dkeys)}, question vectors {len(qkeys)}")
 
 
+def shard(k: int, n: int):
+    """Embed shard k of n of the missing doc vectors (parallel workers); merged by vectors()."""
+    fx = json.loads(FX.read_text())
+    have = dict(np.load(VEC, allow_pickle=False)) if VEC.exists() else dict(np.load(OUT / "fixture_vecs.npz"))
+    seen = set(have["doc_ids"])
+    need, s2 = [], set()
+    for r in fx.values():
+        for d in r["docs"] + (r.get("free") or {}).get("docs", []):
+            if d["id"] not in seen and d["id"] not in s2:
+                s2.add(d["id"])
+                need.append(d)
+    need = need[k::n]
+    ids, vecs = [], []
+    for i in range(0, len(need), 32):
+        b = need[i:i + 32]
+        vecs += list(embed.encode_docs([d["text"][:600] for d in b], [d["title"] for d in b]).astype(np.float16))
+        ids += [d["id"] for d in b]
+        if i % 640 == 0:
+            print(f"shard {k}: {i}/{len(need)}", flush=True)
+    np.savez(OUT / f"kdir_vecs_shard{k}.npz", doc_ids=np.array(ids), doc_vecs=np.array(vecs, np.float16))
+    print(f"shard {k} done", flush=True)
+
+
+def merge_shards():
+    have = dict(np.load(VEC, allow_pickle=False)) if VEC.exists() else dict(np.load(OUT / "fixture_vecs.npz"))
+    dk, dv = list(have["doc_ids"]), list(have["doc_vecs"])
+    for p in sorted(OUT.glob("kdir_vecs_shard*.npz")):
+        z = np.load(p)
+        dk += list(z["doc_ids"])
+        dv += list(z["doc_vecs"])
+    np.savez(VEC, doc_ids=np.array(dk), doc_vecs=np.array(dv, np.float16), q_texts=have["q_texts"],
+             q_vecs=have["q_vecs"])
+    for p in OUT.glob("kdir_vecs_shard*.npz"):
+        p.unlink()
+
+
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--vectors"]:
+    if sys.argv[1:2] == ["--shard"]:
+        shard(int(sys.argv[2]), int(sys.argv[3]))
+    elif sys.argv[1:] == ["--merge"]:
+        merge_shards()
+        vectors(json.loads(FX.read_text()))
+    elif sys.argv[1:] == ["--vectors"]:
         vectors(json.loads(FX.read_text()))
     else:
         asyncio.run(main_async())

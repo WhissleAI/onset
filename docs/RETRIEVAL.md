@@ -427,25 +427,208 @@ See section 7.
 
 ---
 
-## 5. Phase F: the director decides over graph state (prototype and design)
+## 5. The Keystone director v1 (`KDIR=1`, default **off**)
 
-The VOI gate is a two-action special case (answer from the graph, or pay). The oracle policy in the replay is the
-counterfactual labeller F needs. For every decision point it knows whether each candidate would have been correct,
-what paying would have returned, and what each path costs:
+The VOI gate (§2F) is a two-action rule: serve the best local candidate when a logistic p over 21 lookup features
+clears θ = 0.95, else pay. The director replaces it with a learned policy over four actions and over the graph's
+state. Code: `server/keystone/kdir.py` (runtime), `server/keystone/hook.py` (`kdir_decide`, `free_first`,
+`recheck_cell`), `eval/keystone/kdir_*.py`, `tests/test_kdir.py`. Results: `runs/index/kdir_results.json`.
 
-- Measured headroom: from 0.369 to 0.284 paid/q at zero regret (test), and from 0.350 to 0.229 (dev).
-- Design: add to the director's per-update input:
-  - whether the key is resolved
-  - `has_edge(subject, relation)`
-  - edge age as a share of its TTL
-  - the frame entities' activation
-  - the verifier's p and the VOI estimate
-- Add an action head: answer-from-graph, expand-neighbour, fire-free, fire-paid, wait.
-- Labels from replays with full information: reward = correct − λ·paid − μ·latency. Train with cost-sensitive
-  imitation, using the director recipe (`pnp-headstart-director`, `recipes/headstart_director`).
-- Compare against the hand gate and the VOI gate at matched accuracy.
-- Not trained yet. The text-level replay already emits per-word frames, keys and lookup features (`key_completion`),
-  so the dataset is a dump of those rows with oracle actions.
+**Headline.** On dev the director pays less than the VOI gate at no worse regret (s2 0.350 → 0.335 at 0.25 %;
+new dev 0.479 → 0.426 at 0.05 % against 0.10 %). On the two test streams it also pays less (s1 0.371 → 0.341,
+held-out test 0.513 → 0.490) **but at higher regret** (0.75 % → 1.25 % and 0.40 % → 0.75 %), and it closes 36 % / 24 %
+of the gap to the local oracle, not half. The real-audio pair was slower (+281 ms paired median). **It ships behind
+`KDIR=1`, default off.** What did transfer: the bigger workload, the counterfactual labels and the operating curves
+show where the gate's headroom is (dense passages; §5.4), and the tree policy's operating curve lies on or below the VOI
+gate's on both test streams.
+
+### 5.1 A bigger, real workload (`kdir_stream.py`, `kdir_record.py`, `kdir_director_feats.py`)
+
+- **Pools (10,232 root questions, no audio, no personal data):** the 669 rich families (paraphrases, near-misses,
+  gold / silver keywords), 9,006 director route-labelled spoken questions (`$ARC_HANDOFF/data/from_director/
+  route_labels.jsonl`; PII lines, commands and "not a request" dropped; follow-up chains kept from
+  `runs/director_queries`), and 557 addressed open-mic questions (context-dependent follow-ups left out).
+- **Three disjoint streams, held-out users AND held-out question families** (split by the root family's hash):
+  train 7,000 questions / 120 users, dev 2,000 / 40, test 2,000 / 40; 11,000 in all. Zipf(0.9) popularity, 3
+  favourite kinds per user, sessions of 2-6 with follow-ups and near-misses, 60 % paraphrases where a family has them,
+  the per-user arrival rate of the 800-question stream. Repeat share 0.59-0.64 (the old streams: 0.56). Live
+  questions 15-18 %.
+- **Paraphrases** for the 1,404 families likely to repeat (the Zipf head of each split, plus their follow-ups) came from
+  the answer model, 25 per call: **49,397 input + 297,690 output tokens**, cached in `runs/index/kdir_labels.json`.
+  No other Anthropic calls were made.
+- **Counterfactual labels for every action** (5,626 distinct questions, all recorded once with a response cache):
+  today's path (Arc frame → router plan → `router.route`, Keystone off), the paid lane alone for the 788 questions
+  today's path answers for free, and the free lanes alone for the 4,838 web-tier questions (the planned card /
+  Wikidata lane, the Wikipedia summary of the frame's entity; the offline leads index is searched at replay time from
+  the question vector). WEB_BACKEND=wikipedia stands in for Tavily (no Tavily spend). 17,968 doc and 18,525 question
+  EmbeddingGemma vectors.
+- **Arc + director signals** for the 15,136 director questions that were voiced: the shipped director (Mamba-3 int8)
+  replayed over each question's real Flux update stream (`kdir_dirfeats.npz`: eot / fire / draft / addressed / route
+  per update + Flux and fused word confidence).
+
+### 5.2 Actions, cost and regret
+
+| action | paid | regret counted when |
+|---|---|---|
+| `pay` (today's path: the router's free lane when it planned one, else the paid lane) | 1 for a web plan | never (the reference) |
+| `local` (best candidate: key / hash / question NN / dense / shared) | 0 | the local answer is wrong and paying was right |
+| `local_rc` (local + a background re-check on the free lanes) | 0 | as `local`, **unless the free lanes return a strong, right answer** (then it is a *corrected* answer, counted separately) |
+| `free` (free lanes first, pay only if weak; never for live / fresh questions) | 0 if strong, else 1 | the strong free answer is wrong and paying was right |
+| `wait` (per word, §5.5) | 0 | the prefix answer differs from the final one |
+
+Expected cost per question, J = paid + R · P(regret) + C · P(corrected) + ε · re-checks + 0.5 · latency (s); R is the
+operating knob (a wrong answer priced in paid calls), C = 1, ε = 0.02. The oracle with all four actions:
+s1 **0.273** (local-only oracle 0.287), held-out test **0.399** (0.416). The free lanes add only 1.5-2 % on top of
+local reuse: on web-tier, non-live questions they are strong 13 % of the time and right only about half of those.
+
+### 5.3 The learned policy (`kdir.py`, `kdir_train.py`, `kdir_eval.py --part train|pick`)
+
+- **Inputs (80):** (a) the VOI gate's 21 lookup features; (b) graph state: key known / hop, any edge for (subject,
+  relation) even if stale, subject known, store size, the candidate cell's trust (feedback), hits, age over its
+  learned TTL, how many lookup paths agree, fact / card source, volatility class; question-pair features (the stored
+  question vs this one: token Jaccard, entity coverage, a different number, the same wh- word, how many top cells
+  share one question, title coverage); (c) Arc / director: intent (8 fine intents) and its p, question / command acts,
+  typed spans (people / places / orgs, numbers), the router's plan lane and confidence, follow-up, the leads index's
+  top cosine and margin, and the director's eot / fire / addressed / route outputs + Flux / fused confidence (when the
+  question was voiced).
+- **Models:** p_ok (per candidate: serving it is no worse than paying), p_catch (the free lanes answer right),
+  p_free_strong and p_free_ok. Gradient-boosted trees (xgboost, depth 4, ≤150 trees), Platt-calibrated on dev
+  (p_ok ECE 0.011, Brier 0.061), exported to flat arrays and evaluated in numpy. Training rows: the train stream logged
+  under the VOI gate with exploration, then DAgger round 1 under the round-0 policy (31,954 candidate rows).
+- **Operating point:** the cheapest R whose **real dev replays** keep regret no worse than today on both dev streams
+  (s2: today's search cache, 0.25 %; new dev: the shipped VOI gate, 0.10 %, because the cache's regret there is 0).
+  Picking R offline on VOI-logged decisions was optimistic (a policy changes its own store) and was replaced.
+- **Imitation** of the oracle's action (multiclass trees) was worse than the expected-cost rule at every margin:
+  regret 0.65-1.9 % at matched cost.
+- **The director's signals did not help:** with them (3b) dev 0.339 / 0.434, without (3c) 0.335 / 0.426. 3c ships;
+  the director is off by default in the app anyway, so its outputs are usually missing at runtime.
+- **Size and speed:** `kdir_model.json` 225 KB (shipped model); decision p50 1.1-1.9 ms, p99 3.4 ms in the replay on a
+  loaded laptop (pure-Python tree walk; the VOI gate is 0.01 ms).
+
+### 5.4 Ablation, measured by replay (paid / q · regret · keyword accuracy · p50)
+
+Each step adds to the one above. Dev and test are never used for training; R and θ are chosen on dev only.
+
+| step | s2 (old dev) | new dev | **s1 (old test)** | **held-out test** |
+|---|---|---|---|---|
+| no reuse | 0.482 · 0 · 0.571 · 574 | 0.861 · 0 · 0.646 · 540 | 0.555 · 0 · 0.673 · 410 | 0.887 · 0 · 0.846 · 547 |
+| today: VOI gate θ 0.95 | 0.350 · 0.25 % · 0.589 · 276 | 0.479 · 0.10 % · 0.658 · 201 | **0.371 · 0.75 %** · 0.658 · 261 | **0.513 · 0.40 %** · 0.712 · 222 |
+| 1. VOI refit on the 7k train stream | 0.364 · 0.13 % | 0.521 · 0.05 % | 0.355 · 0.63 % · 0.658 · 263 | 0.522 · 0.40 % · 0.712 · 231 |
+| 2a. trees on the same 21 features, pay / local | 0.357 · 0.25 % | 0.463 · 0.05 % | 0.364 · 0.75 % · 0.658 · 273 | 0.509 · 0.50 % · 0.712 · 216 |
+| 2b. + re-check action | 0.357 · 0.25 % | 0.463 · 0.05 % | 0.364 · 0.75 % | 0.508 · 0.50 % |
+| 2c. + free-first action | 0.357 · 0.25 % | 0.463 · 0.05 % | 0.364 · 0.75 % | 0.508 · 0.50 % |
+| 3a. + graph state | 0.350 · 0.13 % | 0.445 · 0.10 % | 0.355 · 1.00 % | 0.505 · 0.55 % |
+| 3b. + Arc + director signals | 0.339 · 0.25 % | 0.434 · 0.05 % | 0.344 · 1.25 % | 0.492 · 0.65 % |
+| **3c. + Arc, no director (shipped)** | **0.335 · 0.25 %** · 0.593 · 273 | **0.426 · 0.05 %** · 0.658 · 64 | 0.341 · 1.25 % · 0.658 · 253 | 0.490 · 0.75 % · 0.712 · 186 |
+| 3d. imitation instead of expected cost | 0.338 · 0.63 % | 0.448 · 0.65 % | 0.346 · 1.87 % | 0.489 · 1.00 % |
+| 4. + feedback: trust + online refit / 500 q | 0.335 · 0.25 % | 0.425 · 0.05 % | 0.341 · 1.25 % | 0.486 · 0.75 % · 0.712 · 163 |
+| 5. + learned TTLs (store expiry) | 0.339 · 0.13 % | 0.426 · 0.05 % | 0.341 · 1.25 % | 0.488 · 0.75 % · 0.712 · 180 |
+| oracle, local only | 0.230 | 0.366 | 0.287 | 0.416 |
+| oracle, all actions | 0.212 | 0.351 | 0.273 | 0.399 |
+
+Keyword accuracy (176 gold + 170 silver on s1/s2; fewer on the new streams) is unchanged in every row except
+imitation. The "corrected" share (wrong, then fixed by the re-check) is ≤ 0.05 % everywhere.
+
+![curve](img/keystone_kdir_curve.png)
+
+**Reading it honestly:**
+- **Against the bar** (close half the gap at regret no worse than today): s1 closes 36 % (0.371 → 0.341 of
+  0.084) at 1.25 % regret against 0.75 %; held-out test closes 24 % (0.513 → 0.490 of 0.097) at 0.75 % against
+  0.40 %. **Not met.** On dev, where R was chosen, regret held and the new-dev gap closed 47 % (s2: 13 %).
+- **The dev → test transfer is the problem, not the curve.** On the test streams' operating curves (offline, on
+  VOI-logged decisions) the shipped trees lie on or below the VOI gate's curve: at the VOI gate's own regret they pay
+  ~0.03 less per question on s1 and about the same on the held-out test. The chosen R simply lands at a higher-regret point on test than on dev. Regret is a
+  count of 4-25 questions per stream here, so the operating point is noisy; a larger dev set or a regret margin
+  (choosing R for 0.5 × today's dev regret) would be the next thing to try.
+- **The new actions barely matter on this workload.** Re-check serves 1-2 % of questions and catches almost
+  nothing, because the free lanes are rarely strong-and-right for the questions the local store is unsure about;
+  free-first is chosen ≤ 0.2 %. The oracle itself gains only 0.014-0.018 paid/q from them.
+- **Where the headroom is:** per-path AUC of p_ok on s2: key 0.96, hash 0.94, question NN 0.90, **dense passages
+  0.75**. Dense candidates are 144 of the 281 "good but not served" candidates. The silver label for passages
+  (shares a document with today's path) is also the noisiest label.
+
+### 5.5 Waiting one more word (`kdir_wait.py`, exploratory)
+
+On the director-pool questions with a typed-key candidate (train 94, dev 69, test 33 sequences), a per-update
+classifier over the director's outputs + Flux / fused confidence + the graph state of the words heard so far (key
+complete, prefix lookup returns the final cell, subject has an edge): GBDT and a 16-unit GRU on top of the frozen
+director (1,841 parameters). Committing at p ≥ 0.95 answers 75-79 % of these questions before Flux's end of turn
+(median lead 0.76 s on test, 2.5 s on dev) but at 92-94 % precision, against 100 % for the end-of-turn key path on
+dev. Not shipped; too few sequences to set a threshold.
+
+### 5.6 Feedback loop and learned volatility
+
+- **Feedback** (`kdir.feedback`): a re-check confirmation raises a cell's trust (+1), a catch or a spoken correction
+  lowers it (−2), a cited-source verification +0.5; bounded ±4. The replay simulates spoken corrections of wrong local
+  answers at 30 %. Trust is a model input, and the p_ok trees are refit every 500 questions on the train rows + the
+  stream's feedback rows (oracle labels are never used). Measured: test 0.490 → 0.486, p50 186 → 163 ms; per 500-question
+  window (test, VOI / KDIR / KDIR + feedback): 0.646 / 0.622 / 0.622, 0.490 / 0.466 / 0.466, 0.480 / 0.460 / 0.450,
+  0.436 / 0.412 / 0.406. Only 11 feedback rows arrive on the 2,000-question test stream, because the re-check is
+  rarely chosen; the loop works mechanically but has little to learn from here.
+- **Per-domain trust** (the Tavily lead's suggestion): the same feedback also accumulates trust per source domain,
+  overall and per question family (`kdir.trusted_domains` → include / exclude lists for a parameterised paid search).
+  It is computed and tested, not yet sent to the paid lane (lanes.py is outside this branch's scope); Tavily's
+  per-result score / published date / response time are not in these records because the bulk ran on the Wikipedia
+  lane.
+- **Learned TTLs** (`fit_ttl.py` → `server/keystone/ttl_model.json`): Wikidata statement histories (start / end
+  qualifiers, censored-exponential change rate; point-in-time series for quantities), TTL = time to a 5 % chance of
+  change, clamped to [5 min, 365 d]. Stable relations → 365 d (was 90); slow ones: population 99 d, area 83 d,
+  manufacturer 157 d, HQ 277 d, CEO / head of state ~350-365 d (was 30 d: open-ended statements that ended in reality
+  but not in Wikidata bias the rate down). Live: 75 card / fresh questions re-asked at +15 / +60 min: weather 46 % /
+  62 % changed → 5 min, prices 15 % / 38 % → 6 min (was 10 min); news keeps 10 min (the Wikipedia stand-in cannot see
+  news change). The replays span 3-4 days, so the slower TTLs never bind, and stale answers inside a TTL are counted
+  as right by the family-origin label: **the replay cannot measure the effect of TTLs** (step 5 is ±0.002).
+  `KDIR_TTL` (default = `KDIR`) switches them on.
+
+### 5.7 The wider shared store and the network effect (`shared.SharedCells`, `kdir_eval.py --part network`)
+
+Verified question → answer cells may now enter the cross-user store (`KDIR_SHARED_CELLS=1`, default off), behind an
+allowlist at the boundary (`shared.admit_cell`): the answer passed `verify.check` against a cited source
+(supported / agree) with a public URL; the question has no first / second person, phone, email or street address;
+no local-moment or private-corpus source; live questions only with their minutes-long TTL. No user id is stored. The
+privacy test (`test_a_user_fact_never_reaches_shared_cells`) drives "where do I live" through memory, ingest and a
+verified answer and asserts it never enters.
+
+| store (paid / q · regret) | s1: VOI | s1: KDIR | test: VOI | test: KDIR |
+|---|---|---|---|---|
+| per-user only | 0.489 · 0.13 % | 0.468 · 0.63 % | 0.746 · 0.10 % | 0.725 · 0.40 % |
+| + shared verified edges | 0.466 · 0.25 % | 0.444 · 0.75 % | 0.727 · 0.35 % | 0.707 · 0.65 % |
+| **+ shared Q→A cells** | 0.465 · 0.25 % | **0.439 · 0.37 %** | 0.721 · 0.35 % | **0.679 · 0.70 %** |
+| one pooled store | 0.371 · 0.75 % | 0.341 · 1.25 % | 0.513 · 0.40 % | 0.490 · 0.75 % |
+
+The shared cells admitted 97-101 cells on s1 and ~455 on test (409-587 refused, mostly answers verify could not find
+in their source). They add 0.5-4 points on top of shared edges, more with the director (which can weigh a shared
+cell's verifier p and agreement) than with the VOI gate. Most of the pooled store's advantage is still unverified
+passages and value cells that the allowlist rightly keeps out.
+
+![network](img/keystone_kdir_network.png)
+
+### 5.8 Real-audio A/B (`eval/keystone/ab_kdir.sh`)
+
+58-question set, Onset mode, the `.env` ear, `COST_MODE=parity`, Wikipedia web lane, the warm store
+(`runs/index/warm_store`, copied fresh per run), `runs/.run_ab.lock` held per timed run only. One pair (VOI then KDIR)
+before the memory budget and the user's quiet window stopped heavy jobs; the showcase pair was not run.
+
+| 58 set | ready p50 | ready p90 | correct | paid / q | answers from the index |
+|---|---:|---:|---:|---:|---:|
+| VOI gate (KDIR=0) | 1,939 ms | 3,824 | 56/58 | 0.17 | 2 |
+| KDIR=1 | 2,255 ms | 3,357 | 57/58 | 0.19 | 1 |
+
+Paired per question, KDIR − VOI: **median +281 ms**, mean +137 ms. The machine was swapping (20 GB of swap in use,
+p50s ~500 ms above earlier rounds), so this one pair is weak evidence, but it is not "no slower". No Tavily credits
+were spent (the 150-credit allowance was kept unused).
+
+**Ship decision: `KDIR=1` stays default off.** It does not meet the bar on test (regret) or in the real-audio pair
+(latency).
+
+**Flags:** `KDIR` (0), `KDIR_FREE` (1), `KDIR_RECHECK` (1), `KDIR_R` (unset = the dev-chosen 15),
+`KDIR_FREE_TIMEOUT_S` (1.2), `KDIR_SHARED_CELLS` (0), `KDIR_TTL` (= KDIR). Any error, a missing model or a model
+trained on another feature set falls back to the VOI gate.
+
+**Reproduce:** `kdir_stream.py` → `kdir_record.py` (network, once) → `kdir_director_feats.py` → `fit_ttl.py [--live]`
+→ `kdir_eval.py --part train`, `--part pick`, `--part ablation`, `--part network`, `--part curves` →
+`kdir_wait.py` → `plots_kdir.py`. Set `OMP_NUM_THREADS=1` on a busy machine (multi-threaded BLAS made the replay 20×
+slower under load).
 
 ## 6. Limitations
 

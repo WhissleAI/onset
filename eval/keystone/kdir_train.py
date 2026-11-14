@@ -220,6 +220,9 @@ def train(train_logs, dev_logs, fset="all", actions=kdir.ACTIONS):
     ok = fit_trees(X, y, Xd, yd, SETS[fset])
     cat = fit_trees(Q, cy, Qd, cyd, Q_SETS[fset]) if len(set(cy)) > 1 and len(set(cyd)) > 1 else None
     st = fit_trees(Q, sy, Qd, syd, Q_SETS[fset]) if len(set(sy)) > 1 and len(set(syd)) > 1 else None
+    ms, msd = sy > 0, syd > 0
+    fo = fit_trees(Q[ms], cy[ms], Qd[msd], cyd[msd], Q_SETS[fset], n=80, depth=3) \
+        if ms.sum() > 20 and len(set(cy[ms])) > 1 and len(set(cyd[msd])) > 1 else None
     rep = {"rows_ok": int(len(y)), "rows_q": int(len(cy)), "pos_ok": round(float(y.mean()), 3),
            "pos_catch": round(float(cy.mean()), 3) if len(cy) else None}
     pt = kdir.Trees(ok)
@@ -228,7 +231,10 @@ def train(train_logs, dev_logs, fset="all", actions=kdir.ACTIONS):
     if cat is not None:
         pc = np.array([kdir.Trees(cat).p(x) for x in Qd])
         rep["dev_catch_ece"] = round(ece(pc, cyd), 4)
-    return policy_dict(ok, cat, st, 10.0, actions=actions), rep
+    d = policy_dict(ok, cat, st, 10.0, actions=actions)
+    d["free_ok"] = fo
+    rep["free_strong_rows"] = int(ms.sum())
+    return d, rep
 
 
 def main(a):

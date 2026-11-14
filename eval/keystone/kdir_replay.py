@@ -260,7 +260,7 @@ def simulate(data: KData, policy, emb_ms: float = 58.7, store: str = "pooled", f
         qx = cx = None
         if log or isinstance(policy, kdir.Policy) or policy == "behav":
             qx = kdir.question_vec(q, f, fx["plan"], ks, feats, cands, data.leads(it["query"]), data.director(it))
-            cx = [kdir.cand_vec(c, feats, ks, cands, now) for c in cands]
+            cx = [kdir.cand_vec(c, feats, ks, cands, now, q) for c in cands]
         # ---- decide
         t_dec = time.perf_counter()
         act, cand, info = _decide(policy, cands, cand_oc, oc, feats, qx, cx, plan_paid, voi_model, theta, allow,
@@ -294,9 +294,9 @@ def simulate(data: KData, policy, emb_ms: float = 58.7, store: str = "pooled", f
             top = cand.cells[0][0]
             if feedback:
                 if rc and free_strong and not live_or_fresh:
-                    kdir.feedback(ks, top.id, "caught" if corrected else ("confirm" if free_ok and ok else ""))
+                    kdir.feedback(ks, top.id, "caught" if corrected else ("confirm" if free_ok and ok else ""), top.url)
                 if ok is False and not corrected and rng.random() < correction_rate:
-                    kdir.feedback(ks, top.id, "correction")
+                    kdir.feedback(ks, top.id, "correction", top.url)
                     if cx is not None:
                         fb_rows.append((qx, cx[j], 0.0))
                 elif rc and free_strong and not live_or_fresh and cx is not None:

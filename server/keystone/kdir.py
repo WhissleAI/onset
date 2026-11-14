@@ -52,7 +52,8 @@ Q_NAMES = (["q_live", "q_fresh", "q_key_known", "q_key_hop", "q_has_edge_any", "
             "q_leads_top", "q_leads_gap", "q_n_cands"] + [f"q_in_{x}" for x in INTENTS] +
            [f"q_ent_{x}" for x in ENT] + [f"q_lane_{x}" for x in LANES] + ["q_has_dir"] + [f"q_{x}" for x in DIR])
 C_NAMES = (voi.NAMES + ["c_trust", "c_hits", "c_age_learned", "c_agree", "c_src_fact", "c_src_card"] +
-           [f"c_vc_{x}" for x in VCL])
+           [f"c_vc_{x}" for x in VCL] +
+           ["c_q_jacc", "c_q_ent_cov", "c_q_num_diff", "c_q_wh_same", "c_same_q_share", "c_title_cov"])
 NAMES = Q_NAMES + C_NAMES
 
 
@@ -103,7 +104,49 @@ def question_vec(q, frame, plan: dict, ks, feats: dict, cands: list, leads: tupl
     return x
 
 
-def cand_vec(c, feats: dict, ks, cands: list, now: float) -> list[float]:
+_WHW = ("who", "what", "when", "where", "which", "why", "how")
+
+
+def _wh(text: str) -> str:
+    for w in (text or "").lower().split():
+        if w.strip("?,.") in _WHW:
+            return w.strip("?,.")
+    return ""
+
+
+def pair_vec(q, c) -> list[float]:
+    """The question vs the stored question that produced the candidate's cells (the near-miss signal: same words,
+    other answer): content-token Jaccard (best of the top 3 cells), the question's entity tokens found in it, a
+    different number, the same wh- word, how many of the top 5 cells came from one question, the question's
+    content tokens in the top cell's title."""
+    from .cells import toks
+    qt = set(toks(getattr(q, "text", "") or ""))
+    cells = [x for x, _ in (c.cells or [])[:5]]
+    if not qt or not cells:
+        return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    jac = 0.0
+    for x in cells[:3]:
+        ct = set(toks(x.question or ""))
+        if ct:
+            jac = max(jac, len(qt & ct) / len(qt | ct))
+    top = cells[0]
+    ent = set()
+    for t, v in getattr(q, "slots", ()) or ():
+        ent |= set(toks(str(v)))
+    tq = set(toks(top.question or ""))
+    ent_cov = (len(ent & tq) / len(ent)) if ent else 0.5
+    nq = {w for w in (q.text or "").lower().split() if any(ch.isdigit() for ch in w)}
+    nc = {w for w in (top.question or "").lower().split() if any(ch.isdigit() for ch in w)}
+    num_diff = float(nq != nc and bool(nq or nc))
+    wh = _wh(q.text)
+    wh_same = float(bool(wh) and wh == _wh(top.question))
+    qs = [x.question for x in cells if x.question]
+    same_q = (max(qs.count(v) for v in set(qs)) / len(cells)) if qs else 0.0
+    title_cov = len(qt & set(toks(top.title or ""))) / len(qt)
+    return [jac, ent_cov, num_diff, wh_same, same_q, title_cov]
+
+
+def cand_vec(c, feats: dict, ks, cands: list, now: float, q=None) -> list[float]:
     if c.path == "shared_q":         # another user's verified question -> answer cell: a question-NN candidate
         x = voi.vector({**feats, "qnn_cos": c.score}, "qnn")
         x[voi.NAMES.index("eq_p")] = max(0.0, c.eq_p)
@@ -125,6 +168,7 @@ def cand_vec(c, feats: dict, ks, cands: list, now: float) -> list[float]:
     x += [trust, hits, age, min(agree, 3) / 3.0, float(src in ("wikidata", "wiktionary")),
           float(vc == "live" and src not in ("wikipedia", "local wikipedia"))]
     x += [float(vc == v) for v in VCL]
+    x += pair_vec(q, c) if q is not None else [0.0] * 6
     return x
 
 
@@ -132,13 +176,40 @@ def ks_trust(ks, cell_id: int) -> float:
     return float(getattr(ks, "trust", {}).get(cell_id, 0.0))
 
 
-def feedback(ks, cell_id: int, signal: str):
+def _domain(url: str) -> str:
+    m = (url or "").split("//", 1)[-1].split("/", 1)[0].lower()
+    return m[4:] if m.startswith("www.") else m
+
+
+def domain_trust(ks, family: str = "") -> dict:
+    """Per-source-domain trust learned from the same feedback (re-check confirmations / catches, corrections), overall
+    and per question family (the typed relation, or the intent): the input for a parameterised paid action
+    (Tavily include_domains / exclude_domains per family). Logged, not yet sent to the paid lane."""
+    d = getattr(ks, "dtrust", {})
+    return {k[1]: v for k, v in d.items() if k[0] == family} if family else {k[1]: v for k, v in d.items() if not k[0]}
+
+
+def trusted_domains(ks, family: str = "", k: int = 3, min_score: float = 1.0) -> tuple[list, list]:
+    """(include, exclude) domain suggestions for this family from domain trust."""
+    t = domain_trust(ks, family)
+    inc = [d for d, v in sorted(t.items(), key=lambda x: -x[1]) if v >= min_score][:k]
+    exc = [d for d, v in t.items() if v <= -min_score]
+    return inc, exc
+
+
+def feedback(ks, cell_id: int, signal: str, url: str = "", family: str = ""):
     """Per-cell trust (log-odds-like): re-check confirmed +1, verified by a cited source +0.5, re-check caught an
     error -2, spoken correction -2. Bounded to [-4, 4]."""
     d = {"confirm": 1.0, "verified": 0.5, "caught": -2.0, "correction": -2.0}.get(signal, 0.0)
     if not hasattr(ks, "trust"):
         ks.trust = {}
     ks.trust[cell_id] = max(-4.0, min(4.0, ks.trust.get(cell_id, 0.0) + d))
+    dom = _domain(url)
+    if dom and d:
+        if not hasattr(ks, "dtrust"):
+            ks.dtrust = {}
+        for key in (("", dom), (family, dom)) if family else (("", dom),):
+            ks.dtrust[key] = max(-8.0, min(8.0, ks.dtrust.get(key, 0.0) + d))
 
 
 # ------------------------------------------------------------------------------------------- tiny tree ensembles
@@ -178,12 +249,19 @@ class Trees:
 
 class Policy:
     def __init__(self, d: dict):
+        if d.get("features") is not None and list(d["features"]) != NAMES:
+            raise ValueError("kdir model was trained on another feature set")
         self.ok = Trees(d["ok"])
         self.catch = Trees(d["catch"]) if d.get("catch") else None
         self.free_strong = Trees(d["free_strong"]) if d.get("free_strong") else None
+        self.free_ok = Trees(d["free_ok"]) if d.get("free_ok") else None      # p(right | the free lanes are strong)
         self.R = float(d.get("R", 10.0))
         self.C = float(d.get("C", 1.0))
         self.eps = float(d.get("eps", 0.02))
+        # latency, in paid-call equivalents per second (so a free-planned question can still be answered locally when
+        # the answer is near-certain: the VOI gate's latency win); typical path latencies from the replay
+        self.lat_value = float(d.get("lat_value", 0.5))
+        self.lat = d.get("lat_s") or {"pay": 0.5, "local": 0.06, "free": 0.35}
         self.use = set(d.get("actions", ACTIONS))
         self.allow_free = True
         self.meta = d
@@ -204,16 +282,18 @@ class Policy:
         # the free lanes can only check / answer a non-live question the router did not already send there
         pc = self.catch.p(qx) if (self.catch is not None and free_ok_q) else 0.0
         info.update(p_ok=round(bp, 4), p_catch=round(pc, 4))
-        J = {"pay": float(plan_paid)}
+        lv, lt = self.lat_value, self.lat
+        J = {"pay": float(plan_paid) + lv * lt["pay"]}
         if best is not None:
-            J["local"] = self.R * (1.0 - bp)
+            J["local"] = self.R * (1.0 - bp) + lv * lt["local"]
             if "local_rc" in self.use:
-                J["local_rc"] = self.eps + (1.0 - bp) * (self.C * pc + self.R * (1.0 - pc))
+                J["local_rc"] = self.eps + (1.0 - bp) * (self.C * pc + self.R * (1.0 - pc)) + lv * lt["local"]
         if free_ok_q and plan_paid and "free" in self.use and self.free_strong is not None and self.allow_free:
             qs = self.free_strong.p(qx)
             info["p_free_strong"] = round(qs, 4)
-            # served free when strong; wrong when strong but not right: q_wrong ~ max(0, q_strong - p_catch)
-            J["free"] = self.R * max(0.0, qs - pc) + (1.0 - qs) * 1.0 + self.eps
+            # served free when strong (wrong with 1 - p(right | strong)); weak -> pays after all
+            q_wrong = qs * (1.0 - self.free_ok.p(qx)) if self.free_ok is not None else max(0.0, qs - pc)
+            J["free"] = self.R * q_wrong + (1.0 - qs) * (1.0 + lv * lt["pay"]) + self.eps + lv * lt["free"]
         a = min(J, key=lambda k: (J[k], ACTIONS.index(k)))
         info["J"] = {k: round(v, 4) for k, v in J.items()}
         if best is not None:
@@ -225,11 +305,11 @@ _policy: Policy | None = None
 _failed: str | None = None
 
 
-def load(path: Path = MODEL_PATH) -> Policy | None:
+def load(path: Path | None = None) -> Policy | None:
     global _policy, _failed
     if _policy is None and _failed is None:
         try:
-            _policy = Policy(json.loads(path.read_text()))
+            _policy = Policy(json.loads((path or MODEL_PATH).read_text()))
         except Exception as e:  # noqa: BLE001
             _failed = f"{type(e).__name__}: {e}"
     return _policy

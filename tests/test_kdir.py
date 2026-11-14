@@ -289,3 +289,13 @@ def test_shipped_model_is_tiny_fast_and_well_formed():
         ts.append((time.perf_counter() - t) * 1000)
     assert sorted(ts)[len(ts) // 2] < 2.0
     kdir.reset()
+
+
+def test_domain_trust_suggests_include_and_exclude_domains():
+    ks = Keystone(Flags(hash=False))
+    for _ in range(2):
+        kdir.feedback(ks, 1, "confirm", "https://www.britannica.com/x", "born_date")
+    kdir.feedback(ks, 2, "caught", "https://spam.example/x", "born_date")
+    inc, exc = kdir.trusted_domains(ks, "born_date")
+    assert inc == ["britannica.com"] and exc == ["spam.example"]
+    assert kdir.domain_trust(ks)["britannica.com"] == 2.0

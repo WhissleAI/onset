@@ -108,12 +108,21 @@ def part_train(a):
     r = res_load()
     tr = logs_for("train_r0", STREAMS["dev"].with_name("kdir_train.jsonl"), "behav")
     dv = logs_for("dev_voi", STREAMS["dev"], "voi")
+    # DAgger round 1: re-log the train stream under the round-0 policy (its own store states), aggregate
+    pol0, _ = T.train(tr["logs"], dv["logs"], "all")
+    pol0["R"] = 10.0
+    tr1 = T.log_stream(STREAMS["dev"].with_name("kdir_train.jsonl"), kdir.Policy(pol0), "train_r1")
+    tr = {"logs": tr["logs"] + tr1["logs"], "rows": tr["rows"]}
     odv = logs_for("old_dev_voi", STREAMS["old_dev"], "voi")
     n_dev = len(dv["rows"])
     cache_dev = KR.baseline(KR.KData(STREAMS["dev"]), "a", 58.7)
     cache_odev = KR.baseline(KR.KData(STREAMS["old_dev"]), "a", 58.7)
     r["cache_dev"], r["cache_old_dev"] = cache_dev, cache_odev
-    target = {"dev": cache_dev["regret_rate"], "old_dev": max(cache_odev["regret_rate"], 0.0)}
+    # "regret no worse than today": on the old dev stream, today's search cache (the VOI gate's own rule); on the new
+    # dev stream the cache serves so little that its regret is 0, so the bar there is the shipped VOI gate's regret
+    voi_dev = KR.summarize(dv["rows"])["all"]["regret_rate"]
+    r["voi_dev_regret"] = voi_dev
+    target = {"dev": max(cache_dev["regret_rate"], voi_dev), "old_dev": max(cache_odev["regret_rate"], 0.0)}
     devsets = {"dev": (dv["logs"], len(dv["rows"]), card_paid(dv["rows"])),
                "old_dev": (odv["logs"], len(odv["rows"]), card_paid(odv["rows"]))}
     print("targets (cache regret on dev)", target, flush=True)
@@ -168,13 +177,19 @@ def part_train(a):
     # 3d: imitation of the oracle's action
     models["3d_imitation"] = imitation(tr["logs"], devsets, target)
     pickle.dump(models, open(OUT / "kdir_models.pkl", "wb"))
-    r["models"] = {k: {kk: vv for kk, vv in v.items() if kk not in ("ok", "catch", "free_strong", "m")}
+    r["models"] = {k: {kk: vv for kk, vv in v.items() if kk not in ("ok", "catch", "free_strong", "free_ok", "m")}
                    for k, v in models.items()}
     res_save(r)
-    ship = models["3b_all"]
-    kdir.MODEL_PATH.write_text(json.dumps({k: v for k, v in ship.items() if k in ("ok", "catch", "free_strong", "R",
-                                                                                  "C", "eps", "actions")} |
-                                          {"features": kdir.NAMES, "R_rule": "dev regret <= today's cache (s2 + kdir_dev)",
+    # ship the dev-best of the full-feature models (with / without the director signals)
+    ship_name = min(("3b_all", "3c_nodir"), key=lambda k: next(p["dev"]["paid_per_q"] + p["old_dev"]["paid_per_q"]
+                                                                for p in models[k]["curve"] if p["knob"] == models[k]["R"]))
+    r["shipped"] = ship_name
+    res_save(r)
+    ship = models[ship_name]
+    kdir.MODEL_PATH.write_text(json.dumps({k: v for k, v in ship.items() if k in ("ok", "catch", "free_strong", "free_ok",
+                                                                                  "R", "C", "eps", "actions")} |
+                                          {"features": kdir.NAMES, "name": ship_name,
+                                           "R_rule": "dev regret <= today (s2: search cache; kdir_dev: VOI gate)",
                                            "trained": "eval/keystone/kdir_eval.py --part train"}))
     print("model ->", kdir.MODEL_PATH, kdir.MODEL_PATH.stat().st_size, "bytes")
 
@@ -221,9 +236,11 @@ def imitation(train_logs, devsets, target):
             y.append(A.index(a))
         return np.array(X, np.float32), np.array(y)
     X, y = rows(train_logs)
+    cls = sorted(set(int(v) for v in y))                 # the oracle may never pick some action (e.g. local_rc)
     m = xgb.XGBClassifier(n_estimators=200, max_depth=4, learning_rate=0.08, subsample=0.85, objective="multi:softprob",
-                          num_class=len(A), n_jobs=2, tree_method="hist")
-    m.fit(X, y)
+                          num_class=len(cls), n_jobs=2, tree_method="hist")
+    m.fit(X, np.array([cls.index(int(v)) for v in y]))
+    m.kdir_classes = cls
 
     def fn_of(margin):
         def fn(L):
@@ -231,7 +248,7 @@ def imitation(train_logs, devsets, target):
                   if L["cx"] else None)
             x = np.array([L["qx"] + (L["cx"][jj] if jj is not None else [0.0] * nc) + [float(jj is not None)]],
                          np.float32)
-            p = m.predict_proba(x)[0]
+            p = _full_proba(m, x)
             k = int(np.argmax(p))
             if A[k] == "pay" or p[k] < p[0] + margin:
                 return "pay", None
@@ -257,6 +274,14 @@ def imitation(train_logs, devsets, target):
 
 
 # ------------------------------------------------------------------------------------------------ replays
+def _full_proba(m, x):
+    q = m.predict_proba(x)[0]
+    p = np.zeros(len(kdir.ACTIONS))
+    for j, c in enumerate(getattr(m, "kdir_classes", range(len(q)))):
+        p[c] = q[j]
+    return p
+
+
 class ImitationPolicy(kdir.Policy):
     """kdir.Policy's interface over the imitation trees (multiclass on the oracle's action)."""
 
@@ -269,7 +294,7 @@ class ImitationPolicy(kdir.Policy):
         jj = (int(np.argmax([cx[voi.NAMES.index("qnn_cos")] + cx[voi.NAMES.index("eq_p")] for cx in cxs]))
               if cxs else None)
         x = np.array([qx + (cxs[jj] if jj is not None else [0.0] * nc) + [float(jj is not None)]], np.float32)
-        p = self.m.predict_proba(x)[0]
+        p = _full_proba(self.m, x)
         k = int(np.argmax(p))
         a = kdir.ACTIONS[k]
         if a == "pay" or p[k] < p[0] + self.margin or (a in ("local", "local_rc") and jj is None) or \
@@ -278,15 +303,11 @@ class ImitationPolicy(kdir.Policy):
         return a, (cands[jj] if a in ("local", "local_rc") else None), {}
 
 
-def run_policy(stream_key, name, models, store="pooled", feedback=True, online=False, ttl=True, seed=0):
+def run_policy(stream_key, name, models, store="pooled", feedback=True, online=False, ttl=False, seed=0):
     data = KR.KData(STREAMS[stream_key])
     vm = voi.load()
-    kdir._ttl = None if ttl else {}
     from server.keystone import relkey
-    orig = relkey.RelKey.ttl_s
-    if ttl and kdir.ttl_table():
-        relkey.RelKey.ttl_s = property(lambda self: kdir.learned_ttl(self.relation, self.vclass,
-                                                                     relkey.TTL_S.get(self.vclass, relkey.TTL_S["slow"])))
+    relkey.LEARNED_TTL[0] = bool(ttl and kdir.ttl_table())
     try:
         if name in ("fresh", "voi", "oracle", "oracle_local"):
             rows, _, st = KR.simulate(data, name, store=store, voi_model=vm, theta=vm.theta, feedback=feedback, seed=seed)
@@ -299,41 +320,76 @@ def run_policy(stream_key, name, models, store="pooled", feedback=True, online=F
             rows, _, st = KR.simulate(data, "voi", store=store, voi_model=m, theta=m.theta, seed=seed)
         else:
             md = models[name]
-            pol = kdir.Policy({k: v for k, v in md.items() if k in ("ok", "catch", "free_strong", "R", "C", "eps",
-                                                                     "actions")})
+            pol = kdir.Policy({k: v for k, v in md.items() if k in ("ok", "catch", "free_strong", "free_ok", "R",
+                                                                     "C", "eps", "actions")})
             onl = None
             if online:
                 onl = online_refitter(md)
             rows, _, st = KR.simulate(data, pol, store=store, voi_model=vm, theta=vm.theta, feedback=feedback,
                                       online=onl, allow=tuple(md.get("actions", kdir.ACTIONS)), seed=seed)
     finally:
-        relkey.RelKey.ttl_s = orig
-        kdir._ttl = None
+        relkey.LEARNED_TTL[0] = False
     s = KR.summarize(rows, 500)
     return s, st
 
 
 def online_refitter(md):
-    """Every `every` questions: refit the p_ok trees on the train rows + the feedback rows seen so far (corrections,
-    re-check catches = 0; re-check confirmations = 1), Platt kept."""
-    tr = pickle.loads((OUT / "kdir_log_train_r0.pkl").read_bytes())["logs"]
+    """Every `every` questions: refit the p_ok trees on the train rows + the feedback rows seen so far in this stream
+    (spoken corrections and re-check catches = 0, re-check confirmations = 1; weighted x3: they are on-policy), and
+    re-calibrate on dev exactly as offline training does. Labels come only from feedback, never from the oracle."""
+    tr = []
+    for tag in ("train_r0", "train_r1"):
+        p = OUT / f"kdir_log_{tag}.pkl"
+        if p.exists():
+            tr += pickle.loads(p.read_bytes())["logs"]
     X, y, _, _, _ = T.datasets(tr)
+    dv = pickle.loads((OUT / "kdir_log_dev_voi.pkl").read_bytes())["logs"] + \
+        pickle.loads((OUT / "kdir_log_old_dev_voi.pkl").read_bytes())["logs"]
+    Xd, yd, _, _, _ = T.datasets(dv)
     cols = md["ok"]["cols"]
     state = {"n": 0}
 
     def refit(pol, fb_rows):
-        new = fb_rows[state["n"]:]
-        if len(new) < 5:
+        if len(fb_rows) - state["n"] < 5:
             return
         state["n"] = len(fb_rows)
         Xf = np.array([q + c for q, c, _ in fb_rows], np.float32)
         yf = np.array([v for _, _, v in fb_rows])
-        Xa = np.concatenate([X, np.repeat(Xf, 5, 0)])            # feedback rows weighted x5 (they are on-policy)
-        ya = np.concatenate([y, np.repeat(yf, 5)])
-        d = T.fit_trees(Xa, ya, Xa[-len(Xf) * 5:], ya[-len(Xf) * 5:], cols)
-        d["cal"] = md["ok"].get("cal", [1.0, 0.0])
-        pol.ok = kdir.Trees(d)
+        Xa = np.concatenate([X, np.repeat(Xf, 3, 0)])
+        ya = np.concatenate([y, np.repeat(yf, 3)])
+        pol.ok = kdir.Trees(T.fit_trees(Xa, ya, Xd, yd, cols))
     return {"every": 500, "refit": refit}
+
+
+def part_pick(a):
+    """Choose each policy's knob by REAL replays on both dev streams (the offline pick on VOI-logged decisions was
+    optimistic: a policy changes its own store). Cheapest knob whose regret is no worse than today on both."""
+    r = res_load()
+    models = pickle.load(open(OUT / "kdir_models.pkl", "rb"))
+    voi_dev = r["voi_dev_regret"]
+    target = {"dev": max(r["cache_dev"]["regret_rate"], voi_dev), "old_dev": r["cache_old_dev"]["regret_rate"]}
+    for name in a.jobs.split(",") if a.jobs else ("2c_voi21_all", "3a_graph", "3b_all", "3c_nodir", "3b_all_local"):
+        pts = []
+        for R in (6, 8, 10, 12, 15, 20, 30, 40, 60, 100, 200):
+            row = {"knob": R}
+            for sk in ("old_dev", "dev"):
+                m = dict(models[name])
+                m["R"] = R
+                s, _ = run_policy(sk, name, {name: m}, feedback=False)
+                al = s["all"]
+                row[sk] = {k: al[k] for k in ("paid_per_q", "regret_rate", "corrected_rate", "p50_ms")}
+            row["ok"] = all(row[k]["regret_rate"] <= target[k] + 1e-9 for k in target)
+            pts.append(row)
+            print(name, row, flush=True)
+        ok = [p for p in pts if p["ok"]]
+        best = min(ok, key=lambda p: (p["dev"]["paid_per_q"] + p["old_dev"]["paid_per_q"], p["knob"])) if ok else pts[-1]
+        models[name]["R"] = best["knob"]
+        models[name]["replay_curve"] = pts
+        print("->", name, "R", best["knob"], flush=True)
+        r = res_load()
+        r.setdefault("replay_pick", {})[name] = {"R": best["knob"], "curve": pts, "target": target}
+        res_save(r)
+        pickle.dump(models, open(OUT / "kdir_models.pkl", "wb"))
 
 
 def part_ablation(a):
@@ -354,7 +410,7 @@ def part_ablation(a):
             key = f"{sk}:{name}"
             if jobs and name not in jobs or key in out:
                 continue
-            mname = "3b_all" if name.startswith(("4_", "5_")) else name
+            mname = r.get("shipped", "3c_nodir") if name.startswith(("4_", "5_")) else name
             t = time.time()
             s, st = run_policy(sk, mname, models, **kw)
             out[key] = {"summary": s, "stats": {k: v for k, v in st.items() if k != "path"}}
@@ -372,7 +428,7 @@ def part_network(a):
     models = pickle.load(open(OUT / "kdir_models.pkl", "rb"))
     for sk in a.streams.split(","):
         for store in ("user", "user_shared", "user_shared_cells"):
-            for name in ("voi", "3b_all"):
+            for name in ("voi", r.get("shipped", "3c_nodir")):
                 key = f"{sk}:{store}:{name}"
                 if key in r.get("network", {}):
                     continue
@@ -407,7 +463,7 @@ def part_curves(a):
         r.setdefault("test_curves", {})[f"{sk}:voi"] = pts(lambda t: voi_fn(vm, t), [0.5, 0.6, 0.7, 0.8, 0.85, 0.9,
                                                                                       0.93, 0.95, 0.97, 0.99])
         grid = [1, 2, 3, 5, 8, 12, 20, 30, 60, 120, 300]
-        for name in ("2c_voi21_all", "3b_all"):
+        for name in ("2c_voi21_all", "3b_all", "3c_nodir"):
             md = models[name]
             r["test_curves"][f"{sk}:{name}"] = pts(lambda R, md=md: kdir_fn(kdir.Policy({**md, "R": R}),
                                                                             tuple(md["actions"])), grid)
@@ -434,4 +490,5 @@ if __name__ == "__main__":
     ap.add_argument("--streams", default="old_test,test,old_dev,dev")
     ap.add_argument("--jobs", default="")
     a = ap.parse_args()
-    {"train": part_train, "ablation": part_ablation, "network": part_network, "curves": part_curves}[a.part](a)
+    {"train": part_train, "ablation": part_ablation, "network": part_network, "curves": part_curves,
+     "pick": part_pick}[a.part](a)
