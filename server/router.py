@@ -398,8 +398,9 @@ async def route(query: str, f: Frame, *, final: bool, meter: dict, web_fn):
             raise Skip(f"{p.lane} lookup {meter['route_fallback']}: no paid fallback while speculating")
     web = await web_fn()
     backend = getattr(web, "backend", "") or meter.get("backend", "")
-    paid = 0 if (getattr(web, "cached", False) or backend in ("cache", "router", "index")) else 1
-    meter.update(tier=("index" if backend == "index" else "web") if len(web) or not cheap else p.lane, paid=paid)
+    paid = 0 if (getattr(web, "cached", False) or backend in ("cache", "router", "index", "kdir-free")) else 1
+    meter.update(tier=({"index": "index", "kdir-free": "facts"}.get(backend, "web")) if len(web) or not cheap else p.lane,
+                 paid=paid)
     if web and len(web):
         meter["tier_src"] = web[0].source or backend
     elif cheap:

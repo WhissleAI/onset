@@ -353,6 +353,17 @@ INDEX_SHARED = os.environ.get("INDEX_SHARED", "1") == "1"          # cross-user 
 KEYSTONE_SHARED = Path(os.environ.get("KEYSTONE_SHARED", DATA_DIR / "keystone" / "shared.sqlite"))
 VOI = os.environ.get("VOI", "1") == "1"                            # calibrated gate (else the hand gate)
 VOI_THETA = float(os.environ["VOI_THETA"]) if os.environ.get("VOI_THETA") else None   # override the fitted theta
+# Keystone director v1 (server/keystone/kdir.py, docs/RETRIEVAL.md §5): a learned policy over the answer graph instead of
+# the VOI gate: serve locally / serve + background re-check on free sources / free lanes first / pay. Falls back to the
+# VOI gate on any failure or when its model file is missing. KDIR_FREE / KDIR_RECHECK switch its two new actions.
+KDIR = os.environ.get("KDIR", "0") == "1"
+KDIR_FREE = os.environ.get("KDIR_FREE", "1") == "1"
+KDIR_RECHECK = os.environ.get("KDIR_RECHECK", "1") == "1"
+KDIR_R = float(os.environ["KDIR_R"]) if os.environ.get("KDIR_R") else None            # override the dev-chosen R
+KDIR_FREE_TIMEOUT_S = float(os.environ.get("KDIR_FREE_TIMEOUT_S", "1.2"))           # free-first budget, then pay
+# the wider shared allowlist (keystone/shared.py SharedCells): verified public question -> answer cells pooled across
+# users (in-process here; a remote store implements the same API). Off by default.
+KDIR_SHARED_CELLS = os.environ.get("KDIR_SHARED_CELLS", "0") == "1"
 # ---------------------------------------------------------------------------------------------------- cost parity
 # server/cost.py: COST_MODE picks the speculation budget per question (PROGRESS.md "Cost parity").
 #   speed  = the policy above (SPEC_PAID_MAX paid calls, DRAFT_BUDGET drafts, settle-time release)
