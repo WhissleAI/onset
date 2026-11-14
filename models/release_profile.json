@@ -1,17 +1,39 @@
 {
  "about": "What the public Mac release bundles from models/manifest.json (scripts/fetch_models.py bundle). A model not named here is bundled whole when required and left out when optional. Every rule says why.",
  "models": {
-  "arc-v1": {"files": "all", "note": "Whissle's own model (CC BY-NC 4.0); Moonshine tiny inside is MIT. Licence + NOTICE ship in Resources/Licenses."},
-  "arctag": {"files": "all", "note": "Whissle's own model (CC BY-NC 4.0 + Whissle terms)."},
-  "embeddinggemma-2": {"files": "all", "exclude": [".gitattributes"], "note": "Google, Apache 2.0 (model card)."},
+  "arc-v1": {
+   "exclude": [
+    "moonshine-streaming-tiny/decoder_v1e.safetensors"
+   ],
+   "note": "Whissle's own model (CC BY-NC 4.0); Moonshine tiny inside is MIT. Licence + NOTICE ship in Resources/Licenses. decoder_v1e (138 MB) is left out: the server uses the tagged decoder, and arc_audio only loads v1e when the file exists (else the built-in decoder)."
+  },
+  "arctag": {
+   "files": "all",
+   "note": "Whissle's own model (CC BY-NC 4.0 + Whissle terms)."
+  },
+  "embeddinggemma-2": {
+   "files": "all",
+   "exclude": [
+    ".gitattributes"
+   ],
+   "note": "Google, Apache 2.0 (model card)."
+  },
   "index-data": {
-   "include": ["knowledge/"],
-   "note": "Only the Wikipedia leads (CC BY-SA 4.0). The local-moments index (arc/, audio/, docs.jsonl, vectors.npz) is built from third-party recordings that are not ours to redistribute, so the release has no local-moments search."
+   "include": [
+    "knowledge/"
+   ],
+   "note": "Only the Wikipedia leads (knowledge/: 11,085 lead paragraphs, every row's url is en.wikipedia.org; CC BY-SA 4.0 with attribution). The local-moments index (arc/, audio/, docs.jsonl, vectors.npz, retrieval_eval.json) is built from broadcast clips and private recordings (incl. a parent-teacher meeting) and must never ship; local-moments search is simply absent in the release."
   },
   "demo-audio": {
-   "voices": ["kokoro:"],
-   "questions": ["eval/questions.jsonl", "eval/multipart/questions.jsonl", "eval/showcase/questions.jsonl"],
-   "note": "Only the Replay questions voiced with Kokoro-82M (Apache 2.0). Questions voiced with macOS system voices (licensed for personal, non-commercial use) and the local-moments questions are left out."
+   "voices": [
+    "kokoro:"
+   ],
+   "questions": [
+    "eval/questions.jsonl",
+    "eval/multipart/questions.jsonl",
+    "eval/showcase/questions.jsonl"
+   ],
+   "note": "Only Replay questions synthesised with Kokoro-82M (Apache 2.0; eval/make_audio.py, eval/multipart/make_audio.py, eval/showcase/make_audio.py voice them through eval/tts_kokoro.py). Clips voiced with macOS system voices, recorded voices and the local-moments questions are left out."
   }
  }
 }

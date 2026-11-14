@@ -154,11 +154,23 @@ cp macapp/licenses/THIRD_PARTY.md "$L/"
 cp macapp/licenses/Apache-2.0.txt "$L/"
 cp vendor/arctag/LICENSE "$L/ArcTagger-LICENSE.txt"; cp vendor/arctag/NOTICE "$L/ArcTagger-NOTICE.txt"
 MD="$RES/models"; [ -d "$MD" ] || MD="$(python3 -c 'from server import modelpaths; print(modelpaths.models_dir())')"
+cp models/arctag/LICENSE "$L/ArcTaggerModel-LICENSE.txt" 2>/dev/null || true
+cp models/arctag/NOTICE "$L/ArcTaggerModel-NOTICE.txt" 2>/dev/null || true
+cp vendor/arctag/third_party/cjson/LICENSE "$L/cJSON-LICENSE.txt"
+cp macapp/licenses/EmbeddingGemma-NOTICE.txt "$L/"
 for f in arc-v1/LICENSE:ArcV1-LICENSE.txt arc-v1/NOTICE:ArcV1-NOTICE.txt \
-         arc-v1/moonshine-streaming-tiny/LICENSE:Moonshine-LICENSE.txt; do
-  src="$MD/${f%%:*}"; [ -f "$src" ] && cp "$src" "$L/${f##*:}"
+         arc-v1/moonshine-streaming-tiny/LICENSE:Moonshine-LICENSE.txt \
+         arc-v1/moonshine-streaming-tiny/ORIGIN.md:Moonshine-ORIGIN.md \
+         embeddinggemma-2-onnx/LICENSE:EmbeddingGemma2-ONNX-LICENSE.txt \
+         embeddinggemma-2-onnx/NOTICE:EmbeddingGemma2-ONNX-NOTICE.txt; do
+  src="$MD/${f%%:*}"; if [ -f "$src" ]; then cp "$src" "$L/${f##*:}"; fi
 done
+SP="$(ls -d "$PY"/lib/python3.*/site-packages)"
 cp "$(ls -d "$PY"/lib/python3.*)/LICENSE.txt" "$L/Python-LICENSE.txt" 2>/dev/null || true
+cp "$SP/_soundfile_data/COPYING" "$L/libsndfile-LGPL-2.1.txt" 2>/dev/null || true    # LGPL: a separate, replaceable dylib
+for f in "$SP"/onnxruntime/ThirdPartyNotices.txt "$SP"/onnxruntime/LICENSE; do
+  if [ -f "$f" ]; then cp "$f" "$L/onnxruntime-$(basename "$f")"; fi
+done
 echo "  $(ls "$L" | wc -l | tr -d ' ') files; Python packages keep theirs in Resources/python/lib/*/site-packages/*.dist-info"
 
 step "Native shell (Swift)"
