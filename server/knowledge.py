@@ -92,7 +92,7 @@ PATTERNS = [
     (rf"\b(?:which|what) company (?:makes|made|manufactures|produces) {_S}$", "manufacturer"),
     (rf"\bwho (?:makes|made|manufactures) {_S}$", "manufacturer"),
     (rf"\bwho is the ceo of {_S}$", "ceo"),
-    (rf"\bwhat is the population of {_S}$", "population"),
+    (rf"\bwhat is the population (?:of|in) {_S}$", "population"),
     (rf"\bhow many people live in {_S}$", "population"),
     (rf"\bwhat river (?:runs|flows|goes) through {_S}$", "river"),
     (rf"\bwho is the (?:current )?(?:president|prime minister|leader) of {_S}$", "head_state"),
@@ -311,6 +311,7 @@ async def wikidata(q: FactQ) -> list:
     cands = cands[:5]
     ids = [c["id"] for c in cands]
     pids, kind, phrase = PROPS[q.prop]
+    await _await_prefetch(ids)
     res = await _wd_values(ids, pids)
     for c in cands:
         for pid in pids:
@@ -333,6 +334,67 @@ async def wikidata(q: FactQ) -> list:
                                                                         "item": c["label"]},
                               "snapshot": "Wikidata, live"})]
     return []
+
+
+_inflight: dict[tuple, asyncio.Future] = {}       # candidate ids -> a prefetch's SPARQL query on the wire
+
+
+async def _await_prefetch(ids: list[str], budget_s: float = 1.5):
+    """A lookup whose candidates a pre-warm is fetching right now waits for it (bounded) instead of sending a second
+    query (Wikidata allows ~5 concurrent queries per client; two at once for the same items only slows both)."""
+    fut = _inflight.get(tuple(ids))
+    if fut is not None and not fut.done():
+        try:
+            await asyncio.wait_for(asyncio.shield(fut), budget_s)
+        except Exception:
+            pass
+
+
+async def prefetch(subject: str) -> bool:
+    """Warm the cache for follow-up questions about `subject` (server/memory.py pre-warm, after an answer): its entity
+    search and ONE SPARQL query for every property in PROPS, split into the per-property entries wikidata() reads.
+    Free (Wikidata); returns True when the cache was filled. Never raises."""
+    try:
+        cands = (await _search(subject))[:5]
+        if not cands:
+            return False
+        ids = [c["id"] for c in cands]
+        allp = sorted({p for pids, _, _ in PROPS.values() for p in pids})
+        if _cache.get(("q", tuple(ids), tuple(PROPS["founder"][0]))) is not None or tuple(ids) in _inflight:
+            return True                                   # already warm (or warming)
+        fut = _inflight[tuple(ids)] = asyncio.get_running_loop().create_future()
+        data = await get_json(SPARQL, {"query": _sparql(ids, allp).replace("LIMIT 300", "LIMIT 3000"),
+                                       "format": "json"},
+                              headers={"Accept": "application/sparql-results+json"},
+                              timeout=max(config.ROUTER_SLOW_TIMEOUT_S, 3.0), breaker_s=20)
+        rows: dict[tuple, list[tuple]] = {}
+        for b in data["results"]["bindings"]:
+            item = b["item"]["value"].rsplit("/", 1)[-1]
+            pid = b["pid"]["value"]
+            rank = b["rank"]["value"].rsplit("#", 1)[-1]
+            if "amt" in b:
+                val = _fmt_qty(b["amt"]["value"], (b.get("unitLabel") or {}).get("value", ""))
+            elif "t" in b:
+                val = _fmt_time(b["t"]["value"], int((b.get("prec") or {}).get("value", 11)))
+            else:
+                val = (b.get("vLabel") or b["v"])["value"]
+                if re.fullmatch(r"Q\d+", val) or val.startswith("http"):
+                    continue
+                vd = (b.get("vd") or {}).get("value", "")
+                if vd and pid in _DESCRIBE:
+                    val = f"{val} ({vd})"
+            rows.setdefault((item, pid), []).append((rank, val))
+        for pids, _, _ in PROPS.values():
+            key = ("q", tuple(ids), tuple(pids))
+            if _cache.get(key) is None:
+                _cache.put(key, {k: v for k, v in rows.items() if k[1] in pids})
+        return True
+    except Exception:
+        return False
+    finally:
+        f = _inflight.pop(tuple(ids), None) if "ids" in locals() else None
+        if f is not None and not f.done():
+            f.set_result(None)
 
 
 # ------------------------------------------------------------------------------------------------- local leads

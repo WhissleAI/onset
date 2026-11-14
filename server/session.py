@@ -17,6 +17,7 @@ import numpy as np
 
 from . import frame as framemod
 from . import config, confidence, director, lanes
+from . import memory as memmod
 from .speculator import Speculator
 from .tagger import Tagger
 
@@ -102,6 +103,8 @@ class Session:
         self.carry: dict = {}                # {"person": [...], "thing": [...]} from the last question + answer
         self.context = ""                    # last question + answer text, for the answer model
         self.ans_tagger = Tagger(domain="talk")
+        self.mem = memmod.Memory()           # entity memory across turns + user facts (server/memory.py)
+        self.prewarm_task: asyncio.Task | None = None
         self.carry_pool: dict = {}           # its documents + vectors, seeded into the next speculator
         self.ledger = lanes.Ledger()         # Tavily credits + response cache, across this session's questions
         self.closed = False
@@ -154,6 +157,8 @@ class Session:
         self.words_changed_at = time.perf_counter()
         self.prefix_ws: list[dict] = []              # a corrected earlier turn, prepended to this one's words
         self.repair_checked = False                  # this utterance was already checked for being a correction
+        self.held_note = False                       # a "spec_hold" (unresolved pronoun) was announced
+        self.mem_used: str | None = None             # the entity memory resolved this question's reference to
 
     def emit(self, e: dict):
         """Emit an event of the question being heard now (unless it names its own question)."""
@@ -267,7 +272,10 @@ class Session:
             mem = job.get("mem_before")
             if mem is not None:
                 # the replaced answer must not be what "it" / "and when?" refer to next
-                self.carry, self.context, self.carry_pool = mem
+                self.carry, self.context, self.carry_pool = mem[:3]
+                if len(mem) > 3:
+                    self.mem.restore(mem[3])
+                    self.emit_memory(why="correction")
                 self.spec.close()
                 self.spec = Speculator(self._q_emit(self.qid), self.mode, self.t0, ledger=self.ledger)
                 if self.carry_pool:
@@ -345,9 +353,20 @@ class Session:
             out.append(d)
         return out
 
+    def _carry(self, words: list[str]) -> dict:
+        """The frame's conversation memory for these words: the one-turn carry, re-ranked / extended by the
+        multi-turn entity memory (MEM_V2), plus the user's facts."""
+        if not config.MEM_V2:
+            return self.carry
+        try:
+            return self.mem.carry_for(words, self.carry)
+        except Exception as e:                       # memory must never break the words path
+            self.emit({"t": "error", "where": "memory", "error": f"{type(e).__name__}: {e}"[:300]})
+            return self.carry
+
     def _build(self, carry=None):
         f = framemod.build(self.words, self.spans, self.current, self.events, self.prev_intent,
-                           local_ok=bool(len(lanes.index())), carry=self.carry if carry is None else carry)
+                           local_ok=bool(len(lanes.index())), carry=self._carry(self.words) if carry is None else carry)
         if self.wconf and len(self.wconf) == f.n and any(c is not None for c in getattr(self, "confs", []) or []):
             f.wconf = tuple(self.wconf)                # only when the ear gives word confidences (Flux / nova)
         if config.DIRECTOR_PII:
@@ -381,6 +400,9 @@ class Session:
                 {"type": s["type"], "start": s["start"], "end": s["end"], "text": s["text"]} for s in self.spans],
                 "arc": self.arc, "cc_word": self.cc_at, "ms": self.spec.ms(), "director": self._director_json()})
         self.frame = f
+        self._note_used(f)
+        if self._hold(f):
+            return
         self.spec.on_frame(f, now)
         if self.turn_ev is None and gate_open(f, self.cc_at, self.spans):
             self.spec.on_eot(1.0, "gate")   # no Flux end-of-turn score (Arc / nova-3 ear): the tagger's gate stands in
@@ -407,6 +429,59 @@ class Session:
         if qa is not None:
             self.spec.on_audio(qa, f.route, f.n)
 
+    def _hold(self, f) -> bool:
+        """No speculation on these words (MEM_HOLD):
+          - a pronoun whose referent is still being answered ("when was it ..." heard while the previous answer
+            streams: memory is updated when it ends): a search now would be for "founded", wasted;
+          - a statement of a user fact ("I live in Denver"): remembered, not searched.
+        The frame is re-evaluated when the previous answer lands (_answer)."""
+        if not config.MEM_HOLD or self.mode != "headstart":
+            return False
+        why = None
+        if self.user_statement(f):
+            why = "user fact"
+        elif (self.busy or self.pending_finals) and self._unresolved(f):
+            why = "pronoun: referent still being answered"
+        if why and not self.held_note:
+            self.held_note = True
+            self.emit({"t": "spec_hold", "why": why, "ms": self.spec.ms(), "words": list(self.words)})
+        return why is not None
+
+    @staticmethod
+    def _unresolved(f) -> bool:
+        toks = [framemod.norm(w) for w in f.words]
+        strong = any(t in framemod.PRONOUNS - framemod.WEAK_PRONOUNS for t in toks)
+        mention = any(t not in framemod.NUMBER_TYPES for t, _ in f.slots)
+        return strong and not mention and not f.carried
+
+    def user_statement(self, f) -> bool:
+        """"I live in Denver", "I'm vegetarian": a fact about the user, not a request (MEM_USER_FACTS)."""
+        if not config.MEM_USER_FACTS:
+            return False
+        toks = [framemod.norm(w) for w in f.words if framemod.norm(w)]
+        if not toks or not memmod.learn_facts(toks):
+            return False
+        return not (f.act_question or _REQUEST_START.match(toks[0]) or "command_request" in set(f.acts or ()))
+
+    def _note_used(self, f):
+        """Tell the graph panel which remembered entity this question's reference resolved to (it lights up)."""
+        k = framemod.norm(f.carried) if f.carried else None
+        if k and k != self.mem_used and self.mem.entity(k) is not None:
+            self.mem_used = k
+            e = self.mem.entity(k)
+            self.emit({"t": "memory", "used": k, "label": e["name"], "turns": e["turns"], "ref": f.mem_ref,
+                       "inline": f.inline, "ms": self.spec.ms()})
+
+    def emit_memory(self, learned: list | None = None, why: str = "", q: int | None = None):
+        try:
+            e = {"t": "memory", "graph": self.mem.graph(self.mem_used), "learned": learned or [], "why": why,
+                 "ms": self.spec.ms()}
+            if q is not None:
+                e["q"] = q                       # the turn that changed memory, not the question being heard
+            self.emit(e)
+        except Exception as e:
+            self.emit({"t": "error", "where": "memory", "error": f"{type(e).__name__}: {e}"[:300]})
+
     def _quiet(self) -> bool:
         return (self.answered_level is not None and len(self.q_levels) >= 3
                 and float(np.median(self.q_levels)) < self.answered_level * config.CHATTER_RATIO)
@@ -422,6 +497,8 @@ class Session:
             return False
         if self.open_mic and self._not_request(f):
             return False                           # open mic, not a request: the ear's final labels it, no answer
+        if self.user_statement(f):
+            return False                           # "I live in Denver": remembered at the final, not searched
         if self.final_task is not None and not self.final_task.done():
             self.final_task.cancel()               # superseded by this longer question: one soft answer at a time
         prev = self.soft
@@ -568,7 +645,7 @@ class Session:
                             self.eot_last = p
                             self.spec.on_eot(p)
                         th = (director.model().thr or {}).get("director_eot") or [0.65, 0.9]
-                        thr = th[0] if ev == "EagerEndOfTurn" else th[1]
+                        thr = self._mem_thr(f, ev, th[0] if ev == "EagerEndOfTurn" else th[1])
                         if out["eot"] >= thr and not self._quiet():
                             self._soft(self.last_ws, f, by="director")
                         return
@@ -582,7 +659,7 @@ class Session:
                 return
             self.eot_last = p
             self.spec.on_eot(p)                        # search efficiency: a likely-final meaning may search now
-            thr = confidence.eot_threshold("eager" if ev == "EagerEndOfTurn" else "update")
+            thr = self._mem_thr(f, ev, confidence.eot_threshold("eager" if ev == "EagerEndOfTurn" else "update"))
             if p >= thr and not self._quiet() and f.n >= 1:
                 if self.soft is None or self.soft["sig"] != meaning(f):
                     self.emit({"t": "eot_score", "p": round(p, 3), "thr": thr, "ev": ev, "ms": self.spec.ms(),
@@ -601,6 +678,15 @@ class Session:
                 thr = config.DIRECTOR_ADDR_THR or float((director.model().thr or {}).get("director_addr", 0.5))
                 return "not_addressed" if o["addr"] < thr else None
         return open_mic_skip(f)
+
+    @staticmethod
+    def _mem_thr(f, ev: str, thr: float) -> float:
+        """End-of-turn bar for a follow-up whose reference memory resolved in place (MEM_EOT): the turn models were
+        fit on standalone questions and read "when was it founded" as unfinished; with the referent known it is a
+        complete question ("when was nvidia founded")."""
+        if config.MEM_EOT and f is not None and f.carried and f.inline:
+            return min(thr, config.MEM_EOT_THR[0 if ev == "EagerEndOfTurn" else 1])
+        return thr
 
     def _director_json(self):
         o = self.director_out
@@ -715,11 +801,18 @@ class Session:
             if job["error"] is not None:
                 raise job["error"]
             # build at answer time: an earlier question that finished meanwhile may have updated the carried entity
+            learned = []
+            if config.MEM_USER_FACTS:
+                learned = self.mem.learn_user([framemod.norm(w) for w in job["words"]])
+                if learned:
+                    self.emit_memory(learned, why="user fact", q=q)
             f = framemod.build(job["words"], job["spans"], job["current"], job["events"], job["prev_intent"],
-                               local_ok=bool(len(lanes.index())), carry=self.carry)
+                               local_ok=bool(len(lanes.index())), carry=self._carry(job["words"]))
             if config.DIRECTOR_PII:
                 director.apply_pii(f, job.get("director"))
             spec.context = self.context
+            if learned and self.user_statement(f) and soft is None:
+                return self._ack_user(job, spec, f, learned, last_end, q)
             why = self._not_request(f, job.get("director")) if (self.open_mic and soft is None) else None
             if why:
                 # open mic, not a request: heard and labelled, no search and no answer (not part of the conversation)
@@ -763,8 +856,8 @@ class Session:
             return m
         job["metric"] = m
         if not m.get("failed") and f is not None:
-            job["mem_before"] = (self.carry, self.context, self.carry_pool)
-            self._remember(f, m)
+            job["mem_before"] = (self.carry, self.context, self.carry_pool, self.mem.snapshot())
+            self._remember(f, m, spec, q)
             if job.get("levels"):
                 self.answered_level = float(np.median(job["levels"]))
             self.carry_pool = spec.export_pool()
@@ -772,12 +865,52 @@ class Session:
             for s in [self.spec] + [j["spec"] for j in self.pending_finals]:
                 s.seed(self.carry_pool)
                 s.context = self.context
+            self._refresh()
         self.history.append(m)
         return m
 
-    def _remember(self, f, m):
-        """Conversation memory: entities of the question and of the answer, typed person vs thing."""
+    def _refresh(self):
+        """Memory just changed (an answer landed): the question being heard may have a pronoun that only now
+        resolves ("when was it ..." said while that answer streamed). Rebuild its frame and let the speculator act."""
+        if self.closed or not self.words or self.mode != "headstart":
+            return
+        try:
+            f = self._build()
+            self.frame = f
+            self._note_used(f)
+            if not self._hold(f):
+                self.spec.on_frame(f)
+        except Exception as e:
+            self.emit({"t": "error", "where": "memory refresh", "error": f"{type(e).__name__}: {e}"[:300]})
+
+    def _ack_user(self, job: dict, spec, f, learned: list, last_end: float, q: int) -> dict:
+        """A statement of a user fact ("I live in Denver"): remembered and acknowledged locally. No search, no model
+        call; the fact stays on this machine and is used as a query word when a later question needs it."""
+        t_end = self.t0 + last_end
+        self.emit({"t": "endpoint", "ms": spec.ms(), "speech_end_ms": round(last_end * 1000), "frame": f.to_json(),
+                   "by": "ear", "q": q})
+        labels = [x["label"] for x in learned]
+        text = "Noted: " + "; ".join(labels) + ". I'll use that when a question needs it (kept on this device)."
+        self.emit({"t": "sources", "ms": spec.ms(), "docs": [], "q": q})
+        self.emit({"t": "answer", "delta": text, "ms": spec.ms(), "q": q})
+        now = time.perf_counter()
+        m = {"mode": self.mode, "question": f.text, "query": "", "intent": f.intent, "endpoint_by": "ear",
+             "path": "memory", "answer_by": "memory", "answer": text, "sources": [], "n_sources": 0,
+             "ready_ms": round((now - t_end) * 1000), "sources_ms": round((now - t_end) * 1000),
+             "done_ms": round((now - t_end) * 1000), "web_calls": 0, "paid_calls": 0, "credits": 0.0,
+             "memory": {"learned": labels}}
+        self.emit({"t": "metric", **{k: v for k, v in m.items() if k != "answer"}, "q": q})
+        spec.close()
+        job["metric"] = m
+        self.history.append(m)
+        return m
+
+    def _remember(self, f, m, spec=None, q: int | None = None):
+        """Conversation memory: entities of the question and of the answer, typed person vs thing (the one-turn
+        carry), and the multi-turn entity memory (server/memory.py): typed entities, Wikidata QIDs / facts of the
+        sources used, relations; then a free pre-warm of the likely follow-up subjects' facts."""
         person, thing = [], []
+        ans_spans = []
         for t, txt in f.slots:
             if t in framemod.NUMBER_TYPES:
                 continue
@@ -786,6 +919,10 @@ class Session:
             if self.ans_tagger.h is None:
                 raise RuntimeError("session closed")     # never call into a destroyed native handle
             r = self.ans_tagger.tag_text(re.sub(r"\[\d+\]", "", m.get("answer") or ""))
+            ans_spans = memmod.answer_entities(r.get("words") or [], r.get("spans", []),
+                                               [framemod.norm(w) for w in f.words])
+            if m.get("answer_by") == "card":
+                ans_spans = []                 # a live-data card ("Low 2°C ...") names no entities worth keeping
             for sp in r.get("spans", []):
                 if sp.get("family") != "entity" or not sp["type"].startswith("entity.mention"):
                     continue
@@ -802,14 +939,37 @@ class Session:
             self.carry = {"person": person, "thing": thing}
         # for elliptical follow-ups ("and when?", "what about Nvidia?"): the previous question's meaning
         self.carry = {**(self.carry or {}), "prev": {"content": list(f.content), "entities": q_ents,
-                                                     "intent": f.intent, "question": f.text}}
+                                                     "intent": f.intent, "question": f.text, "inline": f.inline}}
         self.context = f"Q: {f.text}\nA: {(m.get('answer') or '')[:300]}"
+        if not config.MEM_V2:
+            return
+        try:
+            docs = [spec.pool[i] for i in spec.used_ids if i in spec.pool] if spec is not None else []
+            t = self.mem.observe(f, m.get("answer") or "", ans_spans, docs)
+            self.mem.note_used(framemod.norm(f.carried) if f.carried else None)
+            m["memory"] = {"turn": t, "used": f.carried or None, "ref": f.mem_ref or None, "inline": f.inline or None,
+                           "user": [k for k, _ in f.user_used]}
+            self.emit_memory(why="turn", q=q)
+            if config.MEM_PREWARM and self.mode == "headstart":
+                self.prewarm_task = asyncio.create_task(self._prewarm())
+        except Exception as e:
+            self.emit({"t": "error", "where": "memory", "error": f"{type(e).__name__}: {e}"[:300]})
+
+    async def _prewarm(self):
+        t = time.perf_counter()
+        subs = await memmod.prewarm(self.mem)
+        if subs and not self.closed:
+            self.emit({"t": "prewarm", "subjects": subs, "took": round((time.perf_counter() - t) * 1000),
+                       "ms": self.spec.ms()})
 
     def export_memory(self) -> dict:
         """Conversation memory to carry into the next run on the same connection (push-to-talk turns)."""
-        return {"carry": self.carry, "context": self.context, "carry_pool": self.carry_pool, "at": time.time()}
+        return {"carry": self.carry, "context": self.context, "carry_pool": self.carry_pool, "at": time.time(),
+                "mem": self.mem.to_json()}
 
     def import_memory(self, mem: dict | None):
+        if mem and mem.get("mem"):
+            self.mem = memmod.Memory.from_json(mem["mem"])     # (its own TTLs: conversation vs user facts)
         if not mem or time.time() - mem.get("at", 0) > config.MEMORY_TTL_S:
             return
         self.carry, self.context, self.carry_pool = mem["carry"], mem["context"], mem["carry_pool"]
@@ -829,6 +989,8 @@ class Session:
         if self.closed:
             return
         self.closed = True
+        if self.prewarm_task is not None and not self.prewarm_task.done():
+            self.prewarm_task.cancel()
         if self.held is not None:
             self.held["ev"].set()                         # (its on_final sees closed and returns)
             self.held = None

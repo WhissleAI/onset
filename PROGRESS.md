@@ -819,3 +819,108 @@ on the answer path).
 - **Tests:** tests/test_meter.py, 11 tests: exact usage, cancelled draft = estimated waste, hedge loser = waste, card =
   0 tokens, connection failure not billed, $ arithmetic, unverified price, metric fields in both modes, unused drafts
   counted at close, a superseded question still reports.
+
+## Memory v2 + follow-up latency (branch feat/memory; server/memory.py, web/graph.js)
+**Why Head Start follow-ups were slow** (event dumps from eval/run_conv.py --events):
+- The router planned the words as spoken. "when was it founded" matched no fact pattern, so it got the generic
+  "leads" plan, which holds paid speculation (route-hold). Nothing useful fired mid-sentence, and at the endpoint
+  58/72 follow-ups went "speculative-miss" (search after the endpoint).
+- "which museum is it in" ended on "in". The dangling-end rule held the final for REPAIR_HOLD_S, about 1.5 s of
+  endpoint lag in both modes.
+- The turn models (director / fused) read pronoun questions as unfinished. This mattered less than the two causes
+  above: Flux's EndOfTurn usually came at about the same time as the eager event.
+
+**Fixes** (all default on, each with its own flag):
+- `MEM_INLINE`: memory resolves the reference IN PLACE (`Frame.inline`), and `router.repaired_text` plans on it.
+  - "when was it founded" -> "when was nvidia founded"
+  - "where is its headquarters" -> "where is the headquarters of sony interactive entertainment"
+  - "what is the population there" -> "... in canberra" (the knowledge population pattern also accepts "in")
+  - "and AMD?" -> "who founded amd"
+  - "what about tomorrow?" -> today swapped for tomorrow
+  
+  Follow-ups now get the free Wikidata / card lanes, and speculation fires on the resolved meaning.
+- `MEM_PREWARM`: a free pre-warm after each answer. One SPARQL query fetches every PROPS property for the likely
+  next subjects (the answer entity and the question subject) into the knowledge cache. A follow-up's fact lookup
+  then needs no network call, and a lookup that arrives while the pre-warm is still in flight waits for it instead
+  of sending a second query.
+- `MEM_HOLD`: no speculation while a pronoun's referent is still being answered, or while the user is stating a
+  fact. The frame is rebuilt and speculated on as soon as that answer lands (`Session._refresh`).
+- Pronoun + stranded preposition ("is it in", "is he from ... for") no longer counts as a dangling end. On the 80
+  single eval questions, the only frame change is that "Mount Kilimanjaro, which country is it in" is no longer
+  held. All other frames and plans are unchanged (scratchpad frames_dump.py).
+- `MEM_EOT` (thresholds 0.4 / 0.7): a lower end-of-turn bar for frames that memory resolved in place. It only
+  touches follow-ups.
+
+**Memory v2** (`server/memory.py`):
+- Typed entities across turns: question entities, the answer's new entities (spans grown over capitalised words,
+  question repeats and demonyms dropped), and kind votes (question 2, answer 1, "what the question asked for" 3,
+  Wikidata values 3).
+- QIDs and property edges come from the facts docs that were used. Also kept: "said" edges (answer -> subject),
+  co-mention edges, and gender cues ("her husband" -> she / he).
+- References it resolves: it / he / she / there / possessives, "that company / city / person", "the first one",
+  "the other one", "going back to the first one". The asked-for answer entity leads for kind-naming questions
+  ("which company", "capital of", superlatives), and "where ..." questions keep "it" on the subject.
+- User facts ("I live in Denver", "I'm vegetarian / vegan", "I don't eat meat", "allergic to X"):
+  - A pure statement is acknowledged locally: path "memory", no search, no model call.
+  - A fact fills in what a later question leaves out: no place in a weather / time / sunset / "near me" question ->
+    home; a food question -> diet.
+  - The frame read-out and the UI say "using: you live in Denver".
+  - Facts never leave the machine except as the resolved query word.
+- Persistence: the browser sends a random id ("hello"). Memory is stored in `runs/memory/<sha256(id)[:24]>.json`
+  (git-ignored) with TTLs `MEM_CONV_TTL_S`=30 min (conversation) and `MEM_USER_TTL_S`=30 days (user facts).
+  "forget" clears it on screen, in the session and on disk. A scripted conversation starts fresh but keeps the user's
+  facts. Checked end to end in headless Chromium: restored after a reload, file deleted by forget.
+
+**Graph panel** (`web/graph.js`, `web/graph.css`):
+- Live SVG knowledge graph with a tiny force layout and no libraries. Colours by kind, Wikidata edges labelled,
+  user facts hang off "you".
+- The entity used to resolve the current follow-up gets a gold halo.
+- Placement: in the left column in the details view; a collapsible dock bottom right in the minimal view, above the
+  cost meter.
+- The note under the transcript reads "memory: going back to the first one -> Nvidia (turn 1) · asked as 'nvidia
+  when was it founded'".
+
+**Eval**: 21 spoken conversations (6 two-turn + 15 three-turn with pronouns, references, ellipsis and user facts;
+eval/make_conversations.py, `say` voices). eval/run_conv.py changes:
+- Scores every turn and supports repeats.
+- Clears the search cache and the router caches per run (A/B-honest).
+- Writes event dumps and incremental results.
+
+Follow-up turns, Wikipedia lane, EAR=flux, FLUX_SOFT=director. The machine was shared with other agents' training
+and evals, at load average 20-115. Absolute latencies moved 2-3x with load, so the same-run HS vs BL comparison is
+the number to read.
+
+| run | load | mode | follow-up p50 | p90 | correct | paid/q | HS paths |
+|---|---|---|---|---|---|---|---|
+| before (main 53b7fac, 2 reps) | ~30 | BL | 2134 | 3158 | 58/68 | 0.57 | |
+| | | HS | 1830 | 2557 | 54/68 | 0.51 | spec-miss 58/72, route-facts 6, spec-hit 4 |
+| before3 (main 66c017a, 1 rep) | ~40 | BL | 3440 | 4512 | 22/34 | 0.94 | |
+| | | HS | 3768 | 6094 | 27/34 | 1.25 | spec-hit 20, spec-miss 12, route-facts 4 |
+| after3 (feat/memory, 1 rep) | ~20 | BL | 1986 | 2322 | 28/34 | 0.58 | |
+| | | HS | **1548** | 2324 | **32/34** | 0.61 | spec-hit 23, draft-reuse 7, route-facts 5, spec-miss 1 |
+
+- Within run, the HS/BL follow-up p50 ratio went from 1.10 (before3) and 0.86 (before) to 0.78 (after3). On
+  turn 1 the ratios were 1.13 and 0.66: before3 ran loaded enough that HS lost on turn 1 too.
+- HS follow-ups are no longer slower than HS first questions: 1548 vs 1664 ms turn-1 p50 in after3.
+- The load-independent signals:
+  - Follow-ups searched after the endpoint: 12/36 -> 1/36.
+  - Correct follow-ups: 27 -> 32/34.
+  - Paid calls per follow-up: 1.25 -> 0.61.
+- Baseline also improved (22 -> 28/34), because the same memory resolution runs in both modes.
+- Remaining misses are ASR: "what other movies did he make" heard as "one other move deremy", and "Marie Curie"
+  heard as "mari guri" on turn 1, which then made "she" resolve to Pierre.
+- Runs: runs/conv_before*.json, runs/conv_after3.json (+ _events). Rerun both arms on a quiet machine before
+  quoting absolute ms.
+
+**Tests**: tests/test_memory.py has 27 tests:
+- Multi-turn resolution, kinds, gender, ordinals and "that company"
+- Ellipsis and time swap; Wikidata QIDs and edges
+- User facts: learned, used, a place said in the question wins, never added to unrelated queries
+- Store round trip / TTLs / forget / bad ids
+- The statement ack with no search; the hold and refresh; the end-of-turn bar
+- Prefetch filling the cache (no network on the follow-up)
+
+The full suite passes: 299.
+
+Screenshots (1280x720, light + dark, minimal + details, no console errors, no horizontal scroll at rest):
+scratchpad feature_shots/memory/ (conv07 three-turn "going back to the first one", conv12, conv19 user facts).
