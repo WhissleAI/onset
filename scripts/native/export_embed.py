@@ -8,7 +8,8 @@ Writes into --out:
   audio_fp32.onnx     input_features [B,F,128] f32 + input_features_mask [B,F] bool -> soft [B,T',512], mask [B,T']
   embed_tokens.npz    the token table as int8 rows + one f32 scale per row (gather in numpy), and the embed scale
   audio_frontend.npz  Gemma4AudioFeatureExtractor's window + HTK mel filter bank (numpy front end, no transformers)
-  tokenizer.json, config_sentence_transformers.json (prompts), LICENSE notes are copied by quantize_embed.py
+  tokenizer.json, config_sentence_transformers.json (prompts), LICENSE + NOTICE (models/embeddinggemma-2-onnx)
+Then scripts/native/quantize_embed.py --dir <out> turns *_fp32.onnx into the shipped 8-bit text.onnx / audio.onnx.
 
 Run it on a developer machine with torch + transformers (never in the app). One part per process keeps RSS ~2-3 GB.
 """
@@ -132,6 +133,8 @@ def export_tables(src: str, out: Path):
              max_samples=480000, pad_multiple=128)
     for f in ("tokenizer.json", "config_sentence_transformers.json"):
         shutil.copy(Path(src) / f, out / f)
+    for f in ("LICENSE", "NOTICE"):                     # Apache 2.0 text + what was changed (models/embeddinggemma-2-onnx)
+        shutil.copy(Path(__file__).resolve().parents[2] / "models" / "embeddinggemma-2-onnx" / f, out / f)
     print("tables exported")
 
 

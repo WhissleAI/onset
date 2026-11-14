@@ -1,0 +1,15 @@
+EmbeddingGemma 2 (ONNX build used by Onset)
+
+This folder contains a modified form of EmbeddingGemma 2 by Google DeepMind
+(https://huggingface.co/google/embeddinggemma-2, revision f9972ac22e696a105c482202646979e33e4b5a1e),
+licensed under the Apache License, Version 2.0 (see LICENSE). The model card links its licence at
+https://ai.google.dev/gemma/docs/gemma_4_license and asks that deployments follow the Gemma Prohibited Use Policy
+(https://ai.google.dev/gemma/prohibited_use_policy).
+
+Modifications by Whissle (scripts/native/export_embed.py, scripts/native/quantize_embed.py in the Onset repository):
+- the text and audio towers were exported to ONNX; the vision tower is not included;
+- the matrix-multiply weights were quantised to 8 bits (ONNX Runtime MatMulNBits, block 32, symmetric);
+- the token embedding table is stored as int8 rows with one float scale per row (embed_tokens.npz);
+- audio_frontend.npz holds the Gemma 4 audio feature extractor's window and mel filter bank (computed with
+  Hugging Face Transformers, Apache License 2.0).
+tokenizer.json and config_sentence_transformers.json are the upstream files, unchanged.

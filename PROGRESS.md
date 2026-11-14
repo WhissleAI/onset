@@ -1973,3 +1973,44 @@ the answer's entities with their kinds and the answer text. Tests: the recorded 
 - **Build / preview**: `python3 scripts/pages/build.py && python3 -m http.server 8812 -d _site` (stdlib only).
   Deploy: `.github/workflows/pages.yml` on push to main (paths site/, web/, scorecard, scripts/pages). Needs Pages
   enabled with source "GitHub Actions" (not done: a repo setting). Tests: `tests/test_pages.py`.
+## Native runtime: EmbeddingGemma 2 on ONNX Runtime, Arc encoder + trunk exported (branch feat/native; MACAPP.md "Native runtime")
+Goal: the public notarized app runs every model through ONNX Runtime or C, with no PyTorch at runtime and the models
+in the bundle. Where it stands:
+- **Inventory** (MACAPP.md table): EmbeddingGemma 2 and Arc v1 Mini (with the Moonshine Streaming tiny encoder and
+  decoder) are torch. The Arc Tagger is already C (libarctag reads its ONNX itself, on Accelerate), with two handles:
+  the question, plus the answer stream for server/safety.py. The search director, Keystone (kdir/voi/ttl/ahash/
+  verify), calibration, confidence and the ArcState prior are numpy/JSON. The Arc Transcriber is opt-in and not bundled.
+- **EmbeddingGemma 2 → ONNX** (server/embed_onnx.py; `ONNX_RUNTIME=1`, default off). Text and audio towers, 8-bit
+  weight-only MatMulNBits (block 32, accuracy_level 4); int8 token table in numpy; numpy log-mel; `tokenizers`.
+  669 MB instead of 1,525 MB. Runs in a venv without torch (checked: torch / transformers never imported).
+  Two export fixes: the audio tower's mask is rebuilt without vmap and as **bool** (Transformers' eager path inverts
+  it; sdpa = production is right); unfold becomes a gather.
+  - parity vs the torch path the server runs (scripts/native/parity_embed.py): cosine queries 0.99988, leads 0.99959,
+    moments 0.99974, audio 0.99984; shipped 11k-lead index top-1 agreement 1.00, top-5 0.978; rerank top-5 0.958
+    (f32 ONNX ceiling 0.974: torch embeds docs in bf16 on MPS). Rejected: dynamic int8 (rerank 0.694), 4-bit (0.728).
+  - local moments eval (index/eval_local.py, 20 spoken questions): every mode identical except fused_tal on the ASR
+    text, r@1 0.80 → 0.75 (one question).
+  - latency p50: query 13 ms vs 55 ms; 8 docs 605 vs 265 ms (CPU vs MPS); 3 s audio 329 vs 123 ms; warm-up 2.3 vs 16 s;
+    peak RSS 2.6 vs 3.0 GB. CoreML EP can't build these graphs.
+  - **58 set, real audio, Wikipedia, EAR=flux** (torch / ONNX / torch in sequence): 58/58 correct in all three runs;
+    p50 1,632 / **1,618** / 1,436 ms; paired median ONNX − torch +30 and +52 ms vs torch − torch −74 ms. That is
+    within noise, so the flag stays **off** until a cleaner A/B shows p50 no worse.
+- **Arc** (server/arc_onnx.py): the Moonshine streaming encoder (embedder, 6 sliding-window layers, norm) and
+  Trunk.step with explicit `h`/`bx` state are exported. Parity on 12 eval questions in live 100 ms chunks: cos ≥
+  0.9999997, 0 frame-tag flips in 26k cells; 25.7 vs 20.9 ms per 100 ms of audio. **Not done**: heads + Engine +
+  the builtin decoder beam search + alignment, so Arc (and the app) still needs torch + transformers. The plan and the
+  smallest fallback are in MACAPP.md.
+- **Sizes**: today 736 MB runtime + 2.21 GB models. ONNX_RUNTIME=1 now: models 1.36 GB, runtime est. ~670 MB.
+  All native (macapp/requirements-native.txt, measured install 172 MB + ~39 MB interpreter): est. ~1.1-1.3 GB total.
+- **Licences** (MACAPP.md table): EmbeddingGemma 2 is Apache 2.0, shipped with LICENSE + NOTICE of our changes
+  (models/embeddinggemma-2-onnx), and the Gemma Prohibited Use Policy applies. Arc v1 and the Arc Tagger are
+  CC BY-NC 4.0 (+ Whissle terms): fine for a free download, but commercial or business use needs Whissle's own call.
+  Moonshine, cJSON and ONNX Runtime are MIT. libsndfile is LGPL-2.1. **index-data (broadcast and private
+  recordings) and demo-audio must not ship in a public build.**
+- Hand-off to feat/release: `models/manifest.json` entry `embeddinggemma-2-onnx` (8 files, sha256), the switch,
+  `onnxruntime==1.32.0` (8-bit MatMulNBits; 1.20 in the dev venv only runs 4-bit, so the e2e used an overlay venv).
+- Tests: tests/test_native.py (8): the switch routes every call, numpy conv/Pooler == arc_audio, log-mel ==
+  Transformers' extractor, batch invariance, manifest checksums, native requirements free of torch. The two
+  model-backed tests skip without the export or with onnxruntime < 8-bit support.
+- Tools: scripts/native/{export_embed,quantize_embed,parity_embed,export_arc,parity_arc}.py;
+  index/eval_local.py gains LOCAL_EVAL_CACHE / LOCAL_EVAL_OUT (a comparison never overwrites index data).
