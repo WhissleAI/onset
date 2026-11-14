@@ -1564,7 +1564,11 @@ class Speculator:
             r = await recheck.run(text, docs, qtext, v, web=web, paid_ok=paid_ok)
         except Exception as e:
             r = {"status": "error", "error": f"{type(e).__name__}: {e}"[:120]}
-        m["recheck"] = {k: r.get(k) for k in ("status", "label", "claim", "lanes", "paid", "ms", "source", "value")}
+        m["recheck"] = {k: r.get(k) for k in ("status", "label", "claim", "lanes", "paid", "ms", "source", "value",
+                                              "extract")}
+        if r.get("extract_credits"):       # VERIFY_EXTRACT (server/extract.py): the page read is paid, after the answer
+            m["credits_extract"] = r["extract_credits"]
+            m["credits"] = (m.get("credits") or 0) + r["extract_credits"]
         if r.get("patched"):
             m["answer_patched"] = r["patched"]
         if r.get("paid"):

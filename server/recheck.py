@@ -20,8 +20,12 @@ import time
 from . import config, verify
 
 
-def key_claim(v: dict) -> dict | None:
-    """The claim worth re-checking: the disputed one, else the first unsupported year / number, else name."""
+def key_claim(v: dict, loose: bool | None = None) -> dict | None:
+    """The claim worth re-checking: the disputed one, else the first unsupported year / number, else name.
+    `loose` (default: VERIFY_EXTRACT on) also takes "The Milwaukee Brewers"-style names (a leading "The")."""
+    if loose is None:
+        from . import extract
+        loose = extract.VERIFY_EXTRACT
     cl = v.get("claims") or []
     for c in cl:
         if c.get("conflict"):
@@ -31,13 +35,17 @@ def key_claim(v: dict) -> dict | None:
     for kinds in (("year", "number"), ("name",)):
         for c in cl:
             if c.get("kind") in kinds and not c.get("support"):
-                if c["kind"] == "name" and not _real_name(c["text"]):
+                if c["kind"] == "name" and not _real_name(_strip_the(c["text"]) if loose else c["text"]):
                     continue
                 return c
     return None
 
 
 _NOT_NAME = {"its", "his", "her", "their", "i'm", "i", "command", "shift", "control", "option", "the", "a"}
+
+
+def _strip_the(t: str) -> str:
+    return re.sub(r"^(?:the)\s+", "", t, flags=re.I)
 
 
 def _real_name(t: str) -> bool:
@@ -200,6 +208,16 @@ async def run(answer: str, docs: list, question: str, v: dict, web=None, paid_ok
             out.update(status="unconfirmed", source=src, label="still unconfirmed")
     elif out["status"] == "skip":
         out.update(status="unconfirmed", label="still unconfirmed")
+    from . import extract
+    if out["status"] == "unconfirmed" and extract.VERIFY_EXTRACT and docs:
+        # VERIFY_EXTRACT: read the cited page itself (Tavily /extract, claim sentence as the query)
+        pg = await extract.recheck_page(claim, answer, docs)
+        if pg["status"] != "skip":
+            tried.append("extract")
+            out["extract"] = {k: pg.get(k) for k in ("status", "url", "credits", "ms", "error", "why")}
+            out["extract_credits"] = pg.get("credits") or 0.0
+            if pg["status"] == "rechecked":
+                out.update(status="rechecked", source="page", label="re-checked ✓ page")
     out["lanes"] = tried
     out["ms"] = round((time.perf_counter() - t0) * 1000)
     return out
