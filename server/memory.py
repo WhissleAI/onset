@@ -181,7 +181,9 @@ class Memory:
             return None
         # "nvidia" said, "nvidia corporation" in the answer: one node (the shorter name wins as key if already there)
         for k in list(self.ents):
-            if key != k and (key.startswith(k + " ") or k.startswith(key + " ")):
+            if key != k and (key.startswith(k + " ") or k.startswith(key + " ")
+                             # "Huang" after "Jensen Huang": the same person by surname
+                             or (" " not in key and k.endswith(" " + key) and self.ents[k].get("kind") == "person")):
                 key = k
                 break
         e = self.ents.get(key)

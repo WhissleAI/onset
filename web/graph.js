@@ -7,7 +7,7 @@
 (function () {
   "use strict";
   const KEY = "hs-client", OPEN = "hs-mem-open";
-  const W = 300, H = 196;
+  const W = 300, H = 160;
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
@@ -25,7 +25,8 @@
   const NS = "http://www.w3.org/2000/svg";
 
   let send = null, primary = "headstart", graph = { nodes: [], edges: [], user: [] }, focus = null, pos = {};
-  let persist = false, note = "", noteQ = null, flash = 0;
+  let persist = false, note = "", noteQ = null;
+  const turnsOf = {};
 
   // ------------------------------------------------------------------ DOM
   const dock = document.createElement("section");
@@ -81,7 +82,20 @@
     u.innerHTML = note;
   }
 
+  // details view: the dock sits in the left column under the replay list (no overlap); minimal view: bottom right
+  function place() {
+    const side = document.querySelector(".side");
+    const inSide = !!(side && side.offsetParent !== null && getComputedStyle(side).display !== "none" && window.innerWidth > 980);
+    if (inSide && dock.parentElement !== side) side.appendChild(dock);
+    else if (!inSide && dock.parentElement !== document.body) document.body.appendChild(dock);
+    dock.classList.toggle("in-side", inSide);
+  }
+  window.addEventListener("resize", place);
+  document.addEventListener("keyup", () => setTimeout(place, 50));
+  new MutationObserver(() => place()).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+
   function paintDock() {
+    place();
     const n = graph.nodes.length + (graph.user || []).length;
     dock.classList.toggle("open", open);
     dock.classList.toggle("has", n > 0);
@@ -205,14 +219,7 @@
       if (e.persist !== undefined) persist = !!e.persist;
       if (e.forgot) { focus = null; note = ""; }
       if (e.graph) { graph = e.graph; if (e.graph.focus && !e.used) focus = e.graph.focus; }
-      if (e.used) {
-        focus = e.used;
-        const ts = (e.turns || []).length ? ` <span class="muted">(turn ${e.turns[0]})</span>` : "";
-        const ref = e.ref ? esc(e.ref) : "reference";
-        note = `<i>memory</i> ${ref} → <b>${esc(e.label || e.used)}</b>${ts}` + (e.inline ? ` <span class="muted">· asked as “${esc(e.inline)}”</span>` : "");
-        noteQ = e.q;
-        flash = Date.now();
-      }
+      if (e.used) { focus = e.used; turnsOf[e.used] = e.turns || []; }
       if (e.learned && e.learned.length) {
         note = `<i>remembered</i> ${e.learned.map((x) => esc(x.label)).join(" · ")} <span class="muted">· stays on this device</span>`;
         noteQ = e.q;
@@ -222,6 +229,18 @@
     }
     if (e.t === "frame") {
       if (noteQ != null && e.q !== noteQ && !(e.memory || e.carried)) { note = ""; noteQ = null; paintNote(); }
+      if (e.carried) {
+        // the latest frame says what the reference resolved to (partials may resolve differently on the way)
+        const k = String(e.carried).toLowerCase();
+        const ts = (turnsOf[k] || []).length ? ` <span class="muted">(turn ${turnsOf[k][0]})</span>` : "";
+        const ref = (e.memory && e.memory.ref) || "reference";
+        const inl = e.memory && e.memory.inline;
+        note = `<i>memory</i> ${esc(ref)} → <b>${esc(k.replace(/\b\w/g, (c) => c.toUpperCase()))}</b>${ts}` + (inl ? ` <span class="muted">· asked as “${esc(inl)}”</span>` : "");
+        noteQ = e.q;
+        if (graph.nodes.some((n) => n.id === k)) focus = k;
+        paint();
+        return;
+      }
       const u = e.memory && e.memory.user;
       if (u && u.length) {
         note = `<i>using</i> ${u.map(esc).join(" · ")} <span class="muted">· from what you told me</span>`;

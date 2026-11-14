@@ -50,3 +50,6 @@
 .mem-note { margin-top: 4px; font-size: 12px; color: var(--ink-2); line-height: 1.35; }
 .mem-note[hidden] { display: none; }
 @media (max-width: 640px) { .mem-body { width: calc(100vw - 28px); } }
+.mem-dock.in-side { position: static; max-width: none; flex: none; }
+.mem-dock.in-side .mem-body { width: 100%; box-shadow: var(--shadow); padding: 6px; }
+.mem-dock.in-side .mem-head .mem-sub { display: none; }

@@ -921,6 +921,8 @@ class Session:
             r = self.ans_tagger.tag_text(re.sub(r"\[\d+\]", "", m.get("answer") or ""))
             ans_spans = memmod.answer_entities(r.get("words") or [], r.get("spans", []),
                                                [framemod.norm(w) for w in f.words])
+            if m.get("answer_by") == "card":
+                ans_spans = []                 # a live-data card ("Low 2°C ...") names no entities worth keeping
             for sp in r.get("spans", []):
                 if sp.get("family") != "entity" or not sp["type"].startswith("entity.mention"):
                     continue

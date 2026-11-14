@@ -71,6 +71,18 @@ async def run(conv, mode):
     return s.history, ev
 
 
+def _out():
+    tag = args.tag or ("nomem" if args.no_memory else "")
+    return ROOT / "runs" / (f"conv_{tag}.json" if tag else "conv.json")
+
+
+def _write(res, events):
+    out = _out()
+    out.write_text(json.dumps(res, indent=1))
+    if args.events:
+        out.with_name(out.stem + "_events.json").write_text(json.dumps(events, indent=1))
+
+
 async def main():
     ear.warmup(); embed.warmup(); await lanes.warm_web(); await answer.warm()
     convs = [json.loads(x) for x in Path(args.convs).read_text().splitlines() if x.strip()]
@@ -100,11 +112,9 @@ async def main():
                 fu = " | ".join(f'{t["i"]}:{t["query"]!r} {t["ready_ms"]}ms {t["path"]} ok={t["correct"]}'
                                 for t in row["turns"])
                 print(f'{c["id"]} {mode:9s} r{rep} answers={len(h)}/{len(c["turns"])} {fu}', flush=True)
-    tag = args.tag or ("nomem" if args.no_memory else "")
-    out = ROOT / "runs" / (f"conv_{tag}.json" if tag else "conv.json")
-    out.write_text(json.dumps(res, indent=1))
-    if args.events:
-        out.with_name(out.stem + "_events.json").write_text(json.dumps(events, indent=1))
+                _write(res, events)                     # incremental: a stopped run keeps what it measured
+    out = _out()
+    _write(res, events)
     # summary: follow-up turns (2..n) per mode
     print("\nfollow-up turns (2..n):")
     for mode in args.modes.split(","):
