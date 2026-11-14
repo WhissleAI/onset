@@ -23,7 +23,7 @@ from server.session import clean  # noqa: E402
 from server.tagger import Tagger  # noqa: E402
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--traces", default="/Users/karan/Desktop/work/whissle/arc_tagger_handoff/data/sources/flux_traces.jsonl.gz")
+ap.add_argument("--traces", default=os.path.join(os.environ.get("ARC_HANDOFF", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "arc_tagger_handoff")), "data", "sources", "flux_traces.jsonl.gz"))
 ap.add_argument("--srcs", default="director,eval80,pii")
 ap.add_argument("--limit", type=int, default=0)
 ap.add_argument("--out", default=str(ROOT / "runs/loop/asr_eval.json"))
