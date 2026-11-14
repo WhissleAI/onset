@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 
 import httpx
@@ -505,7 +506,7 @@ def web_health() -> dict:
     st = "cache" if config.WEB_BACKEND == "cache" else WEB_STATUS["status"]
     out = {"backend": config.WEB_BACKEND, "status": st, "live": st == "live",
            "fallback": "cache" if (st in ("cache", "down") and len(c)) else ("none" if st in ("cache", "down") else ""),
-           "last_error": WEB_STATUS["last_error"], "cache_entries": len(c), "cache_path": str(c.path),
+           "last_error": WEB_STATUS["last_error"], "cache_entries": len(c), "cache_path": str(c.write_path), "cache_seed": str(c.path),
            "cache_recorded": c.recorded}
     if config.ROUTER:
         from . import router
@@ -522,12 +523,14 @@ class WebCache:
     """Recorded web-lane responses: normalized query -> docs. Exact hit on the normalized query, else the entry that
     covers the most of the query's words (>= WEB_CACHE_MIN_COVER of them; ties: fewest extra words)."""
 
-    def __init__(self, path):
-        self.path = path
+    def __init__(self, path, write_path=None):
+        self.path = path                       # the seed (read-only in the app bundle)
+        self.write_path = Path(write_path) if write_path is not None else Path(path)
         self.entries: dict[str, dict] = {}
         self.recorded: str | None = None
+        src = self.write_path if self.write_path != Path(path) and self.write_path.exists() else path
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(Path(src).read_text())
             self.entries = data.get("entries") or {}
             self.recorded = data.get("recorded")
         except (OSError, ValueError):
@@ -568,10 +571,11 @@ class WebCache:
 
     def save(self):
         self.recorded = time.strftime("%Y-%m-%dT%H:%M:%S")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
+        out = self.write_path
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp")
         tmp.write_text(json.dumps({"version": 1, "recorded": self.recorded, "entries": self.entries}, indent=1))
-        tmp.replace(self.path)
+        tmp.replace(out)
 
 
 _cache: WebCache | None = None
@@ -580,7 +584,7 @@ _cache: WebCache | None = None
 def web_cache() -> WebCache:
     global _cache
     if _cache is None or _cache.path != config.WEB_CACHE_PATH:
-        _cache = WebCache(config.WEB_CACHE_PATH)
+        _cache = WebCache(config.WEB_CACHE_PATH, getattr(config, "WEB_CACHE_WRITE_PATH", None) or config.WEB_CACHE_PATH)
     return _cache
 
 

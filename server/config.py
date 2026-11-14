@@ -158,6 +158,10 @@ CHATTER_RATIO = float(os.environ.get("CHATTER_RATIO", "0.25"))   # -12 dB vs the
 # Degraded / offline demo mode (see DEMO_CHECKLIST.md). WEB_BACKEND=cache serves the web lane only from the recorded
 # cache; with a live backend the cache is the fallback when a live call fails (flagged "cached" in events, metric, UI).
 WEB_CACHE_PATH = Path(os.environ.get("WEB_CACHE_PATH", ROOT / "runs/web_cache.json"))
+# writes (WEB_CACHE_RECORD) never go into the app bundle: with HEADSTART_DATA_DIR they land in the data dir, and the
+# bundled runs/web_cache.json stays a read-only seed
+WEB_CACHE_WRITE_PATH = (Path(os.environ["WEB_CACHE_WRITE_PATH"]) if os.environ.get("WEB_CACHE_WRITE_PATH") else
+                        DATA_DIR / "web_cache.json" if os.environ.get("HEADSTART_DATA_DIR") else None)   # None: WEB_CACHE_PATH
 WEB_CACHE_FALLBACK = os.environ.get("WEB_CACHE_FALLBACK", "1") == "1"   # live failure -> recorded cache
 WEB_CACHE_RECORD = os.environ.get("WEB_CACHE_RECORD", "0") == "1"       # write every live result into the cache file
 WEB_CACHE_MIN_COVER = float(os.environ.get("WEB_CACHE_MIN_COVER", "0.75"))   # fuzzy hit: share of query words covered
