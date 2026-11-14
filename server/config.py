@@ -383,6 +383,10 @@ PLAIN_CONTEXT = os.environ.get("PLAIN_CONTEXT", "0") == "1"   # plain arm: give 
 LOOP_ASR_FIX = os.environ.get("LOOP_ASR_FIX", "0") == "1"
 LOOP_KEEP_CONF = float(os.environ.get("LOOP_KEEP_CONF", "0.9"))      # never override a word at / above this
 LOOP_SUSPECT_CONF = float(os.environ.get("LOOP_SUSPECT_CONF", "0.7"))  # a word below this makes its span suspect
+# Off by default (the "never override a high-confidence word" rule): an Arc mention whose words are ALL high-confidence
+# may still change, but only to a name with the identical phonetic key that the context (results / memory / answer /
+# Wikidata) holds. Flux heard "mari guri" at 0.905 / 1.0 (conv21): only this path can fix it.
+LOOP_KEEP_EXACT = os.environ.get("LOOP_KEEP_EXACT", "0") == "1"
 LOOP_LOW_CONF = float(os.environ.get("LOOP_LOW_CONF", "0.5"))       # outside an Arc mention, the leads index needs this
 LOOP_FIX_MIN = float(os.environ.get("LOOP_FIX_MIN", "0.84"))        # match score to rewrite
 LOOP_FIX_MARGIN = float(os.environ.get("LOOP_FIX_MARGIN", "0.05"))  # over the runner-up candidate

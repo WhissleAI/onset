@@ -318,8 +318,9 @@ def suspects(f, wconf) -> list[tuple[int, int, str, bool]]:
             return False
         if have and any(wconf[i] >= keep for i in range(a, b)):
             # never override a high-confidence word; inside an Arc mention it may stay as an anchor ("jensen" of
-            # "jensen hwang"): the candidate must then contain it unchanged (propose checks)
-            return pin_ok and any(wconf[i] < keep for i in range(a, b))
+            # "jensen hwang"): the candidate must then contain it unchanged (propose checks). LOOP_KEEP_EXACT (off by
+            # default) lets an Arc mention through: propose then needs an exact sound match from the context
+            return (pin_ok and any(wconf[i] < keep for i in range(a, b))) or (pin_ok and config.LOOP_KEEP_EXACT)
         return True
 
     for a, b, t in ments:
@@ -376,7 +377,8 @@ def propose(f, wconf, pool: Pool | None = None, use_leads: bool = True) -> list[
             continue                                     # heard as an existing name: nothing to fix
         if any(spoken(c.name) == sp for c in ctx):
             continue
-        pinned = [toks[i] for i in range(a, b) if have and wconf[i] >= config.LOOP_KEEP_CONF]
+        hi = have and all(wconf[i] >= config.LOOP_KEEP_CONF for i in range(a, b))
+        pinned = [] if hi else [toks[i] for i in range(a, b) if have and wconf[i] >= config.LOOP_KEEP_CONF]
         scored = {}
         for c in cands:
             cs = spoken(c.name)
@@ -395,6 +397,9 @@ def propose(f, wconf, pool: Pool | None = None, use_leads: bool = True) -> list[
             s, ph, orth = similarity(sp, cs)
             if ph < 0.6:
                 continue
+            if hi and (c.src == "leads" or pkey(sp) != pkey(cs) or orth < 0.7):
+                continue                                 # LOOP_KEEP_EXACT: sure words change only to a same-sound name
+                                                         # the conversation / results already hold
             if c.src == "leads":
                 s -= config.LOOP_LEADS_PENALTY           # 11K titles: only a near-exact sound match counts
                 if len(cs.split()) == 1 and len(sp.split()) == 1:

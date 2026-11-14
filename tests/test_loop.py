@@ -252,3 +252,19 @@ def test_jailbreak_flag_stops_speculation():
 def test_typed_today_on_an_evergreen_question_sets_no_range():
     f = fr("what time does the louvre in paris close today", [(PL, 4, 5), (D, 8, 9)])
     assert f.when == "day" and "time_range" not in f.web_hints()
+
+
+def test_keep_exact_lets_a_sure_mention_change_only_to_a_same_sound_context_name(monkeypatch):
+    """conv21: Flux heard "mari guri" at 0.905 / 1.0. Off by default; LOOP_KEEP_EXACT=1 lets the answer's / memory's
+    "Marie Curie" (same phonetic key) fix it, never the offline index."""
+    f = fr("who was mari guri", [(P, 2, 4)])
+    sure = [0.99, 0.99, 0.905, 1.0]
+    pool = heard.Pool()
+    pool.add("Marie Curie", "memory", "person")
+    assert heard.propose(f, sure, pool) == []
+    monkeypatch.setattr(config, "LOOP_KEEP_EXACT", True)
+    assert [x.name for x in heard.propose(f, sure, pool)] == ["Marie Curie"]
+    assert heard.propose(f, sure, None) == []                       # leads alone: never on sure words
+    pool2 = heard.Pool()
+    pool2.add("Mary Guerra", "memory", "person")                    # close, not the same sound key
+    assert heard.propose(f, sure, pool2, use_leads=False) == []
