@@ -445,6 +445,12 @@ class Memory:
         if "prev" not in base:
             base["prev"] = {"content": prev["content"], "entities": prev["q_ents"], "intent": prev["intent"],
                             "question": prev["q"], "inline": prev.get("inline", "")}
+        # what a relative reference needs ("the old one" -> server/ellipsis.py): the previous answer's entities (the
+        # thing it named first), how long ago, how many subjects the conversation has
+        base["prev"] = {**base["prev"],
+                        "answers": [self.ents[k]["name"].lower() for k in prev.get("a_new") or [] if k in self.ents][:2],
+                        "age_s": max(0.0, time.time() - prev["at"]) if prev.get("at") else None,
+                        "n_subjects": len(self.subjects())}
         return base
 
     def note_used(self, key: str | None):

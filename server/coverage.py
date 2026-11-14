@@ -38,6 +38,9 @@ def _fold(s: str) -> str:
 
 def key_terms(f) -> list[str]:
     """The question's subject phrase(s), normalised; [] when the question names none (then the guard does nothing)."""
+    if getattr(f, "rewritten", ""):
+        return []           # a rewritten relative reference ("the old one" -> the president before X): its answer is
+                            # a NEW entity the sources name, not the carried one (server/ellipsis.py)
     out = [v for t, v in (f.slots or ()) if t not in NUMBER_TYPES and v]
     if not out and getattr(f, "carried", ""):
         out = [f.carried]

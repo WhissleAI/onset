@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, calibrate, confidence, config, cost, coverage, director, embed, lanes, meter, narrow, planner, recheck, rerank, searchcache, verify
+from . import answer, calibrate, confidence, config, cost, coverage, ellipsis, director, embed, lanes, meter, narrow, planner, recheck, rerank, searchcache, verify
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
@@ -1197,7 +1197,13 @@ class Speculator:
             self.answer_stream.cancel()           # superseded soft answer
             self.answer_stream = None
         self.closed = close
-        m = {"mode": self.mode, "question": f.text, "query": f.query(), "intent": f.intent, "endpoint_by": by,
+        ell = {}
+        if ellipsis.LLM and self.mode == "headstart" and self.context and ellipsis.needs_llm(f):
+            if await ellipsis.llm_rewrite(f, self.context, ell):  # rules left a short anaphoric turn alone (<= 0.4 s)
+                getattr(lanes, "_plan_memo", {}).pop(id(f), None)  # the router re-plans the rewritten question
+            if not live():
+                return {"mode": self.mode, "question": f.text, "superseded": True}
+        m = {"mode": self.mode, "question": f.text, **({"rewrite_llm": ell} if ell else {}), "query": f.query(), "intent": f.intent, "endpoint_by": by,
              "endpoint_lag_ms": round((t_end - t_speech_end) * 1000), "web_hints": f.web_hints(),
              "redacted": list(f.redacted), "jailbreak": f.jailbreak,
              **({"heard": list(f.resolved)} if f.resolved else {})}      # LOOP_ASR_FIX rewrites (heard.py)

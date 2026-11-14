@@ -227,6 +227,7 @@ class Frame:
     # resolved ("that company", "the first one"), and the user facts the query used ("home": "denver")
     inline: str = ""
     mem_ref: str = ""
+    rewritten: str = ""              # a relative reference rewritten standalone ("the old one" -> server/ellipsis.py)
     user_used: tuple = ()
     # Arc-off ("plain voice search", mode="plain" / ARC_OFF=1): a frame built from the words alone, no tagger read-out.
     # Its query is the raw transcript cleaned of punctuation; no correction handling, carry, redaction, hints, lanes.
@@ -286,6 +287,8 @@ class Frame:
         t = self.clean_text
         if self.user_used:
             t = f"{t} ({', '.join(v for _, v in self.user_used)})"
+        if self.rewritten:
+            return f"{self.rewritten} (said: \"{t}\", follow-up to: {self.followup_of})"
         if self.followup_of:
             return f"{t} (follow-up to: {self.followup_of})"
         return f"{t} ({self.carried})" if self.carried else t
@@ -864,6 +867,21 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
     elliptic = bool(prev) and (toks[:1] in (["and"], ["also"]) or head2 in (["what", "about"], ["how", "about"])
                                or bare)
     prev_q = [norm(w) for w in ((prev or {}).get("inline") or (prev or {}).get("question", "")).split() if norm(w)]
+    # noun-phrase ellipsis / relative reference ("the old one", "the next one", "who was before him"): the previous
+    # question's head + answer give a standalone question (server/ellipsis.py). Never with a new entity of its own.
+    nr = None
+    if prev and not has_mention:
+        from . import ellipsis
+        nr = ellipsis.resolve(toks, prev) if ellipsis.ENABLED else None
+    if nr:
+        ent, elliptic = None, False
+        f.inline = f.rewritten = nr["inline"]
+        f.mem_ref = nr["ref"]
+        f.followup_of = prev.get("question", "")
+        content = list(dict.fromkeys(w for w in (norm(x) for x in nr["inline"].split()) if w and w not in STOP))
+        f.phrases = (nr["answer"],) if nr["answer"] else f.phrases
+        if not f.intent and prev.get("intent"):
+            f.intent = prev["intent"]
     if elliptic and not ent:
         pc = list(prev.get("content") or [])
         pents = [w for e in prev.get("entities") or [] for w in e.split()]
