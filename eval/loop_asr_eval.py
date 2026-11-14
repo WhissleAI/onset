@@ -28,6 +28,9 @@ ap.add_argument("--srcs", default="director,eval80,pii")
 ap.add_argument("--limit", type=int, default=0)
 ap.add_argument("--out", default=str(ROOT / "runs/loop/asr_eval.json"))
 ap.add_argument("--no-conf", action="store_true", help="drop word confidence (an ear without it: Arc's own)")
+ap.add_argument("--spec", action="store_true", help="add this question's speculative results (WEB_BACKEND=wikipedia "
+                "search of the heard query + entity, as live) to the candidates; fetched once per suspect trace, cached")
+ap.add_argument("--no-leads", action="store_true", help="candidates without the local leads index")
 args = ap.parse_args()
 
 T = Tagger(domain="assistant")
@@ -95,12 +98,39 @@ def same(a: str, b: str) -> bool:
     return heard.letters(heard.spoken(a)) == heard.letters(heard.spoken(b))
 
 
-def main():
-    rows = []
-    stats = collections.Counter()
-    ex = collections.defaultdict(list)
+SPEC_CACHE = ROOT / "runs/loop/spec_cache.json"
+
+
+def fetch_spec(queries: dict) -> dict:
+    """{trace id: (query, entity)} -> {trace id: [{title, text}]}: the live web lane on WEB_BACKEND=wikipedia."""
+    import asyncio
+    from server import lanes
+    cache = json.loads(SPEC_CACHE.read_text()) if SPEC_CACHE.exists() else {}
+    todo = {k: v for k, v in queries.items() if "|".join(v) not in cache}
+
+    async def run():
+        sem = asyncio.Semaphore(6)
+
+        async def one(q, e):
+            async with sem:
+                try:
+                    docs = await asyncio.wait_for(lanes.wikipedia(q, entity=e), 8)
+                    cache["|".join((q, e))] = [{"title": d.title, "text": d.text[:500]} for d in docs]
+                except Exception:
+                    pass
+        await asyncio.gather(*[one(q, e) for q, e in set(todo.values())])
+    if todo:
+        print(f"fetching {len(set(todo.values()))} speculative searches", flush=True)
+        asyncio.run(run())
+        SPEC_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        SPEC_CACHE.write_text(json.dumps(cache))
+    return {k: cache.get("|".join(v), []) for k, v in queries.items()}
+
+
+def prepare():
+    """Pass 1: every trace -> (trace, words, frame, wconf)."""
+    out = []
     srcs = set(args.srcs.split(","))
-    t0 = time.time()
     n = 0
     with gzip.open(args.traces, "rt") as fh:
         for line in fh:
@@ -119,7 +149,40 @@ def main():
             if not args.no_conf and any(c is not None for c in confs) and len(h["revs"]) == len(words):
                 fused = confidence.word_confs(words, confs, h["revs"], h["age"], spans)
                 wc = heard.suspect_conf(confs, fused)
-            fixes = heard.propose(f, wc, None)
+            out.append((tr, words, f, wc))
+    return out
+
+
+def main():
+    t0 = time.time()
+    items = prepare()
+    spec = {}
+    if args.spec:
+        qs = {tr["id"] + tr["src"]: (f.query(), f.entity_query()) for tr, w, f, wc in items
+              if f.query() and heard.suspects(f, wc)}
+        spec = fetch_spec(qs)
+    out = {}
+    variants = [("leads", False, True)] + ([("spec", True, False), ("spec+leads", True, True)] if args.spec else [])
+    for name, use_spec, use_leads in variants:
+        heard.set_leads(GAZ if use_leads else heard.Gazetteer([]))
+        out[name] = variant(items, spec if use_spec else {}, t0)
+        print(name, json.dumps(out[name]["summary"], indent=1), flush=True)
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out).write_text(json.dumps(out, indent=1))
+
+
+def variant(items, spec, t0):
+    stats = collections.Counter()
+    ex = collections.defaultdict(list)
+    for tr, words, f, wc in items:
+        if True:
+            pool = None
+            if spec.get(tr["id"] + tr["src"]):
+                from server.lanes import Doc
+                pool = heard.Pool()
+                pool.add_docs([Doc(id=f"{tr['id']}:{i}", title=d["title"], text=d["text"], url="", source="wikipedia")
+                               for i, d in enumerate(spec[tr["id"] + tr["src"]])])
+            fixes = heard.propose(f, wc, pool)
             said = toks_of(tr["intended"])
             caps = cap_positions(tr["intended"])
             ht = [framemod.norm(w) for w in words]
@@ -136,6 +199,8 @@ def main():
             stats["misheard_names"] += len(mis)
             for m in mis:
                 sp = heard.spoken(m[4])
+                if pool and any(heard.spoken(c.name) == sp for c in pool.c.values()):
+                    stats["in_spec"] += 1
                 if sp in GAZ.spoken:
                     stats["fixable"] += 1
                     if wc and m[3] > m[2] and max(wc[m[2]:m[3]]) < config.LOOP_KEEP_CONF:
@@ -186,17 +251,16 @@ def main():
         "precision": round(stats["correct"] / fx, 3) if fx else None,
         "false_rate_per_1k_traces": round(1000 * stats["false"] / max(1, stats["traces"]), 2),
         "misheard_name_spans": stats["misheard_names"], "fixable_in_leads": stats["fixable"],
-        "reachable_low_conf": stats["reachable"], "fixable_and_reachable": stats["fixable_reachable"],
+        "in_spec_results": stats["in_spec"], "reachable_low_conf": stats["reachable"], "fixable_and_reachable": stats["fixable_reachable"],
         "recalled": stats["recalled"],
         "recall": round(stats["recalled"] / max(1, stats["misheard_names"]), 3),
         "recall_fixable": round(stats["recalled"] / max(1, stats["fixable"]), 3),
         "secs": round(time.time() - t0, 1),
         "config": {k: getattr(config, k) for k in ("LOOP_KEEP_CONF", "LOOP_SUSPECT_CONF", "LOOP_LOW_CONF",
-                                                   "LOOP_FIX_MIN", "LOOP_FIX_MARGIN")} | {"no_conf": args.no_conf},
+                                                   "LOOP_FIX_MIN", "LOOP_FIX_MARGIN")} | {"no_conf": args.no_conf,
+                                                   "spec": args.spec, "no_leads": args.no_leads},
     }
-    print(json.dumps(summary, indent=1))
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps({"summary": summary, "examples": ex}, indent=1))
+    return {"summary": summary, "examples": ex}
 
 
 main()

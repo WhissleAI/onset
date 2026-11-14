@@ -364,7 +364,9 @@ def propose(f, wconf, pool: Pool | None = None, use_leads: bool = True) -> list[
         if len(letters(sp)) < 3 and not ment:
             continue
         cands = list(ctx)
-        if gaz is not None and (ment or (have and min(wconf[a:b]) < config.LOOP_LOW_CONF)):
+        if gaz is not None and ment:
+            # the 11K-title index only for spans Arc calls a name: on plain low-confidence words it rewrote ordinary
+            # words into titles ("content" -> Continent, "whether" -> Weather) on the Flux traces
             cands += gaz.near(sp)
         if gaz is not None and sp in gaz.spoken:
             nm = gaz.names[gaz.spoken[sp]]
@@ -383,6 +385,9 @@ def propose(f, wconf, pool: Pool | None = None, use_leads: bool = True) -> list[
             nd = abs(len(cs.split()) - len(sp.split()))
             if nd > 1 or cs == sp:
                 continue
+            cw, sw = set(cs.split()), set(sp.split())
+            if cw <= sw or sw <= cw:
+                continue                                 # "nasdaq" vs Nasdaq-100, "birch way" vs Birch: not misheard
             if len(re.sub(r"[^a-z]", "", c.name.lower())) < 3:
                 continue                                 # "8½", "C": nothing to spell against
             if c.src == "leads" and len(cs.split()) == 1 and len(sp.split()) == 1 and len(letters(sp)) < 7:
@@ -392,6 +397,8 @@ def propose(f, wconf, pool: Pool | None = None, use_leads: bool = True) -> list[
                 continue
             if c.src == "leads":
                 s -= config.LOOP_LEADS_PENALTY           # 11K titles: only a near-exact sound match counts
+                if len(cs.split()) == 1 and len(sp.split()) == 1:
+                    s -= 0.06                            # one word vs one title: "danielle" Daniel, "thunder" Tundra
             s += SRC_BONUS.get(c.src, 0.0) + _kind_adj(t, c)
             if not ment:
                 s -= 0.03                                # a span Arc didn't call a name needs a better match
