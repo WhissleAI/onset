@@ -578,3 +578,58 @@ The 58-set latency regression comes from the facts lane, in both modes. On the 3
 against 205 / 235 / 263 for main's per-word Wikipedia searches, and the endpoint waited up to PENDING_CAP_S for them.
 51c4b33 adds the facts hedge (above). Its A/B and the single Tavily showcase run (estimated ~1.7 paid calls/q x 30 ≈ 51
 credits; hard cap `TAVILY_PROCESS_CREDITS=60`) are still to run: the demo held runs/.run_ab.lock past this session.
+
+## Cost-and-speed meter (branch feat/meter)
+On-screen meter for "faster, cheaper retrieval, fewer wasted tokens". Always on (display only: no extra calls, no effect
+on the answer path).
+- **Token capture (server/answer.py):** every answer-model request records its usage, read live from the SDK stream's
+  message snapshot (`message_start` input, `message_delta` final output). `Stream.usage()` gives in / out over all
+  requests plus the winner's share.
+  - A request stopped before the API's final usage arrived: output = streamed chars / 4, flagged `est`.
+  - A request cancelled before its first event: input = prompt chars / 4, counted (it may be billed), flagged `est`.
+  - A connection failure before the API accepted the request counts 0.
+  - Card answers make no request: 0 tokens.
+- **Waste (server/meter.py + speculator):** the speculator keeps every stream of the question (drafts, soft and final
+  answers). The stream that answered is `ans_*`. Everything else is `waste_*`: drafts thrown away, a superseded soft
+  answer, the hedge loser of the answering stream.
+  - At `close()` the speculator sends one `usage` event with the final tally (drafts still streaming when the metric
+    went out are included) and updates the metric dict in place, so `session.history` / eval rows carry it.
+  - A question replaced by a correction (no metric) still reports its spend (`answered: false`). The client adds it to
+    the session totals.
+- **Metric fields:** `ans_in ans_out waste_in waste_out llm_requests waste_streams tokens_est usd usd_web usd_llm
+  usd_llm_waste usd_est price_verified wasted_fires` (+ the existing `paid_calls free_calls`). `wasted_fires` =
+  spec_fires - spec_used (same as run_ab's mean_wasted_fires).
+- **Prices (config.py METER_*, checked 2026-11-13, all $ shown as "est."):**
+  - Tavily: $0.008 per credit, pay-as-you-go (tavily.com/pricing). A basic / fast search is 1 credit. When the backend
+    reports actual credits they are used.
+  - claude-haiku-5-5: $0.10 in / $0.50 out per MTok (platform.claude.com pricing page, prompts up to 100K).
+  - Any other model has no verified price: tokens are not priced until METER_ANSWER_IN/OUT_USD_MTOK are set, and the
+    meter says "configured, not verified".
+  - On the Wikipedia lane, "paid" calls cost nothing and are priced as Tavily calls (labelled in the UI).
+  - `GET /api/meter` returns the prices.
+- **UI (web/meter.js + meter.css; app.js hooks: event, metric, start, results):** a bar pinned to the viewport bottom,
+  in both minimal and details views, light + dark.
+  - Hero: session average over questions both modes answered, e.g. "0.53 s faster · 2.0× cheaper". It flips to
+    "2.0× the cost" / "same cost" (within 15 %) when that is what was measured.
+  - This question: HS vs BL paid / free / wasted / tokens (+waste, ~ = estimated) / $ est.
+  - Session: questions, total time saved, $ HS vs BL, paid calls and the "N× fewer (more) paid calls" ratio.
+  - `details` opens the per-question table, per-mode totals, price notes and a reset.
+  - Single mode: "$X per question · Head Start only"; nothing about the other mode is imputed.
+  - Below 1100 px the per-question row moves into details; below 700 px it shows only the hero + button.
+- **Results view:** "Cost & speed, same terms as the live meter" table from the latest A/B file. It shows p50 ready,
+  paid / free / wasted per question, tokens, $ est. per question and per 1,000 questions.
+  - Files older than the meter have no tokens: they say "not recorded", and their $ is web only.
+  - eval/run_ab.py now copies the meter fields into rows and adds mean_tokens_in/out, mean_waste_in and mean_usd to
+    the summary.
+  - On the current runs/ab_latest.json (70 q, 2026-11-12, before the router integration): HS 2.57 paid/q vs BL 0.71,
+    about 3.4× the est. cost. The meter shows that as it is.
+- **Live check:** Race on WEB_BACKEND=wikipedia, port 8793, sc01 + q01 + q27 in one session, light run.
+  - HS faster on all 3, avg 0.41-0.53 s.
+  - HS made 2 paid calls vs 1 (q01: the facts hedge's paid web call; BL's fact lookup answered free), so the hero read
+    "2.0× the cost".
+  - sc01 = card, 0 tokens in both modes.
+  - q27: HS 1.6k answer input + 1.2-2.4k waste (a draft for the corrected-away "Canada" partial / a hedge duplicate);
+    BL 1.2k.
+- **Tests:** tests/test_meter.py, 11 tests: exact usage, cancelled draft = estimated waste, hedge loser = waste, card =
+  0 tokens, connection failure not billed, $ arithmetic, unverified price, metric fields in both modes, unused drafts
+  counted at close, a superseded question still reports.

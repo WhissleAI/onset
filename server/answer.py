@@ -249,6 +249,29 @@ async def probe(timeout: float = 8.0) -> dict:
     return {**health(), "probe_ms": round((time.perf_counter() - t) * 1000)}
 
 
+def request_usage(part: dict) -> tuple:
+    """(input tokens, output tokens, estimated?) of one answer-model request; (None, 0, False) if it never reached the
+    API (failed to connect). Exact when the API's usage arrived; else estimated at 4 characters per token."""
+    snap = None
+    try:
+        snap = part["s"].current_message_snapshot if part.get("s") is not None else None
+    except Exception:
+        snap = None
+    usage = getattr(snap, "usage", None)
+    if usage is not None and getattr(usage, "input_tokens", None) is not None:
+        n_in = (usage.input_tokens or 0) + (getattr(usage, "cache_creation_input_tokens", None) or 0) \
+            + (getattr(usage, "cache_read_input_tokens", None) or 0)
+        final = getattr(snap, "stop_reason", None) is not None
+        n_out = int(getattr(usage, "output_tokens", 0) or 0)
+        if final:
+            return n_in, n_out, False
+        return n_in, max(n_out, -(-part.get("chars", 0) // 4)), True
+    if part.get("s") is not None or part.get("cancelled") or part.get("chars"):
+        # opened (or cancelled in flight) without a usage snapshot: count the prompt, estimated
+        return -(-part.get("prompt_chars", 0) // 4), -(-part.get("chars", 0) // 4), True
+    return None, 0, False
+
+
 class Stream:
     """An answer being generated. Tokens are buffered so a late consumer can replay them, then follow live.
 
@@ -273,6 +296,7 @@ class Stream:
         self.fallback_reason: str | None = None
         self.by: str | None = None              # "card": a live-data card answered (no model call)
         self.card: dict | None = None
+        self.usage_parts: list[dict] = []       # one per model request (meter: usage())
         self._waiters: set[asyncio.Future] = set()
         self.task = asyncio.create_task(self._run())
         self.task.add_done_callback(self._task_done)
@@ -304,23 +328,33 @@ class Stream:
     # ------------------------------------------------------------------ requests
     async def _one(self, i: int, won: asyncio.Event):
         """One request. The first request to produce a token wins; only the winner writes to the buffer."""
-        async with client().messages.stream(model=config.ANSWER_MODEL, max_tokens=160, system=SYSTEM,
-                                            **model_opts(config.ANSWER_MODEL),
-                                            messages=[{"role": "user",
-                                                       "content": build_prompt(self.question, self.docs, self.context,
-                                                                                   self.hint)}]) as s:
-            async for text in s.text_stream:
-                if self.done:
-                    return
-                if self.winner is None:
-                    self.winner = i
-                    self.t_first = time.perf_counter()
-                    won.set()
-                    _ok()
-                if self.winner != i:
-                    return
-                self.tokens.append(text)
-                self._notify()
+        prompt = build_prompt(self.question, self.docs, self.context, self.hint)
+        part = {"req": i, "s": None, "chars": 0, "prompt_chars": len(SYSTEM) + len(prompt), "cancelled": False}
+        self.usage_parts.append(part)          # meter: every request counts, the winner's and a hedge loser's
+        try:
+            async with client().messages.stream(model=config.ANSWER_MODEL, max_tokens=160, system=SYSTEM,
+                                                **model_opts(config.ANSWER_MODEL),
+                                                messages=[{"role": "user", "content": prompt}]) as s:
+                part["s"] = s
+                await self._consume(i, s, part, won)
+        except asyncio.CancelledError:
+            part["cancelled"] = True
+            raise
+
+    async def _consume(self, i: int, s, part: dict, won: asyncio.Event):
+        async for text in s.text_stream:
+            part["chars"] += len(text)
+            if self.done:
+                return
+            if self.winner is None:
+                self.winner = i
+                self.t_first = time.perf_counter()
+                won.set()
+                _ok()
+            if self.winner != i:
+                return
+            self.tokens.append(text)
+            self._notify()
 
     async def _run(self):
         """Hedged request: if no token within HEDGE_MS, or the first request ends without producing one (an error such
@@ -444,10 +478,33 @@ class Stream:
     def text(self):
         return "".join(self.tokens)
 
+    def usage(self) -> dict:
+        """Answer-model tokens this stream has cost so far (read live from each request's message snapshot).
+
+        in / out: every request, the winner's and a hedge loser's. win_in / win_out: the winning request alone (a
+        hedge loser's tokens are waste). est=True when a number is estimated: a request stopped before the API's final
+        usage arrived (output = streamed characters / 4), or one cancelled before its first event (input = prompt
+        characters / 4: it may have been billed, so it is counted). A card answer makes no request: 0 tokens."""
+        u = {"in": 0, "out": 0, "win_in": 0, "win_out": 0, "requests": len(self.usage_parts), "est": False}
+        for p in self.usage_parts:
+            n_in, n_out, est = request_usage(p)
+            if n_in is None:
+                continue                         # failed before the API accepted it (connection error): not billed
+            u["in"] += n_in
+            u["out"] += n_out
+            u["est"] = u["est"] or est
+            if p["req"] == self.winner:
+                u["win_in"] += n_in
+                u["win_out"] += n_out
+        return u
+
     def cancel(self):
         """Stop generating. A finished stream is left as it is; an unfinished one ends now as error="cancelled"."""
         if self.done:
             return
+        for p in self.usage_parts:
+            if p["s"] is None:
+                p["cancelled"] = True           # a request on the wire may be billed: the meter counts it (est.)
         if not self.task.done():
             self.task.cancel()
         self._finish("cancelled")

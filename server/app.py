@@ -104,6 +104,13 @@ async def results():
     return JSONResponse(json.loads(p.read_text()) if p.exists() else {})
 
 
+@app.get("/api/meter")
+async def meter_prices():
+    """Prices behind the cost meter's est. $ (server/config.py METER_*)."""
+    from . import meter
+    return JSONResponse(meter.prices())
+
+
 @app.get("/audio/{name}")
 async def audio(name: str):
     p = (AUDIO / name).resolve()

@@ -99,6 +99,7 @@
     loop();
     if (window.HSFilm) window.HSFilm.start(kind, modes);
     if (window.HSHears) window.HSHears.start();
+    if (window.HSMeter) window.HSMeter.start(run);
   }
   const primary = () => (run ? run.modes[0] : "headstart");
   function serverNow() {
@@ -178,6 +179,7 @@
   function onEvent(e) {
     if (window.HSFilm) { try { window.HSFilm.event(e); } catch (err) { console.error("film", err); } }
     if (window.HSHears && run) { try { window.HSHears.event(e); } catch (err) { console.error("hears", err); } }
+    if (window.HSMeter && run) { try { window.HSMeter.event(e, run); } catch (err) { console.error("meter", err); } }
     if (e.mode === "sys") {
       if (e.t === "ready") {
         if (e.warm !== undefined) warm = !!e.warm;
@@ -199,7 +201,7 @@
     // with question ids (e.q): an event of the previous question is late by definition, whatever its type
     if (e.q != null && pq && pq.qids[mode] === e.q && q.qids[mode] !== e.q) {
       if (e.t === "answer") pq.answer[mode] = (pq.answer[mode] || "") + (e.delta || "");
-      else if (e.t === "metric") { pq.metric[mode] = e; recordTurn(pq, mode); }
+      else if (e.t === "metric") { pq.metric[mode] = e; meterMetric(pq, mode, e); recordTurn(pq, mode); }
       else if (e.t === "endpoint") pq.endpointMs[mode] = e.ms;
       else if (e.t === "heard") { pq.heard[mode] = e; recordTurn(pq, mode); }
       return;
@@ -207,7 +209,7 @@
     if (pq && q.endpointMs[mode] == null && pq.endpointMs[mode] != null && !pq.metric[mode] &&
         (["sources", "answer", "answer_error", "metric", "used"].includes(e.t) || (e.t === "spec" && String(e.lane).startsWith("final")))) {
       if (e.t === "answer") pq.answer[mode] = (pq.answer[mode] || "") + (e.delta || "");
-      else if (e.t === "metric") { pq.metric[mode] = e; recordTurn(pq, mode); }
+      else if (e.t === "metric") { pq.metric[mode] = e; meterMetric(pq, mode, e); recordTurn(pq, mode); }
       return;
     }
     switch (e.t) {
@@ -346,6 +348,7 @@
       }
       case "metric":
         q.metric[mode] = e;
+        meterMetric(q, mode, e);
         if (q.se[mode] == null && q.endpointMs[mode] != null) { q.se[mode] = q.endpointMs[mode] - (e.endpoint_lag_ms || 0); q.speechEnd = Math.max(q.speechEnd ?? 0, q.se[mode]); }
         // drafts still open at the endpoint were never used
         for (const f of q.fires.values()) {
@@ -455,6 +458,11 @@
     q.wordsSig = sig;
     q.wordsMode = mode;
     return true;
+  }
+
+  // cost meter (web/meter.js): every per-question metric, with the question it belongs to (pairs the two modes)
+  function meterMetric(qq, mode, e) {
+    if (window.HSMeter && run) { try { window.HSMeter.metric(qq, mode, e, run); } catch (err) { console.error("meter", err); } }
   }
 
   // ------------------------------------------------------------------ conversation history (previous turns)
@@ -1512,6 +1520,7 @@
         (R.summary.headstart?.mean_web_calls != null ? ` · web calls/question <b>${R.summary.headstart.mean_web_calls}</b> vs <b>${R.summary.baseline?.mean_web_calls ?? "—"}</b>` : "") +
         (R.raw?.created ? ` · <span class="muted">${esc(R.raw.created)}</span>` : "") + `</p>`;
     }
+    if (window.HSMeter) { try { html += window.HSMeter.evalSummary(R.raw); } catch (err) { console.error("meter", err); } }
     if (R.pairs.length) html += chart(R.pairs);
     else html += `<details><summary class="muted">raw ab_latest.json</summary><pre class="raw">${esc(JSON.stringify(R.raw, null, 2).slice(0, 6000))}</pre></details>`;
     body.innerHTML = html;

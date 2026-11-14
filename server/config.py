@@ -243,3 +243,17 @@ ROUTER_SPEC_HOLD_CONF = float(os.environ.get("ROUTER_SPEC_HOLD_CONF", "0.3"))
 ROUTER_SPEC_HOLD_LEADS = os.environ.get("ROUTER_SPEC_HOLD_LEADS", "1") == "1"   # ... also the generic wh- (leads) plan
 ROUTER_SPEC_CHEAP_MAX = int(os.environ.get("ROUTER_SPEC_CHEAP_MAX", "4"))
 KNOWLEDGE_DIR = Path(os.environ.get("KNOWLEDGE_DIR", ROOT / "index/data/knowledge"))
+
+# ---------------------------------------------------------------------------------------------------- cost meter
+# Prices for the on-screen cost-and-speed meter (server/meter.py, web/meter.js). Every $ shown is an ESTIMATE ("est."):
+# measured calls / tokens x these list prices. Checked 2026-11-13.
+# Tavily: pay-as-you-go $0.008 per API credit (https://www.tavily.com/pricing); a basic / fast search costs 1 credit
+# (lanes.COST; advanced = 2). On the Wikipedia lane "paid" calls cost nothing; the meter prices them as Tavily calls.
+METER_TAVILY_CREDIT_USD = float(os.environ.get("METER_TAVILY_CREDIT_USD", "0.008"))
+METER_CREDITS_PER_CALL = float(os.environ.get("METER_CREDITS_PER_CALL", "1"))
+# Answer model, USD per million tokens (input, output), base rates for prompts up to 100K tokens, from
+# https://platform.claude.com/docs/en/about-claude/pricing. A model not listed here has no verified price: set
+# METER_ANSWER_IN_USD_MTOK / METER_ANSWER_OUT_USD_MTOK; the meter flags the price as unverified until you do.
+METER_MODEL_PRICES = {"claude-haiku-5-5": (0.10, 0.50)}
+METER_ANSWER_IN_USD_MTOK = os.environ.get("METER_ANSWER_IN_USD_MTOK")
+METER_ANSWER_OUT_USD_MTOK = os.environ.get("METER_ANSWER_OUT_USD_MTOK")
