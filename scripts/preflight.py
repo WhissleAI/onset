@@ -68,7 +68,7 @@ def main():
     ap.add_argument("--port", type=int, default=8770)
     ap.add_argument("--file", default="q01.wav", help="web question to replay (eval/audio)")
     ap.add_argument("--local", default="", help="also replay a local-moments question, e.g. local_05.wav")
-    ap.add_argument("--max-hs-ms", type=int, default=2500, help="Head Start ready time above this = FAIL")
+    ap.add_argument("--max-hs-ms", type=int, default=2500, help="Onset ready time above this = FAIL")
     a = ap.parse_args()
 
     rows: list[tuple[str, str, str]] = []
@@ -138,16 +138,16 @@ def main():
             h_ms, b_ms = hs["metric"].get("ready_ms"), bl["metric"].get("ready_ms")
             sane = h_ms is not None and -1500 < h_ms < a.max_hs_ms
             st = OK if (sane and b_ms is not None and h_ms < b_ms) else (WARN if sane else FAIL)
-            check(st, "  latency (ready after last word)", f"Head Start {h_ms} ms vs baseline {b_ms} ms"
+            check(st, "  latency (ready after last word)", f"Onset {h_ms} ms vs baseline {b_ms} ms"
                   + ("" if sane else f"  (> {a.max_hs_ms} ms: close CPU hogs, check network)")
-                  + ("" if (b_ms is None or h_ms is None or h_ms < b_ms) else "  (Head Start not ahead)"))
+                  + ("" if (b_ms is None or h_ms is None or h_ms < b_ms) else "  (Onset not ahead)"))
 
     judge(a.file, "web")
     if a.local:
         judge(a.local, "local")
 
     width = max(len(r[1]) for r in rows)
-    print(f"\nHead Start preflight  ({base})")
+    print(f"\nOnset preflight  ({base})")
     for st, what, detail in rows:
         print(f"  [{st:^4}] {what.ljust(width)}  {detail}")
     fails = [r for r in rows if r[0] == FAIL]

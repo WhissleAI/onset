@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Head Start: one command to a demo-ready browser.
+# Onset: one command to a demo-ready browser.
 #   prerequisites -> free the port -> start server -> wait warm -> preflight (1 real Race replay) -> GO/NO-GO -> open
 #
 #   ./run_demo.sh                  # port 8770, live web lane (falls back to the recorded cache if it fails)
@@ -34,7 +34,7 @@ ok()   { printf '  [ OK ] %s\n' "$1"; }
 warn() { printf '  [WARN] %s\n' "$1"; }
 fail() { printf '  [FAIL] %s\n' "$1"; bad=1; }
 
-echo "Head Start demo launcher (port $PORT)"
+echo "Onset demo launcher (port $PORT)"
 echo "Prerequisites"
 if [ -x "$PY" ]; then ok "venv ($PY)"; else fail "no venv at $PY (python -m venv .venv && .venv/bin/pip install -r ...)"; fi
 for f in models/arctag/arctag_int8.onnx models/arctag/tokenizer.json vendor/arctag/libarctag.dylib \

@@ -1,6 +1,6 @@
-# Head Start: voice search that starts before you finish talking
+# Onset: voice search that starts before you finish talking
 
-Every voice search today waits for silence, then searches, then thinks. Head Start understands the question **while it is
+Every voice search today waits for silence, then searches, then thinks. Onset understands the question **while it is
 being spoken**, searches from about the third word, drafts the answer, and has it ready when the speaker stops.
 
 ```
@@ -48,7 +48,7 @@ Ear: `EAR=deepgram` + `DEEPGRAM_API_KEY` streams the same audio to Deepgram nova
 for the words; without a key, or if the socket fails/drops, the run falls back to Arc (the open utterance is re-fed).
 `/api/health` and the `ready` event report `ear` (active) and `ear_requested`.
 `EAR=flux` streams to Deepgram **Flux** (`flux-general-en`, `wss://api.deepgram.com/v2/listen`) instead: Flux's turn model
-gives the endpoints. `EagerEndOfTurn` → Head Start's soft answer at once (`FLUX_SOFT=eager`; `eager+gate` also requires
+gives the endpoints. `EagerEndOfTurn` → Onset's soft answer at once (`FLUX_SOFT=eager`; `eager+gate` also requires
 our tagger gate; `off` ignores it), `TurnResumed` → the longer question is answered again, `EndOfTurn` → the ear's final
 (confirms the soft answer). Lowest-latency defaults: `FLUX_EAGER_EOT=0.3` (docs minimum), `FLUX_EOT=0.7`,
 `FLUX_EOT_TIMEOUT_MS=1000`; same Arc fallback as nova-3. With Flux, Arc still listens to the same audio for **metadata only**

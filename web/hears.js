@@ -158,7 +158,7 @@
           qSeen[m] = e.q;
         }
         const sig = (e.words || []).map((w) => w.w).join(" ");
-        // both sessions send the same words; follow Head Start until it has endpointed, then whoever is still listening
+        // both sessions send the same words; follow Onset until it has endpointed, then whoever is still listening
         const hsDone = (S.endpoint && S.endpoint.mode === "headstart") || (S.heard && S.heard.mode === "headstart");
         const newQ = hasQ && S.q[m] != null && e.q > S.q[m];
         if (!newQ && m !== "headstart" && S.wordsMode === "headstart" && !hsDone) return;
@@ -329,7 +329,7 @@
       const who = ["tagger", "audio"].filter((w) => set.has(w));
       top[i].push(`<span class="pin cc" data-k="cc" title="command complete: Arc ${who.join(" + Arc ")} heard the request as complete here">✓ complete <small>${who.join("+")}</small></span>`);
     }
-    // search pins under words (Head Start's speculative searches, at the word they fired on)
+    // search pins under words (Onset's speculative searches, at the word they fired on)
     const bot = Array.from({ length: n }, () => []);
     for (const [k, fi] of S.fires) {
       if (fi.mode !== "headstart" || fi.lane.startsWith("final") || fi.word == null) continue;
@@ -422,7 +422,7 @@
     }
     if (S.endpoint && S.speechEnd != null) {
       const dt = S.endpoint.ms - S.speechEnd;
-      ticks.push({ cls: "ep", lab: S.endpoint.by === "eager" || S.endpoint.by === "eager+arc" ? "answers (eager)" : S.endpoint.by === "semantic" || S.endpoint.by === "tagger" ? "answers (semantic)" : "endpoint", dt, title: "Head Start's endpoint: the answer starts from here" });
+      ticks.push({ cls: "ep", lab: S.endpoint.by === "eager" || S.endpoint.by === "eager+arc" ? "answers (eager)" : S.endpoint.by === "semantic" || S.endpoint.by === "tagger" ? "answers (semantic)" : "endpoint", dt, title: "Onset's endpoint: the answer starts from here" });
     }
     if (S.heard)
       ticks.push({ cls: "ep heard", lab: "heard · not a question", dt: null, title: "open mic: Arc Tagger read this as a statement, not a request: no search, no answer" });
