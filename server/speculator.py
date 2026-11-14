@@ -653,13 +653,23 @@ class Speculator:
         return "place" if hop is not None and hop.role == "capital" else "person"
 
     @staticmethod
-    async def _landed(fire, deadline: float):
-        if fire is None or fire.landed is None or fire.landed.is_set():
+    def _is_landed(fire) -> bool:
+        if fire.landed is not None:
+            return fire.landed.is_set()
+        return fire.task is None or fire.task.done()      # a whole-sentence search reused as a part
+
+    @classmethod
+    async def _landed(cls, fire, deadline: float):
+        if fire is None or cls._is_landed(fire):
             return
-        try:
-            await asyncio.wait_for(fire.landed.wait(), max(0.0, deadline - time.perf_counter()))
-        except asyncio.TimeoutError:
-            pass
+        left = max(0.0, deadline - time.perf_counter())
+        if fire.landed is not None:
+            try:
+                await asyncio.wait_for(fire.landed.wait(), left)
+            except asyncio.TimeoutError:
+                pass
+        else:
+            await asyncio.wait([fire.task], timeout=left)
 
     @staticmethod
     def _docs_of(fire) -> list:
@@ -701,11 +711,11 @@ class Speculator:
                     self.bridge[hop.text] = planner.bridge_of(self._docs_of(hf), hop.role)
             text = self._part_text(part) or part.fallback
             fire = ensure(part, text)
-            if fire is not None and fire.lane == "web" and not fire.landed.is_set():
+            if fire is not None and fire.lane == "web" and not self._is_landed(fire):
                 # a speculative lookup still out at the endpoint (a slow Wikidata query): give it PLAN_PART_CAP_S,
                 # then race one final search (router hedge: fact vs web) against it; the first with docs wins
                 await self._landed(fire, min(deadline, time.perf_counter() + config.PLAN_PART_CAP_S))
-                if not fire.landed.is_set():
+                if not self._is_landed(fire):
                     m["plan_hedged"] = m.get("plan_hedged", 0) + 1
                     spec_fire = fire
                     self.part_fire.pop(text, None)
@@ -714,7 +724,8 @@ class Speculator:
                     meter["hedge_ms"] = 0
                     fin = self._fire("final-web", spec_fire.query, pf, go, meter, part=text)
                     self.part_fire[text] = fin
-                    waits = {asyncio.ensure_future(spec_fire.landed.wait()), asyncio.ensure_future(fin.landed.wait())}
+                    waits = {asyncio.ensure_future(self._landed(spec_fire, deadline)),
+                             asyncio.ensure_future(self._landed(fin, deadline))}
                     while waits and time.perf_counter() < deadline:
                         done, waits = await asyncio.wait(waits, timeout=deadline - time.perf_counter(),
                                                          return_when=asyncio.FIRST_COMPLETED)

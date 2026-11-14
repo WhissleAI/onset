@@ -90,10 +90,12 @@ async def health(probe: int = 0):
 async def questions(set: str = "all"):
     """set=web: eval/questions.jsonl; set=local: index/questions_local.jsonl (kind "local"); all: both."""
     rows = []
-    srcs = {"web": [ROOT / "eval" / "questions.jsonl"], "local": [ROOT / "index" / "questions_local.jsonl"]}
-    for p in srcs.get(set, srcs["web"] + srcs["local"]):
+    srcs = {"web": [ROOT / "eval" / "questions.jsonl"], "local": [ROOT / "index" / "questions_local.jsonl"],
+            "multi": [ROOT / "eval" / "multipart" / "questions.jsonl"]}     # planner set (rows carry "parts")
+    for p in srcs.get(set, srcs["web"] + srcs["local"] + srcs["multi"]):
         if p.exists():
-            rows += [json.loads(x) for x in p.read_text().splitlines() if x.strip()]
+            rows += [r for r in (json.loads(x) for x in p.read_text().splitlines() if x.strip())
+                     if not r.get("parts") or (AUDIO / r["file"]).exists()]       # multi-part: only if voiced
     return JSONResponse(rows)
 
 

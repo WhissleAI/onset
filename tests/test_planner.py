@@ -159,3 +159,12 @@ def test_verify_agree_disagree_unverified():
     v = verify.check("It is about 4,200 km long [1].", [D("a", "A river in Africa.", "u")], "q")
     assert v["status"] == "unverified"
     assert verify.check("I don't know.", docs, "q")["status"] == "unverified"
+
+
+def test_whole_sentence_search_reused_as_part():
+    """"whats the weather in Paris" is searched as a whole sentence before "and in London" makes it a plan: the
+    final plan reuses that search for part 1 (it has no part "landed" event of its own)."""
+    m, ev = asyncio.run(ts.speak("whats the weather in Paris and in London", "headstart", gap=0.4))
+    assert m["path"] == "plan"
+    parts = m["plan"]["parts"]
+    assert all(p["fire"] for p in parts) and all(p["n"] for p in parts)

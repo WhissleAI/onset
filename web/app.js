@@ -1192,13 +1192,14 @@
     ["local_19.wav", "In the hearing, how many cues are taught in the training?"],
     ["local_20.wav", "In the broadcast, how many points is Jarrett Allen averaging?"],
   ].map(([file, text]) => ({ file, text, kind: "local" }));
-  const qsets = { web: [], local: [], conv: [] };
+  const qsets = { web: [], local: [], conv: [], multi: [] };
   let qset = store.get("hs-qset") || "web";
   async function loadQuestions() {
     let all = [];
     try { all = await (await fetch("/api/questions", { cache: "no-store" })).json(); } catch { all = []; }
     if (!Array.isArray(all)) all = [];
-    qsets.web = all.filter((q) => q.kind !== "local");
+    qsets.web = all.filter((q) => q.kind !== "local" && !q.parts);
+    qsets.multi = all.filter((q) => Array.isArray(q.parts));          // planner set (eval/multipart)
     qsets.local = all.filter((q) => q.kind === "local");
     if (!qsets.local.length) {
       try {
@@ -1211,7 +1212,7 @@
       qsets.conv = Array.isArray(c) ? c.filter((r) => Array.isArray(r.files) && r.files.length) : [];
     } catch { qsets.conv = []; }
     for (const b of $("#qtabs").querySelectorAll("button")) b.hidden = !(qsets[b.dataset.set] || []).length;
-    $("#qtabs").hidden = !qsets.local.length && !qsets.conv.length;
+    $("#qtabs").hidden = !qsets.local.length && !qsets.conv.length && !qsets.multi.length;
     if (!(qsets[qset] || []).length) qset = "web";
     paintQuestions();
   }
