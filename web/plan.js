@@ -12,16 +12,17 @@
   const TIER = { card: "card", facts: "facts", web: "web", wait: "facts" };
 
   function row() {
+    // under the live transcript ("What Arc hears"): visible in the minimal (demo) view and in details
     let r = document.getElementById("fPlanRow");
     if (r) return r;
-    const q = document.getElementById("fQuery");
-    if (!q) return null;
+    const tr = document.getElementById("transcript");
+    if (!tr) return null;
     r = document.createElement("div");
-    r.className = "kv wide plan-kv";
+    r.className = "plan-strip";
     r.id = "fPlanRow";
     r.hidden = true;
-    r.innerHTML = '<label title="multi-part question: each part is searched on its own, while you speak">plan</label><div class="planchips" id="fPlan"></div>';
-    q.closest(".kv").after(r);
+    r.innerHTML = '<span class="plab" title="a multi-part question: each part is searched on its own, while you speak">plan</span><div class="planchips" id="fPlan"></div>';
+    tr.after(r);
     return r;
   }
 
@@ -51,7 +52,7 @@
       const title = `${x.id.toUpperCase()} · ${x.kind}${x.closed ? " · closed (you moved past it)" : ""} · ${STATE[st] || st}` +
         (x.n ? ` · ${x.n} docs` : "") + (x.state && x.state.startsWith("needs") ? " · waits for P1's answer" : "");
       return `<span class="pchip st-${esc(st)}" title="${esc(title)}"><b>${esc(x.id.toUpperCase())}</b>` +
-        `<span class="pq">${esc(x.text)}</span>${lane ? `<i class="pl ${lane}">${lane}</i>` : ""}</span>`;
+        `<span class="pq">${esc(x.text)}</span>${lane ? `<i class="pl pl-${lane}">${lane}</i>` : ""}</span>`;
     }).join("") + `<span class="pwhy">${esc(p.kind || "")}</span>`;
     if (box._h !== html) { box.innerHTML = html; box._h = html; }
   }

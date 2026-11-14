@@ -168,3 +168,13 @@ def test_whole_sentence_search_reused_as_part():
     assert m["path"] == "plan"
     parts = m["plan"]["parts"]
     assert all(p["fire"] for p in parts) and all(p["n"] for p in parts)
+
+
+def test_verify_nearest_predicate():
+    """'founded by X, who was born in 1964': the year belongs to "born"; the company page's founding year is no conflict."""
+    D = lambda t, x, u: lanes.Doc(id=u, title=t, text=x, url=u)
+    docs = [D("Jeff Bezos", "Jeff Bezos was born on January 12, 1964.", "u1"),
+            D("Amazon (company)", "Amazon was founded in 1994 by Jeff Bezos.", "u2")]
+    v = verify.check("Amazon was founded by Jeff Bezos, who was born on January 12, 1964 [1]. Amazon was founded in "
+                     "1994 [2].", docs, "how old was the founder of amazon when it was founded")
+    assert v["status"] != "disagree", v

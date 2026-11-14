@@ -90,9 +90,12 @@ def claims(answer: str, question: str = "") -> list[dict]:
         for v, y, d, pos, raw in numbers(clean):
             if v in qnums or (not y and v < 10 and not d):
                 continue                                   # said in the question, or a tiny count ("2 sources")
-            ctx = fold(clean[max(0, pos - 60):pos + 20])
+            # the predicate this number belongs to: the nearest one said before it ("founded by X, who was born on
+            # January 12, 1964": born, not founded)
+            ctx = fold(clean[max(0, pos - 60):pos])
+            near = max(((ctx.rfind(p), p) for p in _PRED if p in ctx), default=None)
             out.append({"kind": "year" if y else "number", "text": raw.strip(), "value": v, "year": y, "dec": d,
-                        "cites": cites, "pred": [p for p in _PRED if p in ctx]})
+                        "cites": cites, "pred": [near[1]] if near else []})
         for i, mm in enumerate(_NAME.finditer(clean)):
             name = mm.group(1)
             first = clean[:mm.start()].strip() == ""
@@ -125,17 +128,22 @@ def _about(title: str, context: str) -> bool:
     return bool(toks) and all(f" {w} " in ctx for w in toks)
 
 
-def _conflict(c: dict, text: str, title: str, context: str) -> str | None:
-    """A different year next to the same predicate, in a source about the same subject that never states the claim."""
+def _conflict(c: dict, text: str, title: str, context: str, own: set, subject: str) -> str | None:
+    """A different year for the same fact in a source about the same subject that never states the claim: the year
+    sits right after the claim's predicate ("born ... 1991"), in a sentence naming the claim's subject, and is not
+    another year the answer itself states (Harvard 1636 vs Yale 1701 is two facts, not a disagreement)."""
     if c["kind"] != "year" or not c["pred"] or not _about(title, context):
         return None
-    low = fold(text)
-    for v, y, _, pos, raw in numbers(text):
-        if not y or v == c["value"]:
+    for sent in re.split(r"(?<=[.!?;])\s+", text):
+        low = fold(sent)
+        if subject and subject not in low:
             continue
-        win = low[max(0, pos - 50):pos + 10]
-        if any(p in win for p in c["pred"]):
-            return raw.strip()
+        for v, y, _, pos, raw in numbers(sent):
+            if not y or v == c["value"] or v in own:
+                continue
+            win = low[max(0, pos - 40):pos]
+            if any(p in win for p in c["pred"]):
+                return raw.strip()
     return None
 
 
@@ -143,11 +151,20 @@ def _src_key(d) -> str:
     return (getattr(d, "url", "") or getattr(d, "title", "") or getattr(d, "id", "")).split("#")[0]
 
 
+def _subject_of(c: dict, sents: dict) -> str:
+    """The name the claim is about: the last capitalized name said before it in its sentence (its last word, folded)."""
+    sent = sents.get(c["text"], "")
+    head = sent[:sent.find(c["text"])] if c["text"] in sent else sent
+    names = [m.group(1) for m in _NAME.finditer(_CITE.sub(" ", head)) if m.group(1) not in _COMMON]
+    return fold(names[-1].split()[-1]) if names else ""
+
+
 def check(answer: str, docs, question: str = "") -> dict:
     t0 = time.perf_counter()
     texts = [f"{getattr(d, 'title', '')}. {getattr(d, 'text', '')}" for d in docs]
     cl = claims(answer or "", question)
     sents = {c["text"]: s_ for s_ in re.split(r"(?<=[.!?])\s+", answer or "") for c in cl if c["text"] in s_}
+    own_years = {c["value"] for c in cl if c["kind"] == "year"}
     found, conflicts = 0, []
     agree_counts = []
     for c in cl:
@@ -161,12 +178,22 @@ def check(answer: str, docs, question: str = "") -> dict:
             if i in sup:
                 continue
             other = _conflict(c, getattr(docs[i], "text", ""), getattr(docs[i], "title", ""),
-                              sents.get(c["text"], "") + " " + question)
+                              sents.get(c["text"], "") + " " + question, own_years, _subject_of(c, sents))
             if other:
                 c["conflict"] = {"source": i + 1, "value": other}
                 conflicts.append((c["text"], other))
                 break
-    n = len(cl)
+    # arithmetic on the answer's own years ("born 1964, founded 1994: 30 years old") is computed, not a source claim
+    years = [c["value"] for c in cl if c["kind"] == "year"]
+    for c in cl:
+        if c["kind"] == "number" and not c["support"] and any(abs(a - b) in (c["value"], c["value"] + 1, c["value"] - 1)
+                                                             for a in years for b in years if a != b):
+            c["kind"] = "computed"
+    computed = [c for c in cl if c["kind"] == "computed"]
+    cl_checked = [c for c in cl if c["kind"] != "computed"]
+    found = sum(1 for c in cl_checked if c["support"])
+    agree_counts = [len({_src_key(docs[i - 1]) for i in c["support"]}) for c in cl_checked if c["support"]]
+    n = len(cl_checked)
     if n == 0:
         status, label = "unverified", "unverified"
     elif conflicts:
@@ -179,6 +206,8 @@ def check(answer: str, docs, question: str = "") -> dict:
         status, label = "partial", f"◐ {found} of {n} claims found in sources"
     else:
         status, label = "unverified", "unverified"
-    return {"status": status, "label": label, "n_claims": n, "found": found,
+    if computed and status in ("agree", "supported"):
+        label += " · " + ", ".join(c["text"] for c in computed) + " computed"
+    return {"status": status, "label": label, "n_claims": n, "found": found, "computed": len(computed),
             "claims": [{k: v for k, v in c.items() if k not in ("value", "dec", "year")} for c in cl],
             "ms": round((time.perf_counter() - t0) * 1000, 2)}

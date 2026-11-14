@@ -1,13 +1,15 @@
 /* Plan while you speak (web/plan.js): sub-question chips in the query-frame card + the verify badge under answers. */
-.plan-kv { align-items: start; }
+.plan-strip { display: flex; align-items: center; gap: 6px; margin-top: 6px; min-width: 0; }
+.plan-strip[hidden] { display: none; }
+.plab { font: 600 9.5px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); flex: none; }
 .planchips { display: flex; flex-wrap: wrap; gap: 3px 4px; min-width: 0; align-items: center; }
-.pchip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; padding: 1px 6px 1px 3px;
+.pchip { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; padding: 1px 6px 1px 3px;
   border: 1px solid var(--line); border-radius: 6px; background: var(--card-2); font-size: 11.5px; line-height: 18px;
   color: var(--ink-2); transition: border-color .2s, opacity .2s; }
 .pchip b { font: 700 9.5px/14px var(--mono); padding: 0 4px; border-radius: 4px; background: var(--line); color: var(--ink-2); flex: none; }
 .pchip .pq { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .pchip .pl { font: 600 9.5px var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: .03em; flex: none; color: var(--web); }
-.pchip .pl.facts { color: var(--local); } .pchip .pl.card { color: var(--draft); }
+.pchip .pl.pl-facts { color: var(--local); } .pchip .pl.pl-card { color: var(--draft); }
 .pchip.st-waiting { border-style: dashed; color: var(--ink-3); }
 .pchip.st-fired { border-color: var(--web); animation: ppulse 1.1s ease-in-out infinite; }
 .pchip.st-fired b { background: var(--web); color: #fff; }
@@ -26,3 +28,6 @@
 .vb.ok { color: var(--hs); border-color: var(--hs); background: var(--hs-soft); }
 .vb.warn { color: var(--draft); border-color: var(--draft); }
 .vb.part { color: var(--web); border-color: var(--web); }
+
+/* four replay tabs (Facts / Local / Conversation / Multi) fit the sidebar */
+.qtabs button { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 3px; padding-right: 3px; }
