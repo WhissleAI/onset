@@ -31,8 +31,45 @@ def key_claim(v: dict) -> dict | None:
     for kinds in (("year", "number"), ("name",)):
         for c in cl:
             if c.get("kind") in kinds and not c.get("support"):
+                if c["kind"] == "name" and not _real_name(c["text"]):
+                    continue
                 return c
     return None
+
+
+_NOT_NAME = {"its", "his", "her", "their", "i'm", "i", "command", "shift", "control", "option", "the", "a"}
+
+
+def _real_name(t: str) -> bool:
+    """A name claim worth a lookup: two+ words, not opening with a pronoun / key name ("Its North American",
+    "I'm", "Command" were verify's name claims on the eval sets)."""
+    ws = t.split()
+    return len(ws) >= 2 and ws[0].lower() not in _NOT_NAME
+
+
+# the claim's predicate -> the Wikidata property that states it (knowledge.PROPS)
+_PRED_PROP = {"born": "born_date", "founded": "inception", "established": "inception", "incorporated": "inception",
+              "formed": "inception", "created": "inception", "started": "inception", "died": "died_date"}
+
+
+def claim_fact(claim: dict, answer: str):
+    """A targeted fact lookup for THIS claim: "Jane Austen ... was born in 1775" -> born_date(jane austen). The
+    subject is the full name said before the claim in its sentence."""
+    from . import knowledge
+    if claim.get("kind") != "year":
+        return None
+    prop = next((_PRED_PROP[p] for p in claim.get("pred") or [] if p in _PRED_PROP), None)
+    if not prop:
+        return None
+    sent = next((s for s in re.split(r"(?<=[.!?])\s+", answer or "") if claim["text"] in s), "")
+    head = verify._CITE.sub(" ", sent[:sent.find(claim["text"])])
+    pw = next((p for p in claim.get("pred") or [] if p in _PRED_PROP), "")
+    k = verify.fold(head).rfind(pw) if pw else -1
+    head = head[:k] if k > 0 else head                     # the subject is said before its predicate
+    names = [m.group(1) for m in verify._NAME.finditer(head) if m.group(1) not in verify._COMMON]
+    if not names:
+        return None
+    return knowledge.FactQ(prop, names[0].lower())          # the sentence's subject: its first name
 
 
 def _full(c: dict) -> dict:
@@ -69,9 +106,9 @@ def _nums(vals) -> list[float]:
     return out
 
 
-async def _facts(question: str):
+async def _facts(question: str, claim: dict | None = None, answer: str = ""):
     from . import knowledge
-    fq = knowledge.parse_fact(question)
+    fq = (claim_fact(claim, answer) if claim else None) or knowledge.parse_fact(question)
     if not fq:
         return None, []
     return fq, await knowledge.wikidata(fq)
@@ -104,7 +141,7 @@ async def run(answer: str, docs: list, question: str, v: dict, web=None, paid_ok
     tried = []
     new_docs, src = [], ""
     try:
-        fq, fdocs = await asyncio.wait_for(_facts(question), config.VERIFY_RESEARCH_TIMEOUT_S)
+        fq, fdocs = await asyncio.wait_for(_facts(question, claim, answer), config.VERIFY_RESEARCH_TIMEOUT_S)
         tried.append("facts")
         if fdocs:
             fact = (fdocs[0].meta or {}).get("fact") or {}

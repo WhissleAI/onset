@@ -77,6 +77,8 @@ def summarize(rows):
 
 async def main():
     await answer.warm()
+    from server import embed
+    await embed.arun(embed.warmup)                 # the leads lane embeds the question (warm in the live server)
     out = {"config": {"WEB_BACKEND": config.WEB_BACKEND, "paid": args.paid}, "sets": {}}
     sem = asyncio.Semaphore(3)
     for name in args.sets.split(","):

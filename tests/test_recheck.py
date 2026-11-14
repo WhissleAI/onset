@@ -122,3 +122,20 @@ def test_public_verify_claims_are_rechecked_without_crashing(monkeypatch):
     monkeypatch.setattr(recheck, "_leads", lambda sub, q: knowledge.leads(q))
     r = asyncio.run(recheck.run(ans, [], q, v))
     assert r["status"] == "rechecked" and "error" not in r
+
+
+def test_targeted_lookup_is_the_claims_own_fact(monkeypatch):
+    """A multi-part question no fact parser reads: the claim's own sentence names the subject and predicate
+    ("Jane Austen ... was born ... in 1775" -> born_date(jane austen)); a different Wikidata year corrects it."""
+    ans = "Jane Austen, the author of Pride and Prejudice, was born in Steventon, England, in 1776 [1]."
+    q = "where was the author of pride and prejudice born"
+    v = verify.check(ans, [D("Novels", "Pride and Prejudice is a novel.")], q)
+    seen = []
+
+    async def wikidata(fq):
+        seen.append((fq.prop, fq.subject))
+        return [WD("Jane Austen", "born_date", ["16 December 1775"])]
+    monkeypatch.setattr(knowledge, "wikidata", wikidata)
+    r = asyncio.run(recheck.run(ans, [], q, v))
+    assert seen == [("born_date", "jane austen")]
+    assert r["status"] == "corrected" and r["value"] == "1775"
