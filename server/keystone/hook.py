@@ -123,14 +123,14 @@ def save(force: bool = False):
     except Exception:  # noqa: BLE001
         return
     if force:
-        _write(config.KEYSTONE_DIR, snap, graph, codes)
+        _write(config.KEYSTONE_DIR, snap, graph, codes, wait=True)
     else:
         threading.Thread(target=_write, args=(config.KEYSTONE_DIR, snap, graph, codes), daemon=True).start()
 
 
-def _write(d, snap, graph, codes):
+def _write(d, snap, graph, codes, wait: bool = False):
     import json
-    if not _saving.acquire(blocking=False):
+    if not _saving.acquire(blocking=wait):
         return                                   # a write is already in progress: the next save catches up
     try:
         from .cells import CellStore
@@ -322,7 +322,6 @@ def ingest(f, query: str, docs, vecs: dict, meter: dict | None = None):
         tier = meter.get("tier") or ("card" if any((d.meta or {}).get("card") for d in fresh) else "web")
         ks = store()
         q = q_of(f, query)
-        from .. import embed  # noqa: F401  (query vector: reuse the speculator's when it exists)
         q.qvec = None
         ks.write(q, fresh, vecs, tier=tier)
         STATS["ingested"] += 1

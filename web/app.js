@@ -728,7 +728,7 @@
     const L = laneOf(mode);
     if (!L || L.tier === "local") { box.innerHTML = ""; return; }
     const src = L.card ? L.card.source : (L.tier === "index" ? (L.d.snapshot || "").replace(/^from your /, "") : (L.d.source || ""));
-    const chip = `<span class="lane-chip lc-${esc(L.tier)}" title="${esc(L.byCard ? "answered by the card itself: no model call" : "the answer's first cited source came from this lane" + (L.d.snapshot ? ` (${L.d.snapshot})` : ""))}">${esc(LANE_NAME[L.tier] || L.tier)} · ${esc(src.replace(/ \(local.*\)$/, ""))}</span>`;
+    const chip = `<span class="lane-chip lc-${esc(L.tier)}" title="${esc(L.byCard ? "answered by the card itself: no model call" : "the answer's first cited source came from this lane" + (L.d.snapshot ? ` (${L.d.snapshot})` : ""))}">${esc(L.tier === "index" && /^verified by Onset users/.test(L.d.snapshot || "") ? "shared index hit · 0 paid" : (LANE_NAME[L.tier] || L.tier))} · ${esc(src.replace(/ \(local.*\)$/, ""))}</span>`;
     if (!L.card) { box.innerHTML = chip; return; }
     const c = L.card, asof = fmtAsOf(c.as_of);
     let body = "";

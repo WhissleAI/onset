@@ -1023,15 +1023,24 @@ edge (subject) -[relation]-> (value cell) keyed by the Arc read-out (intent + en
 value-of-information gate decide local vs paid web. Memory = activation on graph nodes; memory.py / searchcache.py stay
 as fallbacks. Local answers are labelled "local index hit · 0 paid · Onset index · as of …".
 - Workload replay (800 questions, 30 users, Zipf + sessions + paraphrases + near-misses; Wikipedia as the paid stand-in,
-  text-level): paid calls / question no reuse 0.555 -> today's cache 0.464 -> **Keystone + VOI 0.362** at the same regret
-  (0.75 % vs 0.9 %), keyword accuracy 0.661 vs 0.646, p50 268 vs 375 ms; last 200 questions 0.26 vs 0.39 paid/q, p50
-  ~130 vs ~400 ms. Dev stream: 0.344 vs 0.359. Oracle with the same store: 0.284 (headroom for a learned director).
+  text-level): paid calls / question no reuse 0.555 -> today's cache 0.464 -> **Keystone + VOI 0.369** at the same regret
+  (0.75 % vs 0.9 %), keyword accuracy 0.658 vs 0.646, p50 310 vs 375 ms; last 200 questions 0.265 vs 0.385 paid/q.
+  Dev stream: 0.350 vs 0.359. Oracle with the same store: 0.284 (headroom for a learned director).
 - Hand-gated components (cells, typed keys, hash, activation) reach 0.28-0.32 paid/q but at 6-10 % regret: the VOI gate
   (ECE 0.046 test) is what keeps accuracy. The learned 64-bit hash loses to plain embedding NN (top-1 0.82 vs 0.93); the
   Arc verifier keeps NN coverage and cuts near-miss false accepts ~30-50 % (19.5 % -> 13.5 %, 12.6 % -> 6.5 %).
 - Streaming: relation known 3 words before the end; the key resolves on the last word (subject last) and a typed hit
   costs us, no embedding; dense top-1 converges before the end for 69 % of spoken eval questions (p50 lead 717 ms).
 - First pass: brute fp32-256 + rescore beats HNSW below ~50k cells (0.35 ms at 10k); HNSW wins at 100k (1.3 ms).
-- Flags INDEX (default 0 until the A/B below), INDEX_SERVE, INDEX_PERSIST, GRAPH_KEY, GRAPH_ACT, VOI, VOI_THETA,
-  KEYSTONE_DIR (data dir). Tests: tests/test_keystone.py (18). Pipeline: eval/keystone/run_all.sh; A/B:
-  eval/keystone/ab_index.sh.
+- Real-audio A/B (58 set, Onset mode, paired back-to-back): cold store = no cost (+9 ms paired median, same sources);
+  warm store after two fixes (endpoint reuses the speculator's query embedding; persistence off the event loop):
+  paid 0.64 -> 0.36 /q, ready -100 ms paired median, 58/58 correct. The 2 cold misses (local04, local11) are
+  local-moments questions the index never touches (same moments, answer wording vs strict keywords; 6/6 on re-run in
+  both conditions). INDEX is now ON by default.
+- Shared Keystone (server/keystone/shared.py, SQLite behind a SharedKeystone API): only Wikidata / verify-supported
+  public typed edges pass the allowlist (user facts, "you", memory, activation, unverified answers refused; tested).
+  Lookup: personal overlay -> shared -> VOI. Network replay: per-user 0.489 paid/q, + shared verified edges 0.470
+  (shared answers 96 % correct), fully pooled 0.369. Labels "verified by Onset users · as of ...".
+- Flags INDEX (default 1), INDEX_SERVE, INDEX_PERSIST, INDEX_SAVE_S, INDEX_SHARED (1), KEYSTONE_SHARED, GRAPH_KEY,
+  GRAPH_ACT, VOI, VOI_THETA (fitted 0.95), KEYSTONE_DIR (data dir). Tests: tests/test_keystone.py (25). Pipeline:
+  eval/keystone/run_all.sh; A/B: eval/keystone/ab_index.sh.

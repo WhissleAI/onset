@@ -321,7 +321,7 @@ VERIFY_TOL = float(os.environ.get("VERIFY_TOL", "0.01"))         # relative tole
 # writes a typed edge (subject) -[relation]-> (value cell), keyed by the Arc read-out; a learned answer-equivalence
 # verifier and a calibrated value-of-information gate decide when a question can be answered locally instead of paying
 # for the web. Write-up + measurements: docs/RETRIEVAL.md (runs/index/).
-INDEX = os.environ.get("INDEX", "0") == "1"                        # ingest + local tier (default from the A/B)
+INDEX = os.environ.get("INDEX", "1") == "1"                        # ingest + local tier (ON: real-audio A/B, RETRIEVAL.md §7)
 INDEX_SERVE = os.environ.get("INDEX_SERVE", "1") == "1"            # 0 = shadow: ingest + decide, never serve
 INDEX_PERSIST = os.environ.get("INDEX_PERSIST", "1") == "1"
 INDEX_SAVE_S = float(os.environ.get("INDEX_SAVE_S", "60"))         # persist at most this often (background thread)

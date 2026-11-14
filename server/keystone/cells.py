@@ -28,7 +28,7 @@ import re
 import threading
 import time
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np

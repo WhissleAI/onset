@@ -206,6 +206,7 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
     _router.reset_caches()       # ROUTER: cold card / fact lookups per run (A/B-honest: no mode reads the other's)
     if _cfg.INDEX and os.environ.get("INDEX_RESET", "per-run") == "per-run":
         from server.keystone import hook as _ks
+        _cfg.INDEX_PERSIST = False   # cold runs never write the data dir's store
         _ks.reset()              # Keystone cold per run (fresh sessions); INDEX_RESET=never keeps a warm store
     sess = Session(emit, mode=mode)
     ear = ArcEar([sess], on_event=on_ear) if _cfg.EAR in ("arc", "") else _ear.make_ear([sess], on_event=on_ear)
