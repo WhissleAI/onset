@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from . import config
+
 STOP = set("""a an the is are was were be been being am do does did of in on at to for from by with about into over
 what what's whats who who's whos whom whose which when where where's why how how's hows can could would should will
 shall may might must i me my you your we our us it its it's this that these those there here please tell show give find
@@ -101,8 +103,63 @@ def _pii_hide(kind: str, toks: list[str], a: int, b: int, raw: list[str] = ()) -
         street = any(toks[i] in _STREET for i in idx)
         return set(nums) if nums and (street or b - a >= 3) else set()   # house number only; street + city stay
     if kind == "safety.pii.date_of_birth":                  # keep the day ("what happened on june fifth"), hide the year
-        return {i for i in nums if re.fullmatch(r"(19|20)\d\d", toks[i])}
+        return {i for i in nums if re.fullmatch(r"(19|20)\d\d", toks[i])} | (spoken_years(toks, a, b) if config.PII_YEARS
+                                                                               else set())
     return set(idx)
+
+
+# Spoken years, as the live ear writes them: "nineteen eighty five", "twenty eleven", "nineteen oh five", "two thousand
+# and eight". The tagger's date_of_birth span covers them, but only digit years ("1985") used to be hidden: spoken birth
+# years reached the search 67 of 69 times (docs/ARC_VALUE.md, privacy).
+_TEENS = {"ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"}
+_TENS = {"twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"}
+_UNITS_W = {"one", "two", "three", "four", "five", "six", "seven", "eight", "nine"}
+_CENTURY = {"eighteen", "nineteen", "twenty"}
+
+
+def spoken_years(toks: list[str], a: int = 0, b: int | None = None) -> set:
+    """Token indices of every spoken year that starts in toks[a:b] (it may run past b: a span cut mid-year)."""
+    b = len(toks) if b is None else b
+    out: set = set()
+    i = a
+    while i < b:
+        t = toks[i]
+        n = toks[i + 1] if i + 1 < len(toks) else ""
+        j = -1
+        if t in _CENTURY and (n in _TENS or n in _TEENS or n in ("oh", "hundred")):
+            j = i + 2                                      # "nineteen eighty", "twenty eleven", "nineteen oh", ...
+            if n in _TENS and j < len(toks) and toks[j] in _UNITS_W:
+                j += 1                                     # "... five"
+            elif n == "oh" and j < len(toks) and toks[j] in _UNITS_W:
+                j += 1
+            elif n == "oh":
+                j = -1
+        elif t == "two" and n == "thousand":
+            j = i + 2                                      # "two thousand", "two thousand and eight", "... ten"
+            k = j + (1 if j < len(toks) and toks[j] == "and" else 0)
+            if k < len(toks) and (toks[k] in _UNITS_W or toks[k] in _TEENS):
+                j = k + 1
+            elif k < len(toks) and toks[k] in _TENS:
+                j = k + 1 + (1 if k + 1 < len(toks) and toks[k + 1] in _UNITS_W else 0)
+        if j > i:
+            out.update(range(i, j))
+            i = j
+        else:
+            i += 1
+    return out
+
+
+# A birth year said outside a date_of_birth span ("I was born in nineteen eighty five, what happened that year"): the
+# year words near a birth cue are hidden too; the month, day and place stay (they are what the search needs).
+_BIRTH_CUE = {"born", "birthday", "birth", "birthdate", "dob", "bday"}
+
+
+def birth_year_tokens(toks: list[str], window: int = 8) -> set:
+    cues = [i for i, t in enumerate(toks) if t in _BIRTH_CUE]
+    if not cues:
+        return set()
+    ys = spoken_years(toks) | {i for i, t in enumerate(toks) if re.fullmatch(r"(19|20)\d\d", t)}
+    return {i for i in ys if any(abs(i - c) <= window for c in cues)}
 
 
 # Relative time said in the question (Arc's typed entity.number.date / duration / time_of_day span, or the words):
@@ -641,6 +698,11 @@ def build(words: list[str], spans: list[dict], current: dict | None, events_seen
             if hide:
                 pii.append(s)
                 redact_tok |= hide
+    if config.PII_YEARS:
+        by = birth_year_tokens(toks) - redact_tok
+        if by:
+            pii.append({"type": "safety.pii.date_of_birth"})
+            redact_tok |= by
     redact_tok |= {i for i, t in enumerate(toks) if t in PROFANITY}   # never useful to search, never sent
     f.redact_tok = frozenset(redact_tok)
     f.redacted = tuple(dict.fromkeys(PII_REDACT[s["type"]] for s in pii))
