@@ -539,3 +539,88 @@ The off runs themselves vary by ±150 ms p50 between rounds (the machine is shar
 so only paired, back-to-back comparisons are quoted as evidence.
 
 **Default: INDEX=1** (persistent, in the app's data dir). Shadow mode is `INDEX_SERVE=0`, off is `INDEX=0`.
+
+## 8. Answer calibration: one confidence per answer (`server/calibrate.py`, branch feat/calib)
+
+Every answer now carries `conf` (0..1, "answers like this were right about X% of the time"), a band (high / medium /
+low) and one plain reason ("2 sources agree", "heard 'Kress' unclearly", "sources don't say"). The metric has
+`conf`, `conf_band`, `conf_reason`, `conf_feats` (the model inputs, so live runs can be refitted) and `conf_pre` (the
+same model before the answer model runs). The UI shows it as a badge under the answer (`web/confidence.js`).
+
+**Both scores are kept.** Tavily's per-result relevance `score` was parsed (`lanes._parse`) but the final ranking is
+EmbeddingGemma cosine over the pool (`speculator.rank`), so the Tavily number never reached anything. The `sources`
+event now carries both per doc: `src_score` (Tavily's, only for Tavily docs) and `rerank_score` (the cosine; `score`
+stays for older clients). The calibrator reads `src_top` / `src_margin`. `CALIB_FUSE=<w>` adds `w × src_score` to the
+cosine in the ranking (default 0: not measured, see below). `CALIB_PUBDATE=1` sends Tavily `include_published_date`
+(no extra credit) and the newest source's age becomes `src_age_d`; a live-data question answered from sources more
+than a week old gets the doubt "sources may be out of date". Default off: untested against the real API.
+
+**Features** (`calibrate.features`; missing values are imputed with the training mean, so a signal a lane cannot give
+adds nothing either way):
+
+| group | features |
+|---|---|
+| sources | Tavily score of the top result and its margin over the rest; newest source age; rerank cosine top-1, top-1 − top-2, mean of top 3; number of sources; how many of the top 3 name the question's subject |
+| router / facts | lane (card / facts / web), the plan's own conf, a Wikidata fact or live card among the sources |
+| Keystone | an index hit, shared ("verified by Onset users") vs personal, age of the cell |
+| Arc | confidence of the least-sure decisive word (min of ear and fused, `Frame.sconf`; the word goes into the reason), self-correction, follow-up / carried subject, hesitation fillers, a retrieval-in-the-loop rewrite, intent and its probability, length |
+| answer (post only) | verify status (agree / supported / partial / unverified / disagree) and the share of claims found, a "the sources don't say" answer, extractive fallback, citations, length |
+
+**Model.** Logistic regression on standardized features, then isotonic regression fitted on 5-fold out-of-fold
+outputs of the train split (`eval/calib_fit.py` → `server/calib_model.json`; the scoring reuses
+`server/confidence.py`'s linear / sigmoid core). A gradient-boosted model was tried in place of the logistic one: same
+AUC, worse Brier (0.172 vs 0.161 post), so the small model ships.
+
+**Labels** (`eval/calib_data.py`, text path, WEB_BACKEND=wikipedia, Keystone off, no Tavily spend): 647 answered
+questions = 210 Keystone question families with an `expect` (canon + 2 paraphrases; 158 from the 58 set / showcase
+gold, 465 with LLM-written keywords) + 24 Arc-value corrections. Each is routed as today (router.route(final=True);
+the kdir fixture's recorded docs reused read-only when it has the exact text, 232 of them), ranked by EmbeddingGemma,
+answered by the real answer model (647 calls, est. $0.13), verified, and scored with run_ab's keyword scorer. Test split =
+30 % of families by family id (paraphrases never straddle): 186 answers, 76.9 % right. The kdir counterfactual dataset
+has no gold answers, so it supplies docs only, not labels.
+
+**Reliability on the held-out test split (186 answers):**
+
+| score | ECE | Brier | AUC |
+|---|---|---|---|
+| raw rerank cosine (top-1) as a probability | 0.046 | 0.179 | 0.55 |
+| raw router plan conf | 0.335 | 0.274 | 0.63 |
+| calibrated, before the answer (`conf_pre`) | 0.027 | 0.174 | 0.60 |
+| **calibrated, after the answer (`conf`, the badge)** | **0.034** | **0.161** | **0.72** |
+
+Reliability bins of the badge's `conf` (mean conf → accuracy): 0.5-0.6: 0.53 → 0.47 (17); 0.6-0.7: 0.63 → 0.61 (18);
+0.7-0.8: 0.75 → 0.71 (28); 0.8-0.9: 0.84 → 0.81 (97); 0.9-1.0: 0.91 → 0.96 (26). Bands (conf ≥ 0.8 high, < 0.6 low):
+high 123 answers 84.6 % right, medium 46 at 67.4 %, low 17 at 47.1 %.
+
+Reading it honestly:
+- The cosine happens to sit near the base accuracy (low ECE by coincidence) but cannot tell right from wrong (AUC
+  0.55). The router's conf is badly calibrated (its 0.9+ bin is right 44 % of the time).
+- Before the answer the signals are weak (AUC 0.60): conf_pre never goes below 0.7 on this set, so it has no low band.
+  What separates right from wrong is mostly the answer itself (a "sources don't say" answer, verify's checks).
+- The labels are keyword matches. LLM-written keywords are noisy (e.g. "short" vs "shortened" for staccato), so on
+  the gold-keyword subset (52 test answers, 94 % right) the model is under-confident (mean conf 0.83).
+- Text path: no ASR, so `key_conf` (the "heard 'X' unclearly" signal) is missing in training and gets no weight yet.
+  Live runs now log `conf_feats`; refit with `eval/calib_fit.py --rows runs/calib/rows.jsonl <live rows>`.
+- Wikipedia results have no relevance score, so `src_top` / `src_margin` / `src_age_d` are not fitted either. Fitting
+  them needs real Tavily responses: about 650 searches (the same questions) ≈ 650-1,300 credits. Not spent.
+- These are Wikipedia-lane numbers. WEB_BACKEND=tavily also changes endpoint timings and draft budgets
+  (server/config.py `_TAVILY`), so the demo's Tavily settings will not match exactly.
+
+**Router use (CALIB_ROUTE, default OFF).** At the endpoint, before the answer model: high → answer now; medium →
+one free lookup first (the question's Wikidata fact + the local leads article, the lanes recheck.py uses), the new docs
+join the top 5 by cosine; low → one more paid search (`calibrate.alt_query`: the subject alone, else the whole
+question; never a query already searched) when the parity budget (`final_max`) allows, else the free lookup. Each is
+capped at CALIB_ROUTE_WAIT_S (1.2 s); any failure answers with the ranking it had. "Wait for the end of the turn" at a
+soft endpoint is not built: the text path cannot measure it.
+
+Measured on the test split (`eval/calib_route_eval.py`, re-answering when the top 5 changed):
+
+| policy | accuracy | paid calls / q | extra answer-model calls | extra lookup p50 |
+|---|---|---|---|---|
+| off | 76.9 % | 0.83 | 0 | 0 |
+| on (bands 0.6 / 0.8): 122 / 186 medium → free lookup | 76.3 % (0 fixed, 1 broken) | 0.83 | 5 | 274 ms |
+| on, every non-high answer → one more search | 77.4 % (4 fixed, 3 broken) | 1.48 | 96 | 337 ms |
+
+The free lookup rarely changes the top 5 (5 of 122) and the extra search buys one net answer for +0.65 paid calls / q,
+so CALIB_ROUTE stays off. The pre-answer signals are the bottleneck; better ones (real ASR confidence, Tavily scores)
+would have to come first.

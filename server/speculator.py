@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import answer, confidence, config, cost, director, embed, lanes, meter, narrow, planner, recheck, rerank, searchcache, verify
+from . import answer, calibrate, confidence, config, cost, director, embed, lanes, meter, narrow, planner, recheck, rerank, searchcache, verify
 from .frame import NEWS_INTENTS, Frame
 
 _ids = itertools.count(1)
@@ -411,6 +411,9 @@ class Speculator:
             return []
         M = np.stack([self.vecs[i] for i in ids])
         s = M @ qvec
+        if calibrate.CALIB_FUSE:          # Tavily's own relevance score fused into the cosine (off: not measured)
+            s = s + calibrate.CALIB_FUSE * np.array([self.pool[i].score if self.pool[i].source == "tavily" else 0.0
+                                                     for i in ids], np.float32)
         order = np.argsort(-s)[:k]
         return [(self.pool[ids[i]], float(s[i])) for i in order]
 
@@ -1302,6 +1305,8 @@ class Speculator:
         ranked = self._rank_for(f, qvec, 5) if plan_ranked is None else [(d, sc) for d, sc, _ in plan_ranked]
         if fplan is not None and fplan.lane == "card" and plan_ranked is None:
             ranked = self._card_first(ranked, qtext, qvec)
+        if calibrate.CALIB and reuse_draft is None and plan_ranked is None and qvec is not None:
+            ranked = await self._calib_pre(f, q, qtext, qvec, ranked, fplan, m, live)    # CALIB_ROUTE (calibrate.py)
         if config.INDEX and qvec is not None and not f.plain:
             from .keystone import hook as _ks
             _ks.note_qvec(f, q, qvec)                    # Keystone: this question's vector on the value cell it wrote
@@ -1334,7 +1339,8 @@ class Speculator:
         t_sources = time.perf_counter()
         m["n_sources"] = len(docs)
         emit({"t": "sources", "ms": self.ms(t_sources),
-              "docs": [{**self._brief(d), "score": round(sc, 3)} for d, sc in ranked]})
+              "docs": [{**self._brief(d), "score": round(sc, 3), "rerank_score": round(sc, 3),
+                         **({"src_score": round(d.score, 3)} if d.source == "tavily" else {})} for d, sc in ranked]})
         self.answer_stream = st
         self.used_ids = [d.id for d in docs]
         used_ids = set(self.used_ids)
@@ -1367,6 +1373,8 @@ class Speculator:
                 emit({"t": "verify", "ms": self.ms(), **v})
             except Exception as e:
                 m["verify"] = {"status": "error", "error": f"{type(e).__name__}: {e}"[:120]}
+        if calibrate.CALIB:
+            self._calib_post(f, ranked, fplan, m, v, st, emit)
         spec = [x for x in self.fires if not x.lane.startswith("final")]
         used_spec = [x for x in spec if x.used]
         if spec:
@@ -1406,6 +1414,71 @@ class Speculator:
             t = asyncio.create_task(self._recheck(st.text(), docs, qtext, v, m))
             self.bg.append(t)
         return m
+
+    def _calib_route(self, ranked, fplan) -> dict:
+        ids = {d.id for d, _ in ranked}
+        tiers = [x.meter.get("tier") for x in self.fires if x.docs and ids & {d.id for d in x.docs} and x.meter.get("tier")]
+        return {"lane": fplan.lane if fplan is not None else "", "conf": fplan.conf if fplan is not None else None,
+                "tier": tiers[0] if tiers else ""}
+
+    async def _calib_pre(self, f: Frame, q: str, qtext: str, qvec, ranked, fplan, m: dict, live):
+        """Answer calibration before the answer model runs (server/calibrate.py). With CALIB_ROUTE=1 a middle-band
+        answer first gets one free lookup (Wikidata fact + local leads), a low-band one one more paid search inside
+        the question's budget (else the free lookup); either is capped at CALIB_ROUTE_WAIT_S, and the new docs join
+        the ranking by cosine. Never raises: any failure answers with the ranking it was given."""
+        try:
+            x = calibrate.features(f, ranked, self._calib_route(ranked, fplan))
+            a = calibrate.assess(x, "pre")
+            if not a:
+                return ranked
+            m["conf_pre"], m["conf_pre_band"] = a["conf"], a["band"]
+            if not (calibrate.CALIB_ROUTE and self.mode == "headstart" and not f.plain):
+                return ranked
+            web_ok = f.route in ("web", "both") and (fplan is None or "web" in fplan or fplan.lane in ("card", "facts"))
+            act = calibrate.route_action(a["conf"], self._paid() < self.prof.final_max, web_ok)
+            if not act:
+                return ranked
+            t0 = time.perf_counter()
+            docs = []
+            if act == "paid":
+                aq = calibrate.alt_query(f, {x_.query for x_ in self.fires} | {q})
+                if aq:
+                    fire = self._fire("final-web", aq, f, *self._web(aq, f, final=True))
+                    await asyncio.wait([fire.task], timeout=calibrate.CALIB_ROUTE_WAIT_S)
+                    docs = list(fire.docs or [])
+                else:
+                    act = "free"
+            if act == "free":
+                docs = await asyncio.wait_for(calibrate.free_docs(qtext, f), calibrate.CALIB_ROUTE_WAIT_S)
+                await asyncio.wait_for(self._add_docs(docs), calibrate.CALIB_ROUTE_WAIT_S)
+            m["calib_route"] = {"act": act, "n": len(docs), "ms": round((time.perf_counter() - t0) * 1000)}
+            if not live() or not docs:
+                return ranked
+            seen = {d.id for d, _ in ranked}
+            new = [(d, float(self.vecs[d.id] @ qvec)) for d in docs if d.id in self.vecs and d.id not in seen]
+            card = [r for r in ranked if r[0].meta.get("card")]
+            rest = sorted([r for r in ranked if not r[0].meta.get("card")] + new, key=lambda r: -r[1])
+            return (card + rest)[:5]
+        except Exception as e:  # noqa: BLE001
+            m["calib_error"] = f"{type(e).__name__}: {e}"[:120]
+            return ranked
+
+    def _calib_post(self, f: Frame, ranked, fplan, m: dict, v, st, emit):
+        """The answer's calibrated confidence + reason (metric; the badge reads the "confidence" event)."""
+        try:
+            x = calibrate.features(f, ranked, self._calib_route(ranked, fplan), v=v or {}, answer=st.text(),
+                                   fallback=getattr(st, "fallback", None))
+            if getattr(st, "error", None) or not st.text():
+                return
+            a = calibrate.assess(x, "post")
+            if not a:
+                return
+            m.update(conf=a["conf"], conf_band=a["band"], conf_reason=a["reason"], conf_feats=calibrate.compact(x))
+            if calibrate.CALIB_BADGE:
+                emit({"t": "confidence", "ms": self.ms(), "conf": a["conf"], "band": a["band"], "reason": a["reason"],
+                      "label": calibrate.label(a["conf"])})
+        except Exception as e:  # noqa: BLE001
+            m["calib_error"] = f"{type(e).__name__}: {e}"[:120]
 
     async def _recheck(self, text: str, docs: list, qtext: str, v: dict, m: dict):
         """Verify-triggered re-search (server/recheck.py): updates the metric in place and emits a "recheck" event
