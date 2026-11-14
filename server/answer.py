@@ -445,9 +445,15 @@ class Stream:
                 self._finish(err)
         finally:
             won_w.cancel()
-            for t in tasks:
+            for i, t in enumerate(tasks):
                 if not t.done():
                     t.cancel()
+                    for p in self.usage_parts:
+                        if p["req"] == i and p["s"] is None:
+                            # meter: a request on the wire that loses (hedge) may be billed: count it now, not when
+                            # its cancellation lands (a question closed right after its answer missed it: the
+                            # baseline's hedge losers went uncounted)
+                            p["cancelled"] = True
             self._finish()
 
     def _card_answer(self) -> bool:
