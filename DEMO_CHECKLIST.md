@@ -24,8 +24,8 @@ cd ~/Desktop/work/whissle/headstart
 ./run_demo.sh --offline  # venue Wi-Fi is bad: web lane serves the recorded cache from the start (labelled)
 ```
 - [ ] Read the checklist it prints. **GO** = everything live. **GO (DEGRADED)** = a fallback is active, the UI shows
-      a yellow "Degraded mode" banner; demo it and say so if asked. **NO-GO** = see Recovery below.
-- [ ] Header status says **ready** (green dot). Yellow dot "ready · degraded" = a fallback is active.
+      a one-line notice under the top bar (e.g. "Live web unavailable · using saved results"); demo it and say so if asked. **NO-GO** = see Recovery below.
+- [ ] Header status says **ready** (green dot). Yellow dot "ready · limited" = a fallback is active (hover it: ear, web lane, answer model).
 - [ ] Mode **Race** selected.
 - [ ] Replay q01 once more by hand (sidebar) so the browser, the audio element and the connection pools are warm.
 
@@ -64,10 +64,10 @@ In the final capture (20:30) 8 single Race replays went 4 wins, 2 dead heats, 2 
 ## Degraded modes (what the audience sees, and what to say)
 | failure | what the server does | UI | say |
 |---|---|---|---|
-| web lane unreachable / slow (>3 s) | serves `runs/web_cache.json` (57 recorded Wikipedia responses for the eval set), stops trying live for 30 s, retries after | yellow banner "Web: live web unreachable: serving recorded cache"; pane chip "cached web ×N"; sources marked CACHED | "Venue Wi-Fi is down, so the web results are a recording of real Wikipedia responses; the speculation, timing and answers are live." |
-| `--offline` / `WEB_BACKEND=cache` | cache only, never touches the network for the web lane | banner "cached (... not live)" | same |
+| web lane unreachable / slow (>3 s) | serves `runs/web_cache.json` (57 recorded Wikipedia responses for the eval set), stops trying live for 30 s, retries after | notice "Live web unavailable · using saved results"; pane chip "cached web ×N"; sources marked CACHED | "Venue Wi-Fi is down, so the web results are a recording of real Wikipedia responses; the speculation, timing and answers are live." |
+| `--offline` / `WEB_BACKEND=cache` | cache only, never touches the network for the web lane | notice "Live web off · using saved results" | same |
 | question not in the cache | web lane returns no sources (local questions unaffected) | answer says the sources don't cover it | use a replay from the table above |
-| Anthropic unreachable (or no first token in 4 s) | extractive answer: best-matching sentence of the top source, cited; stops trying for 30 s | banner "Answers: answer model unreachable: extractive answers"; badge "extractive · not generated" on the answer | "Without the network the answer is extracted from the top source instead of generated; the race still shows when each side had its sources." |
+| Anthropic unreachable (or no first token in 4 s) | extractive answer: best-matching sentence of the top source, cited; stops trying for 30 s | notice "Answer service unreachable · showing the best source sentence" (no key: "Add an Anthropic key for full answers · Open Settings"); badge "extractive · not generated" on the answer | "Without the network the answer is extracted from the top source instead of generated; the race still shows when each side had its sources." |
 
 Both modes always use the same fallbacks (same process-wide state), so the race stays fair. Nothing cached or
 extracted is ever shown as live: every such result carries a label.

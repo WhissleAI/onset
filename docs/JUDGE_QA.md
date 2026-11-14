@@ -173,8 +173,8 @@ On the local moments lane, a second-stage ranker raised recall@1 from 0.80 to 0.
 - **"Can you ship Arc commercially?"** Not under the current licence. Arc and Arc Tagger are research releases from
   Whissle under CC BY-NC 4.0, so commercial use needs a Whissle licence. EmbeddingGemma 2 is Apache 2.0.
 - **"What if the demo network dies?"** `./run_demo.sh` runs a preflight first. Without the network, the web lane
-  serves 57 recorded Wikipedia responses and answers are extracted from the top source. Both are labelled as
-  degraded in the UI, and the race stays fair because both modes share the same fallbacks [DEMO].
+  serves 57 recorded Wikipedia responses and answers are extracted from the top source. Both are labelled in the
+  UI (a one-line notice and per-source badges), and the race stays fair because both modes share the same fallbacks [DEMO].
 - **"What's next?"**
   - Get the Tavily key, then re-run the A/B and the current-events set.
   - Re-measure 10 dB with the VAD fix.

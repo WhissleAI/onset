@@ -1,0 +1,57 @@
+/* Results view (web/scorecard.js): a full-window slide over the app. Page colour tokens (style.css :root), light + dark. */
+body.sc-on { overflow: hidden; }
+.sc { position: fixed; inset: 0; z-index: 100; background: var(--bg); overflow-y: auto; overscroll-behavior: contain;
+  animation: scIn .18s ease-out; }
+.sc[hidden] { display: none; }
+@keyframes scIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sc { animation: none; } }
+.sc-panel { max-width: 1240px; margin: 0 auto; padding: 22px 24px 28px; }
+
+.sc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.sc-head h2 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); }
+.sc-sub { margin: 3px 0 0; color: var(--ink-2); font-size: 14px; }
+.sc-actions { display: flex; gap: 8px; flex: none; }
+.sc-btn { height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }
+.sc-btn:hover { border-color: var(--hs); }
+.sc-btn:focus-visible { outline: 2px solid var(--hs); outline-offset: 2px; }
+.sc-btn:disabled { opacity: .7; cursor: default; }
+.sc-btn kbd { font-size: 10.5px; color: var(--ink-3); }
+
+.sc-hero { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.sc-hero-t { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; display: flex; flex-direction: column; min-width: 0; }
+.sc-hero-t b { font-size: 34px; line-height: 1.1; font-weight: 800; color: var(--hs); letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sc-hero-t span { font-weight: 600; color: var(--ink); margin-top: 2px; }
+.sc-hero-t small { color: var(--ink-3); font-size: 12.5px; }
+
+.sc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.sc-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px 12px; min-width: 0; }
+.sc-pn { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); }
+.sc-pn span { font-family: var(--mono); color: var(--hs); margin-right: 8px; }
+.sc-big { font-size: 44px; line-height: 1.08; font-weight: 800; letter-spacing: -.03em; color: var(--ink); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.sc-unit { font-weight: 600; color: var(--ink-2); }
+.sc-vs { color: var(--hs); font-weight: 600; font-size: 13px; margin-top: 2px; }
+.sc-ans { margin: 8px 0 0; color: var(--ink-2); font-size: 13px; line-height: 1.4; }
+.sc-ref { font-size: .38em; font-weight: 600; color: var(--ink-3); margin-left: 3px; vertical-align: super; letter-spacing: 0; cursor: help; }
+.sc-hero-t .sc-ref { font-size: .4em; }
+
+.sc-live { margin-top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 18px 12px; }
+.sc-live h3 { margin: 0 0 8px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-2); }
+.sc-live h3 span { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink-3); margin-left: 8px; }
+.sc-ltiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.sc-lt { display: flex; flex-direction: column; min-width: 0; }
+.sc-lt label { font-size: 11px; color: var(--ink-3); font-weight: 600; }
+.sc-lt b { font-size: 26px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.sc-lt small { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-fine { margin: 6px 0 0; font-size: 11.5px; color: var(--ink-3); }
+.sc-empty { margin: 4px 0; color: var(--ink-2); }
+
+.sc-foot { margin-top: 12px; font-size: 11.5px; color: var(--ink-3); }
+.sc-foot p { margin: 0 0 4px; }
+.sc-foot ol { margin: 0; padding-left: 18px; display: flex; flex-wrap: wrap; gap: 0 22px; }
+
+@media (max-width: 900px) {
+  .sc-hero, .sc-grid { grid-template-columns: minmax(0, 1fr); }
+  .sc-ltiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sc-head { flex-direction: column; }
+}

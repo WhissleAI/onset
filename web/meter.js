@@ -351,10 +351,12 @@
         if (rows.length) render();
       }
     },
-    state() { const { T, P } = totals(); return { T, P, rows: rows.map((r) => ({ n: r.n, hs: r.m.headstart || null, bl: r.m.baseline || null })), orphan, prices }; },
+    state() { const { T, P } = totals(); return { T, P, rows: rows.map((r) => ({ n: r.n, hs: r.m.headstart || null, bl: r.m.baseline || null,
+      // answered + ready after the speaker really stopped (null: not answered), for the Results view (scorecard.js)
+      hsReady: answered(r.m.headstart) ? ready(r, "headstart") : null, blReady: answered(r.m.baseline) ? ready(r, "baseline") : null })), orphan, prices }; },
     evalSummary,
   };
-  loadPrices();
+  loadPrices().then(() => { if (root) render(); });      // the budget toggle shows the server's default once known
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => render());
   else render();
 })();
