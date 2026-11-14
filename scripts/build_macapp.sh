@@ -7,6 +7,9 @@
 #                                         (developer builds only: bakes this repo's path into Info.plist)
 #   scripts/build_macapp.sh --dmg         also make dist/<APP_NAME>.dmg (a second copy: ~1 GB more disk)
 #   scripts/build_macapp.sh --no-swap     leave the new build in dist/.staging (test it there first)
+#   ONSET_SIGN_ID="<identity>" scripts/build_macapp.sh
+#                                         sign with a real identity (`security find-identity -v -p codesigning`) instead
+#                                         of ad-hoc: macOS then keeps the microphone + Keychain grants across rebuilds
 #
 # The build goes to dist/.staging/<APP_NAME>.app and replaces dist/<APP_NAME>.app only when no copy of the app (or its
 # server) is running from dist/: a running app is never rebuilt over or quit. Otherwise it stays staged and the
@@ -22,7 +25,7 @@ CLEAN=0; DEV_ENV=0; DMG=0; PY_ONLY=0; SWAP=1; SWAP_ONLY=0
 for a in "$@"; do
   case "$a" in
     --clean) CLEAN=1 ;; --dev-env) DEV_ENV=1 ;; --dmg) DMG=1 ;; --python-only) PY_ONLY=1 ;; --no-swap) SWAP=0 ;; --swap) SWAP_ONLY=1 ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "unknown option $a"; exit 2 ;;
   esac
 done
@@ -148,15 +151,16 @@ else
   iconutil -c icns "$IS" -o "$RES/AppIcon.icns"
 fi
 
-step "Codesign (ad-hoc, hardened runtime)"
+SIGN="${ONSET_SIGN_ID:--}"   # "-" = ad-hoc: a new identity every build, so macOS asks for the mic again (MACAPP.md)
+step "Codesign ($([ "$SIGN" = - ] && echo "ad-hoc" || echo "$SIGN"), hardened runtime)"
 # every Mach-O in the bundled Python first (inside-out), then the Python executable with its own entitlements, then the app
-find "$PY" "$A/vendor" -type f \( -name '*.so' -o -name '*.dylib' \) -print0 | xargs -0 -n 200 codesign -f -s - --timestamp=none 2>/dev/null
+find "$PY" "$A/vendor" -type f \( -name '*.so' -o -name '*.dylib' \) -print0 | xargs -0 -n 200 codesign -f -s "$SIGN" --timestamp=none 2>/dev/null
 find "$PY/bin" -type f -perm -u+x -print0 | while IFS= read -r -d '' f; do
   if file "$f" | grep -q Mach-O; then
-    codesign -f -s - --timestamp=none --options runtime --entitlements macapp/python.entitlements "$f"
+    codesign -f -s "$SIGN" --timestamp=none --options runtime --entitlements macapp/python.entitlements "$f"
   fi
 done
-codesign -f -s - --timestamp=none --options runtime --entitlements macapp/app.entitlements "$APP"
+codesign -f -s "$SIGN" --timestamp=none --options runtime --entitlements macapp/app.entitlements "$APP"
 codesign --verify --strict "$APP" && echo "  signature OK"
 
 rm -rf "$WORK"

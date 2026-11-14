@@ -1469,3 +1469,34 @@ Read-only audit of main 411a69f against the organizers' 6 problems, 9 tracks and
   load (it showed Speed until the first render after a run).
 - Tests: tests/test_results_view.py (21); full suite 499 passed. Shots (1280x720, light + dark, no console errors, no horizontal scroll):
   scratchpad feature_shots/results/.
+
+## Mac app mic: 0.1-0.6 s of audio per push-to-talk press (branch fix/macmic)
+- **Root cause (page logic, not WebKit):** a stale `run_done`. When a press starts while the previous run is still
+  being stopped on the server (its ear flush takes 0.5-4 s), the server ends that run only on the new "start", so the
+  OLD run's `run_done` reaches the page AFTER the new mic is on. The page took it for the current run: `finishRun()` ->
+  `stopMic(false)` turned the new mic off without sending "stop". Audio stopped after 0.1-0.6 s, the release sent
+  nothing (mic already off), the run stayed open until the next press, whose "start" ended it and produced the next
+  stale `run_done`: every later press repeated it. server.log fingerprint: `run N stopping: 0.4s` with no
+  `run N stop (client)` before it. The trigger in the Mac app this morning: the microphone prompt after the
+  permission reset (the window loses focus while getUserMedia waits, the blur handler releases the press) and quick
+  re-presses while a Flux flush is running. The same page in Chrome has the same bug, it just rarely gets the first
+  late `run_done`.
+- **Reproduced in Chromium** (fake mic, own server :8793, presses 0.4 s after each release): main's page logged
+  holds 3/6/14 s as `2.8s`, `0.5s`, `0.2s` of audio, runs 2-3 without `stop (client)`, exactly the Mac app's log.
+- **Fix:** the page tags every run (`rid` on start/replay); the server echoes it on all of that run's events and on
+  `run_done`; the page drops events of any other run. Mic capture is opened once (stream + AudioContext + worklet)
+  and kept warm, a press only gates sending; released after 60 s without a press (the mic indicator goes off).
+  The Mac app holds a `ProcessInfo` activity while the page listens (bridge message `{t: "mic", on}`), so App Nap /
+  timer throttling can't stall a press.
+- **Instrumented:** every mic stop sends the page's capture counters (`why, held_s, frames, in_s, sent_s, node, ctx,
+  rate, track, mutes, ws_buf`), logged by the server on the `stop (client)` line; console `[mic]` lines; Mac app
+  `-autoMic 4,0.3,6,14,3` automation (MACAPP.md "Verify").
+- **After, Chromium** (same press pattern): 3/6/14/4/0.3/5 s holds -> 3.3/6.5/14.4/4.3/0.8/5.5 s of audio (hold + the
+  500 ms tail), every run with `stop (client)`; capture reused from press 2 on.
+- **After, Mac app (WKWebView, built-in mic, room sound), own test build** (bundle id changed for the test only, own
+  support dir, hidden): holds 4/0.3/6/14/3 s -> server `3.7/0.3/6.3/14.2/3.1s of audio`; worklet frames
+  1370/120/2361/5327/1180 (128 samples at 48 kHz: 14.2 s = 5325 expected), AudioContext running, track live, 0 mutes.
+- **Stable signing:** `ONSET_SIGN_ID="<identity>" scripts/build_macapp.sh` signs every Mach-O with that identity so
+  macOS keeps the mic + Keychain grants across rebuilds (MACAPP.md: how to make a local self-signed one). Default
+  stays ad-hoc. This Mac has a usable identity: `security find-identity -v -p codesigning`.
+- Tests: tests/test_mic_runs.py (3).
