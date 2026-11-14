@@ -1934,3 +1934,13 @@ toxicity` and sets `redact=profanity=mask,toxicity=mask` (+ self-harm flag thres
   frame masking, typed Session turn (no Arc state, masked answer), no-search turns, spoken profanity, ws race run.
 - Screenshots: scratchpad/feature_shots/typed/ (typing mid-question with live chips, typed answer, masked transcript,
   self-harm line; light + dark; no console errors, no horizontal scroll).
+
+## Fix/ellipsis2: the anchor of "the old one" (branch fix/ellipsis2; server/ellipsis.py anchor())
+Recorded run: "who is the president of usa" -> "you know the old one" rewrote to "... before the current president
+united states": the anchor was the previous answer's FIRST entity, and the tagger listed United States before Donald
+Trump. The final answer was still Biden; the memory chip showed the wrong anchor. anchor() now (1) drops the question's
+own object and its aliases (usa / us / united states / united states of america / america, initials, "apple" ~ "apple
+inc."), (2) prefers the kind the question head asks for (president / ceo / king / mayor ... -> person; capital ->
+place), (3) then the entity named earliest in the answer's first sentence, then the answer's order. Memory hands it
+the answer's entities with their kinds and the answer text. Tests: the recorded case, "who is the CEO of Apple" ->
+"and the one before" -> "... before the current ceo tim cook", alias / kind / first-sentence rules.
