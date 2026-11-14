@@ -1014,3 +1014,24 @@ mid-sentence, baseline after the endpoint, correction re-plan, bridge, reused wh
 tests/test_integrate.py's paid-budget test now allows PLAN_EXTRA_PAID per extra part (its question is two-part).
 After the last verify fixes, a re-shot of mp21 shows "✓ 2 sources agree · 30 computed" (was a false "⚠ 1964 vs 1994");
 one remaining false alarm seen: mp02 baseline "1756 vs 1979" (another page titled Mozart).
+
+## Keystone: Arc-keyed answer graph + VOI gate (branch feat/index; server/keystone/, eval/keystone/, docs/RETRIEVAL.md)
+One structure for the search cache, the local index and memory. Every retrieved passage / fact / answer becomes a memory
+cell (the reranker's EmbeddingGemma vector, 256-dim first pass + fp16 rescore); every answered question writes a typed
+edge (subject) -[relation]-> (value cell) keyed by the Arc read-out (intent + entity span/type + wh- answer type ->
+`founded_by(nvidia)`, TTL by volatility); an answer-equivalence verifier (embedding NN + Arc agreement) and a calibrated
+value-of-information gate decide local vs paid web. Memory = activation on graph nodes; memory.py / searchcache.py stay
+as fallbacks. Local answers are labelled "local index hit · 0 paid · Onset index · as of …".
+- Workload replay (800 questions, 30 users, Zipf + sessions + paraphrases + near-misses; Wikipedia as the paid stand-in,
+  text-level): paid calls / question no reuse 0.555 -> today's cache 0.464 -> **Keystone + VOI 0.362** at the same regret
+  (0.75 % vs 0.9 %), keyword accuracy 0.661 vs 0.646, p50 268 vs 375 ms; last 200 questions 0.26 vs 0.39 paid/q, p50
+  ~130 vs ~400 ms. Dev stream: 0.344 vs 0.359. Oracle with the same store: 0.284 (headroom for a learned director).
+- Hand-gated components (cells, typed keys, hash, activation) reach 0.28-0.32 paid/q but at 6-10 % regret: the VOI gate
+  (ECE 0.046 test) is what keeps accuracy. The learned 64-bit hash loses to plain embedding NN (top-1 0.82 vs 0.93); the
+  Arc verifier keeps NN coverage and cuts near-miss false accepts ~30-50 % (19.5 % -> 13.5 %, 12.6 % -> 6.5 %).
+- Streaming: relation known 3 words before the end; the key resolves on the last word (subject last) and a typed hit
+  costs us, no embedding; dense top-1 converges before the end for 69 % of spoken eval questions (p50 lead 717 ms).
+- First pass: brute fp32-256 + rescore beats HNSW below ~50k cells (0.35 ms at 10k); HNSW wins at 100k (1.3 ms).
+- Flags INDEX (default 0 until the A/B below), INDEX_SERVE, INDEX_PERSIST, GRAPH_KEY, GRAPH_ACT, VOI, VOI_THETA,
+  KEYSTONE_DIR (data dir). Tests: tests/test_keystone.py (18). Pipeline: eval/keystone/run_all.sh; A/B:
+  eval/keystone/ab_index.sh.
