@@ -84,3 +84,12 @@ body.has-meter .side { max-height: calc(100vh - 134px); }
   .mt-mode label { display: none; }
   .mt-hero b { font-size: 16px; white-space: normal; }
 }
+/* 1100-1400 px: the budget toggle shares the bar; tighter cells so the per-question row and the session never overlap */
+@media (max-width: 1400px) and (min-width: 1101px) {
+  .mt-bar { gap: 10px; }
+  .mt-q th, .mt-q td { padding-left: 4px; padding-right: 4px; }
+  .mt-q th:first-child { max-width: 150px; }
+  .mt-mode label { display: none; }
+  .mt-sess { max-width: 230px; }
+  .mt-sess div { overflow: hidden; text-overflow: ellipsis; }
+}
