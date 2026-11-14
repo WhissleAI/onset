@@ -28,7 +28,7 @@ import gates as G  # noqa: E402
 import registry as RG  # noqa: E402
 import results as RS  # noqa: E402
 
-STEP_TIMEOUT = {"calib": 3600, "kdir": 5400, "ttl": 1800, "director": 7200}
+STEP_TIMEOUT = {"calib": 3600, "kdir": 5400, "ttl": 2400, "director": 7200}
 TTL_EVERY = int(os.environ.get("TRAIN_TTL_EVERY", "6"))
 REGRESSION_TESTS = ["tests/test_fixlive.py", "tests/test_persona.py", "tests/test_calibrate.py", "tests/test_kdir.py",
                     "tests/test_director_v2.py", "tests/test_train_loop.py"]

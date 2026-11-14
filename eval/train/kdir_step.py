@@ -86,6 +86,10 @@ def kdir_main(cycle: int, out: Path, r_grid=None) -> dict:
     # DAgger: a round under the current policy (tagged by the policy's hash: an unchanged policy reuses its round)
     import hashlib
     tag = "train_p" + hashlib.sha1(kdir.MODEL_PATH.read_bytes()).hexdigest()[:10]
+    sig = [tag] + sorted(p.name for p in IDX.glob("kdir_log_train_*.pkl"))      # what a refit would train on
+    st_p = C.TRAIN / "kdir_state.json"
+    if (IDX / f"kdir_log_{tag}.pkl").exists() and C.read_json(st_p, {}).get("sig") == sig:
+        return {"skip": "no new kdir training rows since the last refit (same policy, same DAgger rounds)"}
     new = T.log_stream(train_path, kdir.Policy({k: cur[k] for k in ("ok", "catch", "free_strong", "free_ok", "R", "C",
                                                                      "eps", "actions") if k in cur}), tag)
     logs = []
@@ -120,6 +124,7 @@ def kdir_main(cycle: int, out: Path, r_grid=None) -> dict:
         m["current"][s] = replay("cur", cur, s)
         m["candidate"][s] = replay("cand", cand, s)
     C.write_json(out / "kdir_model.json", cand)
+    C.write_json(st_p, {"sig": [tag] + sorted(p.name for p in IDX.glob("kdir_log_train_*.pkl"))})
     return {**m, "train_report": rep, "rows": {"train_decisions": sum(len(L["cx"]) for L in logs),
                                                  "new_decisions": len(new["logs"])},
             "R": {"current": cur["R"], "candidate": best["R"]}, "pick": pts}
@@ -160,8 +165,8 @@ async def statement_histories() -> dict:
         for prop, rel in FROM_PROP.items():
             pid = knowledge.PROPS[prop][0][0]
             se = await FT.q(client, f"""SELECT ?s ?start ?end WHERE {{ ?i p:{pid} ?s . ?s pq:P580 ?start .
-                                        OPTIONAL {{ ?s pq:P582 ?end }} }} LIMIT 3000""")
-            smp = await FT.q(client, f"""SELECT ?s ?st WHERE {{ ?i p:{pid} ?s . OPTIONAL {{ ?s pq:P580 ?st }} }} LIMIT 3000""")
+                                        OPTIONAL {{ ?s pq:P582 ?end }} }} LIMIT 1500""")
+            smp = await FT.q(client, f"""SELECT ?s ?st WHERE {{ ?i p:{pid} ?s . OPTIONAL {{ ?s pq:P580 ?st }} }} LIMIT 1500""")
             out[rel] = {"se": se, "n_all": len(smp), "n_with": sum(1 for b in smp if "st" in b)}
             await asyncio.sleep(1.0)
     return out
@@ -201,7 +206,17 @@ def ttl_main(cycle: int, out: Path) -> dict:
 
     from server.keystone import kdir
     cur_doc = json.loads(kdir.TTL_PATH.read_text())
-    hist = asyncio.run(statement_histories())
+    # statement histories move slowly and the public SPARQL endpoint is slow: fetched at most weekly, cached
+    hp = C.TRAIN / "ttl_histories.json"
+    cached = C.read_json(hp, {})
+    import time as _t
+    if cached.get("hist") and _t.time() - cached.get("ts", 0) < 7 * 86400:
+        hist = cached["hist"]
+    else:
+        hist = asyncio.run(statement_histories())
+        if sum(len(h["se"]) for h in hist.values()) == 0:
+            return {"skip": "Wikidata SPARQL returned no statement histories (timeouts)"}
+        C.write_json(hp, {"ts": _t.time(), "hist": hist})
     now = dt.datetime.now(dt.timezone.utc)
     cand_ttl, ll = ttl_fit(hist, cur_doc["ttl_s"], now)
     cand_doc = {**cur_doc, "ttl_s": cand_ttl, "source": f"eval/train/kdir_step.py ttl, cycle {cycle} (4/5 statements)"}
