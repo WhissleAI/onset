@@ -1159,3 +1159,119 @@ unsure_plan_holds_paid_speculation (timing; passes alone and in test_integrate.p
   in-flight run raised on landing and its docs were lost.
 - Chart: docs/img/arc_value.png. Scripts: eval/arcvalue/ (`run_all.sh` takes the shared lock per replay and leaves a
   200 s gap after each).
+
+## Arc audit + retrieval in the loop + verify re-search (branch feat/loop; server/heard.py, server/recheck.py, docs/ARC_INTEGRATION.md)
+
+### Phase 0: Arc integration audit
+`docs/ARC_INTEGRATION.md` is the matrix: every field of the Arc Tagger read-out, the Arc audio metadata, the Arc ear and the director heads, with each consumer and the test that pins it (Keystone row = docs/RETRIEVAL.md §3c, checked against the code). New wiring tests are in `tests/test_loop.py`.
+
+Small gaps fixed:
+- **Typed time spans drive Tavily freshness.** Before, the span type added nothing (the same regexes ran over all the words), and month / year windows were never produced.
+  - Now an Arc date / duration / time span is read with the two words before it.
+  - `month` / `year` come only from typed spans ("the year of the dragon" sets nothing).
+  - A past window on a general question ("what did Apple announce yesterday") sends `time_range` with topic general. "Today" on an evergreen question ("when does the Louvre close today") sets none.
+- **A corrected-away subject no longer leaks** into memory's turn text, the follow-up swap (`carry.prev.question`) or the next turn's answer-model context (`Frame.kept_text`). memory.observe parses only the kept words.
+- **narrow:** Arc emits `work_product`, not `product`, so the reviews family never fired.
+- **Arc entity type** now conditions the misheard-name match (Phase 1).
+
+Tests added for consumption that had none: jailbreak stops speculation, money span → finance, team → news.
+
+Bigger gaps, reported in the doc, not fixed:
+- device_directed / for_me don't gate open-mic.
+- Affect / overlap / speaker reach only the default-off director features.
+- The director `keep` head and `arc_name_boost` are dead.
+- Keystone's addressedness gate skips note_answer / note_qvec / absorb_memory, and its typed-span argument is really a word regex.
+
+### Phase 1: retrieval-in-the-loop speech understanding (LOOP_ASR_FIX, default OFF)
+`server/heard.py`:
+- **Suspect span:** 1-3 words, either an Arc entity mention that no known name spells exactly, or a low-confidence span.
+- **Re-scoring:** each suspect span is scored against the session's names:
+  - speculative results (titles + names in passages)
+  - conversation memory
+  - Keystone active nodes + their edge values
+  - Wikidata labels already looked up
+  - the local leads index (11K titles)
+- **Score:** a phoneme-ish key (consonant classes, voicing merged, vowels dropped: "mari guri" = "marie curie" = MRKR) plus letter similarity, conditioned on Arc's type (person / place / org). Digits are spelled ("k two" = K2).
+- **When it fires:** a confident, unambiguous match rewrites the frame (query, slots, entity phrase, what the answer model reads) and so re-keys the search. The UI shows a "heard 'x' → Y" badge.
+- **After the answer:** the answer's names re-resolve the question for memory, so a follow-up's "she" finds the right person.
+- **Safeguards:**
+  - A word with min(ear, fused) confidence >= 0.9 is never changed (anchors inside a mention must survive verbatim).
+  - The candidate must beat the runner-up by 0.05.
+  - The leads index is used only for Arc mentions and is stricter on one-word titles.
+  - No subset, plural-only or accent-only rewrites.
+
+**Finding on the confidence signal.** The fused per-word confidence (server/confidence.py) predicts whether a word *survives* into the final transcript. On final words it is ≈ 1.0 for 97 % of misheard name words. Flux's own word confidence still separates them: 39 % of misheard name words are < 0.9, against 6.8 % of correctly heard names (6,000 real traces). heard.py therefore uses min(ear, fused).
+
+**Offline: entity correction on 12,161 real Flux traces** (`eval/loop_asr_eval.py`; handoff flux_traces, script vs Flux; traces whose script differs by WER > 0.5 skipped, since those are re-used ids):
+
+| candidates | fixes | right | wrong name | changed a correctly heard name | precision | recall (all misheard names) | recall (name in index + reachable) |
+|---|---|---|---|---|---|---|---|
+| leads index | 4 | 3 | 1 | 0 | 0.75 | 3 / 1,676 (0.2 %) | 3 / 58 |
+| speculative results only | 2 | 0 | 2 | 0 | 0 | 0 | 0 |
+| results + leads (default sources) | 6 | 3 | 3 | **0** | 0.50 | 3 / 1,676 | 3 / 58 |
+| + LOOP_KEEP_EXACT (opt-in) | 8 | 3 | 4 | 1 | 0.38 | 3 / 1,676 | 3 / 58 |
+
+Examples:
+- Right: "rush hashanah" → Rosh Hashanah, "aaron rogers" → Aaron Rodgers, "la pas" → La Paz.
+- Wrong name: "b c" → BBC (said "BECE"), "don ewing" → John Ewing (said "Don Mueang").
+- "america" → Americas (said something else). The plural-only rule added after this run now blocks it; not re-run.
+
+What bounds it:
+- **The safeguard.** 1,676 misheard name spans, but only 481 (29 %) have no word >= 0.9. conv21's "mari guri" is 0.905 / 1.0 on Flux, so the safeguard blocks it.
+- **The candidates.** The intended name is in the speculative Wikipedia results of the misheard query in 0 of 1,676 cases (Wikipedia ANDs the misheard words), and in the leads index for 168 (58 of them reachable).
+
+On single questions the loop's free sources rarely hold the right name. Its value is in conversations: memory, answer and Keystone names.
+
+Tuning history (offline, same traces before the WER filter): leads on any low-confidence word gave 37 fixes = 9 right / 20 wrong / 8 on correct words. Leads only on Arc mentions plus the stricter rules give 0 false corrections.
+
+LOOP_KEEP_EXACT=1 (opt-in) lets an all-sure Arc mention change, but only to a context name (results / memory / answer / Keystone) with the identical phonetic key. Offline: +1 false ("savannah" → Savanna) and +1 wrong. So it stays off.
+
+**Live (paired, parity, WEB_BACKEND=wikipedia, VERIFY_RESEARCH=1 both arms):**
+
+| candidates | fixes | right | wrong name | changed a correctly heard name | precision | recall (all misheard names) | recall (name in index + reachable) |
+|---|---|---|---|---|---|---|---|
+| leads index | 4 | 3 | 1 | 0 | 0.75 | 3 / 1,676 (0.2 %) | 3 / 58 |
+| speculative results only | 2 | 0 | 2 | 0 | 0 | 0 | 0 |
+| results + leads (default sources) | 6 | 3 | 3 | **0** | 0.50 | 3 / 1,676 | 3 / 58 |
+| + LOOP_KEEP_EXACT (opt-in) | 8 | 3 | 4 | 1 | 0.38 | 3 / 1,676 | 3 / 58 |
+
+Examples:
+- Right: "rush hashanah" → Rosh Hashanah, "aaron rogers" → Aaron Rodgers, "la pas" → La Paz.
+- Wrong name: "b c" → BBC (said "BECE"), "don ewing" → John Ewing (said "Don Mueang").
+- "america" → Americas (said something else). The plural-only rule added after this run now blocks it; not re-run._LIVE
+
+Default: **LOOP_ASR_FIX=0**.
+- Offline it never changed a correctly heard name, but it fixed only 3 of 1,676 misheard names.
+- Live it fired only in two conversations, with no accuracy gain yet.
+- The multi-part A/B is inconclusive: it is order-confounded, with 0 fixes and +0.31 paid / q in the on arm.
+- The rule was "default on only with no p50 / accuracy / cost regression", and this A/B cannot show that.
+- LOOP_KEEP_EXACT=0.
+
+### Phase 2: verify-triggered re-search (VERIFY_RESEARCH, default OFF)
+`server/recheck.py`:
+- **Trigger:** after the metric (it never delays the first token). A "disagree" / "unverified" / "partial" badge gets one targeted lookup on its key claim: the disputed one, else the first unsupported year / number, else a real multi-word name.
+- **Lanes, in order:**
+  - Wikidata: the claim's own fact (subject + predicate from its sentence: "Jane Austen … was born … 1776" → born_date(jane austen)), else the question's.
+  - The local leads index.
+  - The paid web: only with VERIFY_RESEARCH_PAID=1, only on "disagree", one call, within the parity budget, counted in paid_calls.
+- **Outcomes:**
+  - "re-checked ✓ <source>"
+  - "corrected: A → B (Wikidata)": the answer is patched *and labelled* ("1775 (corrected from 1776)")
+  - "still unconfirmed"
+
+Text-path measure (`eval/recheck_eval.py`, real answer model, untimed; multi-part 26 + 58-set non-current 38 + showcase 29 = 93 questions, two runs):
+
+| run | questions | "disagree" | disagree on a right answer (false alarm) | re-checked | ✓ confirmed | corrected | corrected wrongly | paid calls added | re-check p50 |
+|---|---|---|---|---|---|---|---|---|---|
+| text run 1 | 93 | 1 | 1 (1.1 %) | 15 | 1 | 0 | 0 | 0 | 0.4-1.0 s |
+| text run 2 | 93 | 1 | 1 (1.1 %) | 14 | 1 | 0 | 0 | 0 | 0.1-1.4 s |
+| live showcase A/B (60 answers) | 60 | 0 | 0 | 6 | 0 | 0 | 0 | 0 | after the answer |
+| live multi-part A/B (52 answers) | 52 | 0 | 0 / 45 right | 11 | 0 | 0 | 0 | 0 | after the answer |
+
+- **Before:** the plan agent's tg_mp run had 15 "disagree" on 104 multi-part answers, 13 of them on right answers. Its stricter rules (merged) bring it to **0 / 52 live and 0 / 26 text** on the same set. On all three sets together it is 1-2 / 93: "Python … first released it in 1991" vs a source's 1989 start of work; "published May 1916" vs 1915.
+- **Re-check outcomes:** it confirmed one (general relativity 1916, from the local leads index). Nothing was wrong to correct: the answers whose claims were wrong were wrong by omission ("the sources don't say"), not by a checkable figure. "Corrected" is covered by tests (Wikidata year differs → patched and labelled).
+- **Cost:** no paid call added. The paid lane is off by default, and the parity rule (disagree only, one call, budget) is tested.
+
+Default: **VERIFY_RESEARCH=1** (free lanes only). It runs after the metric, so it cannot move ready / done, and it adds no paid call; tests keep it off unless they opt in. VERIFY_RESEARCH_PAID stays 0.
+
+Tests: tests/test_loop.py (25), tests/test_recheck.py (9). Full suite 409 passed (rebased on main 3406485). Screenshots: scratchpad feature_shots/loop/
