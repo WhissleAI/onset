@@ -1,0 +1,45 @@
+# GitHub Pages: landing page + the recorded-run demo (scripts/pages/build.py -> _site/).
+# Needs Settings -> Pages -> Source: "GitHub Actions" (build_type=workflow).
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "web/**", "server/scorecard.json", "scripts/pages/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check recorded runs (no keys, no home paths)
+        run: python3 scripts/pages/sanitize.py
+      - name: Build
+        run: python3 scripts/pages/build.py --out _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

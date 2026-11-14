@@ -1934,3 +1934,32 @@ toxicity` and sets `redact=profanity=mask,toxicity=mask` (+ self-harm flag thres
   frame masking, typed Session turn (no Arc state, masked answer), no-search turns, spoken profanity, ws race run.
 - Screenshots: scratchpad/feature_shots/typed/ (typing mid-question with live chips, typed answer, masked transcript,
   self-harm line; light + dark; no console errors, no horizontal scroll).
+
+## GitHub Pages: landing page + recorded-run demo (branch feat/pages; site/, scripts/pages/, .github/workflows/pages.yml)
+- **What it is**: a static site. `index.html` = pitch (199-char elevator pitch), inline-SVG architecture, headline results
+  and the six problems (baked from `server/scorecard.json` at build time, each linked to its doc + section), privacy,
+  keys table, Download for Mac (`releases/latest`). `demo/` = the real `web/` UI, copied as is at build time, with
+  `site/demo/demo.js` loaded first: it replaces `WebSocket` and `fetch("/api|/audio")` with recorded data, so the same
+  app.js renders the same events (Arc chips, tagger frame, route chip, Race timing, confidence badge, memory graph +
+  full-size view, Results slide, cost meter). Mic is hidden; the type box is read-only except for the scripted typed
+  scenario; a banner says "Recorded runs of the real app · Download the Mac app to try it live".
+- **Recordings** (`scripts/pages/record.py`): 11 Race runs captured from a real server (port 8812, fresh data dir with
+  only the Tavily docs site brain copied in, `WEB_BACKEND=wikipedia`, Flux ear, director on): every websocket event with
+  its arrival time. One-file scenarios use the server's `replay`; conversations stream PCM like app.js (`start` fresh,
+  100 ms frames, 2.5 s gaps); open mic sends `open: true`; typed sends the keystrokes on a 110 ms clock that demo.js
+  replays. Scenarios: facts (q17), live weather card (sc_01), follow-up "president of usa" -> "you know, the old one",
+  topic switch France -> San Jose restaurants, self-correction (q27), multi-part (mp_16), typed, open mic, Tavily-docs
+  site brain (tav01), Race (q25 filler), live price (sc_06). Single takes, not picked: correction and typed show Onset
+  slower in that run (2.89 vs 2.49 s, 2.56 vs 1.97 s); the banner and landing say these are recorded runs, the
+  benchmark numbers are on the Results slide.
+- **Audio**: all Kokoro TTS (Apache-2.0); the 6 demo-only turns come from `scripts/pages/make_audio.py`. No user
+  recordings. Published as 48 kbps mono mp3 (13 clips, 268 KB). Whole site 1.9 MB.
+- **Sanitizing** (`scripts/pages/sanitize.py`, also run in CI): drops client/run ids, rewrites absolute paths to base
+  names, refuses to write if a `.env` value or a home path survives.
+- **Sync**: events are delivered on the recorded clock anchored to the audio element (`playing` + currentTime, +60 ms
+  output path). Playwright: words events land within -25..+27 ms of the audio at 1280x720 and 390x844, light + dark,
+  no console errors, no horizontal scroll (two phone-width overrides in demo.css: header controls wrap, history chips
+  wrap).
+- **Build / preview**: `python3 scripts/pages/build.py && python3 -m http.server 8812 -d _site` (stdlib only).
+  Deploy: `.github/workflows/pages.yml` on push to main (paths site/, web/, scorecard, scripts/pages). Needs Pages
+  enabled with source "GitHub Actions" (not done: a repo setting). Tests: `tests/test_pages.py`.

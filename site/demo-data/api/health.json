@@ -1,0 +1,124 @@
+{
+ "ok": true,
+ "warm": true,
+ "warm_s": 17.3,
+ "ear": "flux",
+ "ear_requested": "flux",
+ "deepgram_key": true,
+ "deepgram_model": "flux-general-en",
+ "flux": {
+  "eager_eot_threshold": 0.3,
+  "eot_threshold": 0.7,
+  "eot_timeout_ms": 1000,
+  "soft": "director"
+ },
+ "arc_meta": "mini",
+ "web_backend": "wikipedia",
+ "web": {
+  "backend": "wikipedia",
+  "status": "live",
+  "live": true,
+  "fallback": "",
+  "last_error": null,
+  "cache_entries": 57,
+  "cache_path": "web_cache.json",
+  "cache_seed": "web_cache.json",
+  "cache_recorded": "2026-11-12T19:17:18",
+  "router": {
+   "on": true,
+   "skip_conf": 0.75,
+   "leads": 11085,
+   "leads_built": "2026-11-13",
+   "keystone": {
+    "on": true,
+    "serve": true,
+    "lookups": 11,
+    "hits": 4,
+    "key_hits": 3,
+    "misses": 12,
+    "errors": 0,
+    "timeouts": 0,
+    "ingested": 30,
+    "skipped_live": 0,
+    "p50_ms": 2.0,
+    "cells": 70,
+    "value_cells": 18,
+    "text_bytes": 64090,
+    "vector_bytes": 221376,
+    "bytes_per_cell": 4078,
+    "evicted": 0,
+    "full_dropped": 0,
+    "nodes": 72,
+    "typed_edges": 42,
+    "edge_keys": 23,
+    "cooc_pairs": 57,
+    "edge_hits": 3,
+    "codes": 13,
+    "writes": 30
+   },
+   "apis": {
+    "api.frankfurter.dev": {
+     "calls": 1,
+     "fails": 0,
+     "ms": 86,
+     "streak": 0
+    },
+    "api.open-meteo.com": {
+     "calls": 2,
+     "fails": 0,
+     "ms": 80,
+     "streak": 0
+    },
+    "api.met.no": {
+     "calls": 1,
+     "fails": 0,
+     "ms": 554,
+     "streak": 0
+    },
+    "www.wikidata.org": {
+     "calls": 22,
+     "fails": 0,
+     "ms": 247,
+     "streak": 0
+    },
+    "query.wikidata.org": {
+     "calls": 27,
+     "fails": 0,
+     "ms": 581,
+     "streak": 0
+    },
+    "api.coinbase.com": {
+     "calls": 1,
+     "fails": 0,
+     "ms": 90,
+     "streak": 0
+    }
+   },
+   "down": []
+  },
+  "telem": {
+   "enabled": true,
+   "mode": "family",
+   "failover": null,
+   "verify_fetch": "tavily",
+   "spent_usd_est": 0.0,
+   "calls": 0,
+   "errors": 0,
+   "cap_usd": 3.0,
+   "blocked": null
+  }
+ },
+ "typed_input": true,
+ "tagger_safety": true,
+ "answer": {
+  "model": "claude-haiku-5-5",
+  "status": "live",
+  "live": true,
+  "fallback": "extractive",
+  "last_error": null
+ },
+ "degraded": {},
+ "notices": [],
+ "answer_model": "claude-haiku-5-5",
+ "local_docs": 222
+}
