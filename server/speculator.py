@@ -57,6 +57,8 @@ class Fire:
     meter: dict = field(default_factory=dict)   # web lane: backend, depth, topic, credits, cached, fallback
     key: object = None         # web lanes: searchcache.QKey of the frame it searched (SPEC_EFF policy + cache)
     part: str | None = None    # PLAN: the sub-question (planner part text) this search is for
+    raw: list | None = None    # PLAN: the lane's docs as they landed (before their vectors: the plan ranks by lane order)
+    landed: asyncio.Event | None = None
 
 
 @dataclass
@@ -173,6 +175,10 @@ class Speculator:
                 for d in docs:
                     d.lane = lane
                 fire.t_done = time.perf_counter()
+                if fire.part is not None:
+                    fire.raw = list(docs)
+                    fire.landed.set()                       # PLAN: the endpoint / a bridge part needn't wait for vectors
+                    self._part_raw(fire)
                 await self._add_docs(docs)                  # vectors first, then "done": drafts rank on vectors
                 fire.docs = docs                            # (a fire cancelled mid-embed keeps none: never revived
                 fire.state = "done" if fire.state == "fired" else fire.state     # with vector-less docs)
@@ -193,12 +199,14 @@ class Speculator:
                         and self.last_frame is not None and self.skip_why.get(self.last_frame.query()) == "hold"):
                     self._spec_web(self.last_frame)        # a "hold" waiting for these results can decide now
                 if fire.part is not None:
-                    self._part_landed(fire)            # PLAN: a hop part's entity unlocks its bridge part
+                    self._plan_emit()
                 if (config.DRAFT_ON_LAND and self.mode == "headstart" and not self.closed and not self.draft_busy
                         and lane in ("web", "local") and self.last_frame is not None
                         and self.last_frame.query() == query and self._conf_ok(self.last_frame)):
                     self._maybe_draft(self.last_frame)     # draft now, not at the next ear update
             except asyncio.CancelledError:
+                if fire.landed is not None:
+                    fire.landed.set()
                 fire.t_done = time.perf_counter()
                 if fire.state == "fired":               # a stale fire stays "stale" (revivable; counted as stale)
                     fire.state = "cancelled"
@@ -211,16 +219,20 @@ class Speculator:
                 self._ev(id=fire.id, lane=lane, query=query, state="skipped", ms=self.ms(fire.t_done),
                          reason=str(e)[:120], **self._meter_ev(fire))
                 if fire.part is not None:
-                    self._part_landed(fire)
+                    fire.landed.set()
+                    self._plan_emit()
             except Exception as e:
                 fire.state = "error"
                 fire.t_done = time.perf_counter()
                 self._ev(id=fire.id, lane=lane, query=query, state="error", ms=self.ms(fire.t_done),
                          error=f"{type(e).__name__}: {e}"[:200], **self._meter_ev(fire))
                 if fire.part is not None:
-                    self._part_landed(fire)
+                    fire.landed.set()
+                    self._plan_emit()
             return fire
 
+        if part is not None:
+            fire.landed = asyncio.Event()
         fire.task = asyncio.create_task(run())
         return fire
 
@@ -564,7 +576,7 @@ class Speculator:
         cur = self.part_fire.get(text)
         if cur is not None and (cur.state in ("fired", "done") or (final and cur.lane == "final-web")):
             return cur
-        pf = planner.part_frame(text, f, "person" if part.needs else "")
+        pf = planner.part_frame(text, f, self._bridge_type(part))
         q = pf.query()
         if not q:
             return None
@@ -598,14 +610,18 @@ class Speculator:
         self.part_fire[text] = fire
         return fire
 
-    def _part_landed(self, fire: Fire):
-        """A part's search finished: a hop part's entity (a Wikidata fact value) unlocks its bridge part."""
+    def _part_raw(self, fire: Fire):
+        """A part's results landed: a hop part's entity (a Wikidata fact value) unlocks its bridge part at once."""
         mp = self.mplan
         if mp is None:
             return
+        hit = False
         for p in mp.parts:
-            if p.kind == "hop" and p.text == fire.part and p.text not in self.bridge and fire.state == "done":
-                self.bridge[p.text] = planner.bridge_of(fire.docs)
+            if p.kind == "hop" and p.text == fire.part and p.text not in self.bridge and fire.state == "fired":
+                self.bridge[p.text] = planner.bridge_of(fire.raw, p.role)
+                hit = True
+        if not hit:
+            return
         if self.mode == "headstart" and not self.closed and self.last_frame is not None:
             self._plan_step(self.last_frame)
         else:
@@ -630,6 +646,27 @@ class Speculator:
         self._plan_ev_sig = sig
         self.emit({"t": "plan", "ms": self.ms(), "final": final, **ev})
 
+    def _bridge_type(self, part) -> str:
+        if not part.needs or self.mplan is None:
+            return ""
+        hop = self.mplan.part(part.needs)
+        return "place" if hop is not None and hop.role == "capital" else "person"
+
+    @staticmethod
+    async def _landed(fire, deadline: float):
+        if fire is None or fire.landed is None or fire.landed.is_set():
+            return
+        try:
+            await asyncio.wait_for(fire.landed.wait(), max(0.0, deadline - time.perf_counter()))
+        except asyncio.TimeoutError:
+            pass
+
+    @staticmethod
+    def _docs_of(fire) -> list:
+        if fire is None or fire.state in ("error", "skipped", "cancelled"):
+            return []
+        return list(fire.docs or fire.raw or [])
+
     def _planned(self, f: Frame) -> bool:
         return config.PLAN and self.mode == "headstart" and self.mplan is not None and planner.decompose(f) is not None
 
@@ -641,7 +678,6 @@ class Speculator:
         self.plan_sig = mp.sig
         self.final_q.add(f.query())
         texts = [p.text if not p.needs else p.fallback for p in mp.parts]
-        qv_task = asyncio.create_task(embed.arun(embed.encode_queries, texts + [f.resolved_text]))
         deadline = time.perf_counter() + config.PLAN_WAIT_S
         over = []
 
@@ -660,37 +696,55 @@ class Speculator:
             if part.needs:
                 hop = mp.part(part.needs)
                 hf = ensure(hop, hop.text) if hop is not None else None
-                if hf is not None and hf.task is not None and not hf.task.done():
-                    await asyncio.wait([hf.task], timeout=max(0.0, deadline - time.perf_counter()))
+                await self._landed(hf, deadline)
                 if hop is not None and hop.text not in self.bridge:
-                    self.bridge[hop.text] = planner.bridge_of(hf.docs) if hf is not None and hf.state == "done" else None
+                    self.bridge[hop.text] = planner.bridge_of(self._docs_of(hf), hop.role)
             text = self._part_text(part) or part.fallback
             fire = ensure(part, text)
-            if fire is not None and fire.task is not None and not fire.task.done():
-                await asyncio.wait([fire.task], timeout=max(0.0, deadline - time.perf_counter()))
-            if fire is not None and fire.state == "done" and not fire.docs and fire.lane != "final-web":
-                self.part_fire.pop(text, None)            # an empty speculative lookup: one final search
+            if fire is not None and fire.lane == "web" and not fire.landed.is_set():
+                # a speculative lookup still out at the endpoint (a slow Wikidata query): give it PLAN_PART_CAP_S,
+                # then race one final search (router hedge: fact vs web) against it; the first with docs wins
+                await self._landed(fire, min(deadline, time.perf_counter() + config.PLAN_PART_CAP_S))
+                if not fire.landed.is_set():
+                    m["plan_hedged"] = m.get("plan_hedged", 0) + 1
+                    spec_fire = fire
+                    self.part_fire.pop(text, None)
+                    pf = planner.part_frame(text, f, self._bridge_type(part))
+                    go, meter = self._web(spec_fire.query, pf, final=True)
+                    meter["hedge_ms"] = 0
+                    fin = self._fire("final-web", spec_fire.query, pf, go, meter, part=text)
+                    self.part_fire[text] = fin
+                    waits = {asyncio.ensure_future(spec_fire.landed.wait()), asyncio.ensure_future(fin.landed.wait())}
+                    while waits and time.perf_counter() < deadline:
+                        done, waits = await asyncio.wait(waits, timeout=deadline - time.perf_counter(),
+                                                         return_when=asyncio.FIRST_COMPLETED)
+                        if self._docs_of(spec_fire) or self._docs_of(fin):
+                            break
+                    for w in waits:
+                        w.cancel()
+                    fire = spec_fire if self._docs_of(spec_fire) else fin
+                    self.part_fire[text] = fire
+            await self._landed(fire, deadline)
+            if fire is not None and not self._docs_of(fire) and fire.lane != "final-web" and fire.state != "fired":
+                self.part_fire.pop(text, None)            # an empty / skipped speculative lookup: one final search
                 fire = self._part_fire(part, text, f, final=True)
-                if fire is not None and fire.task is not None:
-                    await asyncio.wait([fire.task], timeout=max(0.0, deadline - time.perf_counter()))
+                await self._landed(fire, deadline)
             return text, fire
 
         res = await asyncio.gather(*[run_part(p) for p in mp.parts], return_exceptions=True)
         if not live():
-            qv_task.cancel()
             return None
-        qvs = (await qv_task)
         if over:
             m["budget_override"] = "plan-part"
         k = config.PLAN_K_PART or (3 if len(mp.parts) <= 2 else 2)
         out, seen, info = [], set(), []
         for i, (part, r) in enumerate(zip(mp.parts, res)):
             text, fire = r if not isinstance(r, BaseException) else (texts[i], None)
-            docs = [d for d in (fire.docs if fire is not None else []) if d.id in self.vecs]
-            qv = qvs[i] if self._part_text(part) == texts[i] else (
-                await embed.arun(embed.encode_queries, [text]))[0]
-            sc = sorted(((d, float(self.vecs[d.id] @ qv)) for d in docs),
-                        key=lambda x: (-(1 if (x[0].meta.get("strong") or x[0].meta.get("card")) else 0), -x[1]))
+            docs = self._docs_of(fire)
+            # lane order (the router puts the card / fact first; Wikipedia's own relevance after): no embedding on the
+            # critical path (query vectors cost ~0.1-0.5 s on a busy laptop)
+            sc = sorted(((d, float(getattr(d, "score", 0.0) or 0.0)) for d in docs),
+                        key=lambda x: -(1 if (x[0].meta.get("strong") or x[0].meta.get("card")) else 0))
             n = 0
             for d, s_ in sc:
                 if d.id in seen or n >= k:
@@ -701,11 +755,6 @@ class Speculator:
             info.append({"id": part.id, "text": text, "kind": part.kind, "fire": fire.id if fire else None,
                          "state": fire.state if fire else None, "tier": fire.meter.get("tier") if fire else None,
                          "paid": (fire.meter.get("paid", 1) if fire and fire.state == "done" else 0), "n": n})
-        if len(out) < 2:                                  # a part came back empty: the whole question's best docs too
-            for d, s_ in self.rank(qvs[-1], 3):
-                if d.id not in seen:
-                    seen.add(d.id)
-                    out.append((d, s_, -1))
         m["plan"] = {"kind": mp.kind, "why": mp.why, "parts": info}
         self._plan_emit(final=True)
         return out
@@ -1070,7 +1119,8 @@ class Speculator:
                 plan_ranked = await self._final_plan(f, mp, m, live)
                 if plan_ranked is None or not live():
                     return superseded()
-                qvec = (await qvec_task)[0]
+                qvec = (qvec_task.result()[0] if qvec_task.done() and not qvec_task.cancelled()
+                        and qvec_task.exception() is None else None)     # not on the critical path
             elif self.mode == "baseline":
                 alt = self._answer_race(q, f)
                 waits = []
@@ -1173,11 +1223,12 @@ class Speculator:
                 alt.cancel()                      # superseded: nobody will race it
         if not live():
             return superseded()
-        self.last_qvec = qvec
+        if qvec is not None:
+            self.last_qvec = qvec
         ranked = self._rank_for(f, qvec, 5) if plan_ranked is None else [(d, sc) for d, sc, _ in plan_ranked]
         if fplan is not None and fplan.lane == "card" and plan_ranked is None:
             ranked = self._card_first(ranked, qtext, qvec)
-        if config.CACHE_SEM:
+        if config.CACHE_SEM and qvec is not None:
             c = searchcache.cache()
             rids = {d.id for d, _ in ranked}
             for x in self.fires:
@@ -1454,8 +1505,8 @@ class Speculator:
         if self.answer_stream is not None:
             self.answer_stream.cancel()
         for x in self.fires:
-            if x.task and not x.task.done():
-                x.task.cancel()
+            if x.task and not x.task.done() and x.raw is None:
+                x.task.cancel()             # (a PLAN part whose docs landed is only embedding them: let it finish)
         for d in self.drafts:
             d.stream.cancel()
         self._usage_final()

@@ -301,6 +301,8 @@ PLAN = os.environ.get("PLAN", "1") == "1"
 PLAN_MAX_PARTS = int(os.environ.get("PLAN_MAX_PARTS", "3"))
 PLAN_EXTRA_PAID = int(os.environ.get("PLAN_EXTRA_PAID", "1"))    # paid speculative calls allowed per part beyond the first
 PLAN_WAIT_S = float(os.environ.get("PLAN_WAIT_S", "3.0"))        # endpoint: max wait for the parts' searches
+PLAN_PART_CAP_S = float(os.environ.get("PLAN_PART_CAP_S", "0.5"))  # endpoint: a part's speculative lookup still out
+#                                                                   after this -> a final search races it
 PLAN_K_PART = int(os.environ.get("PLAN_K_PART", "0"))            # sources per part (0 = 3 for 2 parts, 2 for 3)
 # server/verify.py: after the answer, its numbers / years / names are checked against the cited sources (string and
 # number matching, cross-source agreement); a badge shows the result. Runs after the last answer token: never delays it.

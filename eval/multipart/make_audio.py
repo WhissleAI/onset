@@ -6,7 +6,7 @@
 Writes eval/multipart/questions.jsonl (eval/questions.jsonl row format + "parts": [{"q", "expect"}]) and
 eval/audio_multipart/mp_NN.wav (16 kHz mono PCM16 via eval/make_audio.finish; git-ignored). Voices: Kokoro (studio venv).
 Answers are stable facts (Wikipedia / Wikidata) so the Wikipedia lane can score them; mp15 (flights + weather) and
-mp20 (two weather cards) are live data: their weather parts are scored on the card's wording ("°" / "degrees").
+mp20 (two weather cards) are live data: their weather parts are scored on the card's wording ("46°F" -> "f" / "degrees").
 
 A/B:  .venv/bin/python eval/run_ab.py --questions eval/multipart/questions.jsonl --audio-dir eval/audio_multipart \
           --out runs/ab_mp_planon.json
@@ -69,7 +69,7 @@ Q = [
     ("mp14", "what's the capital of Japan and the capital of Brazil", "am_fenrir@1.0", "conj", [],
      [("capital of Japan", ["tokyo"]), ("capital of Brazil", ["brasilia"])], "conjunction: parallel NP"),
     ("mp15", "flights to Denver and the weather there", "af_heart@1.0", "conj", [],
-     [("flights to Denver", ["denver"]), ("weather in Denver", ["°|degrees"])], "conjunction: brief's example; live"),
+     [("flights to Denver", ["denver"]), ("weather in Denver", ["f|degrees"])], "conjunction: brief's example; live"),
     ("mp16", "who founded Nvidia and when was it founded", "am_michael@1.0", "conj", [],
      [("who founded Nvidia", ["huang"]), ("when was Nvidia founded", ["1993"])], "conjunction: pronoun"),
     ("mp17", "what is the population of France and Germany", "af_nova@1.0", "conj", [],
@@ -81,7 +81,7 @@ Q = [
      [("when was the Eiffel Tower built", ["1887|1889"]), ("how tall is the Eiffel Tower", [EIFFEL_H])],
      "conjunction: pronoun"),
     ("mp20", "what's the weather in Paris and in London", "af_aoede@1.0", "conj", ["paris", "london"],
-     [("weather in Paris", ["°|degrees"]), ("weather in London", ["°|degrees"])], "conjunction: two cards; live"),
+     [("weather in Paris", ["f|degrees"]), ("weather in London", ["f|degrees"])], "conjunction: two cards; live"),
     ("mp21", "how old was the founder of Amazon when it was founded", "am_michael@1.0", "hop", ["30"],
      [("who founded Amazon", ["bezos"]), ("when was Jeff Bezos born", ["1964"]), ("when was Amazon founded", ["1994"])],
      "multi-hop + arithmetic"),

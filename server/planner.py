@@ -59,6 +59,7 @@ class Part:
     entity: str = ""        # what this part is about (UI label)
     needs: str = ""         # bridge: id of the hop part whose answer fills {B}
     fallback: str = ""      # bridge: the question to search when the hop yields no entity
+    role: str = ""          # hop: the role asked about ("founder", "author", "capital")
 
     @property
     def key(self) -> str:
@@ -502,8 +503,7 @@ _ROLE_Q = {"founder": "who founded {e}", "founders": "who founded {e}", "co-foun
            "composer": "who composed {e}", "discoverer": "who discovered {e}", "owner": "who owns {e}",
            "singer": "who sang {e}", "manufacturer": "which company makes {e}", "maker": "which company makes {e}"}
 _ROLE = "|".join(sorted((re.escape(k) for k in _ROLE_Q), key=len, reverse=True))
-_HOP = re.compile(rf"\bthe (?P<role>{_ROLE}) of (?P<e>.+?)(?= when | where | who | in | at | born\b| die\b| died\b| "
-                  rf"before | after |$)")
+_HOP = re.compile(rf"\bthe (?P<role>{_ROLE}) of (?P<e>.+?)(?= (?:when|where|who|in|at|born|die|died|before|after)\b|$)")
 _SINGLE_HEAD = re.compile(r"^(?:(?:who|what|which) (?:is|was|s|'s|are|were)|who's|what's|whats|tell me|name)?$")
 _PERSON_ROLE = {"founder", "founders", "co-founder", "cofounder", "ceo", "author", "writer", "director", "creator",
                 "inventor", "president", "prime minister", "leader", "painter", "architect", "composer",
@@ -525,7 +525,7 @@ def _multihop(t: str, f) -> MPlan | None:
         return None
     if _SINGLE_HEAD.match(head) and (not tail or tail.split()[0] in ("in", "at", "of", "for", "on")):
         return None                               # "who is the founder of tesla": one hop, the router handles it
-    hop = Part("p1", _ROLE_Q[role].format(e=e), "hop", bool(tail), e)
+    hop = Part("p1", _ROLE_Q[role].format(e=e), "hop", bool(tail), e, role=role)
     parts = [hop]
     combine = "then answer the question as asked"
     person = role in _PERSON_ROLE
@@ -619,14 +619,45 @@ def part_frame(text: str, parent, bridge_type: str = "") -> framemod.Frame:
     return framemod.build(words, spans, None, local_ok=False)
 
 
-def bridge_of(docs) -> str | None:
-    """The entity a hop part found: the first value of a Wikidata fact (free, typed), else None."""
+_NAME = r"((?:[A-Z][\w.'’-]+ ){0,2}[A-Z][\w'’-]+)"
+_ROLE_RX = {
+    "founder": [rf"(?:co-?)?founded (?:in \d{{4}} )?(?:by|together with) {_NAME}", rf"{_NAME} (?:co-?)?founded\b"],
+    "author": [rf"(?:written|novel|book|play|poem|authored) by {_NAME}", rf"\bby (?:the )?(?:English |American )?"
+               rf"(?:author |writer |novelist |poet )?{_NAME}"],
+    "director": [rf"directed by {_NAME}", rf"{_NAME} directed\b"],
+    "ceo": [rf"(?:CEO|chief executive officer|Chief Executive Officer)(?: is)?,? {_NAME}",
+            rf"{_NAME},? (?:is |has been |serves as )?(?:the |its )?(?:co-?founder,? )?(?:president and )?(?:CEO|chief executive)"],
+    "capital": [rf"capital(?: city)?(?: and largest city)? (?:is|of [A-Z]\w+ is) {_NAME}", rf"{_NAME} is the capital"],
+    "inventor": [rf"invented by {_NAME}", rf"{_NAME} invented\b"],
+    "creator": [rf"created by {_NAME}", rf"{_NAME} created\b"],
+    "painter": [rf"painted by {_NAME}", rf"\bby (?:the )?(?:Italian |Dutch |French |Spanish )?(?:painter |artist )?{_NAME}"],
+    "composer": [rf"composed by {_NAME}"],
+    "president": [rf"(?:President|president) {_NAME}"],
+}
+_ROLE_RX["writer"] = _ROLE_RX["author"]
+_ROLE_RX["founders"] = _ROLE_RX["co-founder"] = _ROLE_RX["cofounder"] = _ROLE_RX["founder"]
+_NOT_NAME = {"The", "In", "It", "Its", "He", "She", "They", "This", "Inc", "Company", "Corporation", "American",
+             "English", "British", "Wikipedia", "Wikidata"}
+
+
+def bridge_of(docs, role: str = "") -> str | None:
+    """The entity a hop part found: the first value of a Wikidata fact (free, typed), else a name the top results
+    state in the role's own wording ("founded by Jeff Bezos", "written by Jane Austen", "CEO Jensen Huang"), else
+    None (the bridge part then searches its unresolved wording)."""
     for d in docs or []:
         fact = (getattr(d, "meta", None) or {}).get("fact")
         if fact and fact.get("values"):
             v = str(fact["values"][0]).split(" (")[0].strip()
             if v and not re.search(r"\d{3,}", v):
                 return v
+    for d in (docs or [])[:3]:
+        text = f"{getattr(d, 'text', '')}"
+        for rx in _ROLE_RX.get(role, []):
+            for mm in re.finditer(rx, text):
+                name = mm.group(1).strip(" .,'’")
+                ws = [w for w in name.split() if w not in _NOT_NAME]
+                if ws and ws[0][:1].isupper():
+                    return " ".join(ws)
     return None
 
 
