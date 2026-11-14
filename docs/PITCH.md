@@ -13,6 +13,8 @@ Every number below comes from a file in this repo. Source key:
 - **[IDX]** `index/README.md`: the local moments index, audio retrieval and the second-stage ranker.
 - **[PROG]** `PROGRESS.md`: component timings, the policy simulator, the Tavily lane and the Deepgram ear.
 - **[DEMO]** `DEMO_CHECKLIST.md`: demo fallbacks.
+- **[TAV]** `docs/RETRIEVAL.md` section 10 and `eval/results/tavily_ab_2026-11-14.json`: the A/B on real Tavily with
+  today's stack (Flux ear, director, router, Keystone, Parity budget), 100 spoken questions, run 2026-11-14.
 
 ---
 
@@ -41,11 +43,12 @@ Every number below comes from a file in this repo. Source key:
 mic → ear: Arc (on-device streaming ASR, self-revising words) · or Deepgram (pluggable)
     → Arc Tagger (intent · slots · corrections · complete?)    ~1 ms/word
     → Speculator: fire / cancel stale / draft / reuse           ← the search intelligence
-    → lanes: web (Tavily-ready; Wikipedia in every run so far) · local moments · spoken-audio lane (EmbeddingGemma 2)
+    → lanes: web (Tavily; Wikipedia when there is no key) · local moments · spoken-audio lane (EmbeddingGemma 2)
     → the answer model streams a 1–2 sentence answer with citations
 ```
-- **Fire:** search once the frame has at least 3 words and real content. Each question gets at most 6 speculative
-  web calls plus 1 final call (`server/config.py`).
+- **Fire:** free lanes (cards, Wikidata facts, the local index) run mid-sentence. Under the default Parity budget
+  (`COST_MODE=parity`, `server/cost.py`) the one paid web search goes out when the meaning is final, plus one more
+  only if the meaning changes after it. (The older speed budget allowed up to 6 speculative calls plus 1 final.)
 - **Cancel stale:** when the ASR revises a word ("acronis" becomes "nvidia") or the speaker corrects themselves
   ("Canada, actually make that Turkey"), the in-flight search is cancelled and shown as cancelled on the timeline.
 - **Draft early:** once every lane for the current meaning has returned, the answer is drafted in the background. At
@@ -116,14 +119,15 @@ mic → ear: Arc (on-device streaming ASR, self-revising words) · or Deepgram (
 ## Three likely judge questions
 
 **1. "Speculation must be expensive. What does it cost?"**
-Head Start makes 2.38 web calls per question against the baseline's 0.66 [AB], so about 1.7 extra. Each question is
-capped at 6 speculative calls plus 1 final (`server/config.py`), and the most any question used in the final run
-was 6 [AB rows].
+Measured on real Tavily [TAV], it costs less than plain search: **0.46 vs 0.63 credits per question** over 100 spoken
+questions (showcase 0.70 vs 0.73, 58 set 0.22 vs 0.52, current events 1.00 vs 0.92), with answers 486 ms sooner at
+the paired median and accuracy equal (80/82 vs 79/82). Mid-sentence only free lanes run; the paid search waits until
+the meaning is final (Parity budget). Plain search pays more because its router hedges a slow free Wikidata lookup
+with a paid search; Onset waits for the free answer.
 
-On Tavily, every call is a `fast` search at 1 credit [PROG], so this works out to about **2.4 credits per
-question**. That is an estimate from the measured call count. In the fake-Tavily slow-lane simulation it was 2.8
-credits against 1 [PROG]. A session budget and a process cap stop speculation 2 credits early, so the final query
-always has credit left [PROG].
+The numbers in the table above are from an earlier build ([AB], speed budget: 2.38 vs 0.66 web calls per question).
+A session budget and a process cap stop speculation 2 credits early, so the final query always has credit left
+[PROG].
 
 The tagger and the ASR run on the device and cost nothing per call. Drafts are capped at 160 output tokens
 (`server/answer.py`) and are cancelled as soon as the meaning moves on. In return, the median answer arrives 348 ms
@@ -165,10 +169,9 @@ voice stack, so it adds to them rather than replacing them.
 - Local-moments questions need no web at all.
 
 ## Honest limitations (say these before the judges do)
-- **The web lane has run on Wikipedia, not Tavily.** `TAVILY_API_KEY` is not set, so every number above uses the
-  keyless Wikipedia fallback (`web_backend: "wikipedia"` in the [AB] config). The Tavily lane is built and tested
-  only against a local fake that follows the API docs. It covers topic routing by intent, credit metering, a cache
-  and a circuit breaker [PROG]. The key switches it on with no code change.
+- **Most numbers above ran on the Wikipedia lane.** The [AB] tables and most PROGRESS results use the keyless
+  Wikipedia fallback. The headline cost and speed on real Tavily are in [TAV] (one paired run per set, on a shared
+  machine at load average 31-41, so absolute times are inflated and only the paired gain should be quoted).
 - **Deepgram ear:** it is built and tested against a fake websocket server, but has never run against real Deepgram
   [PROG].
 - **Head Start is slower on 14 of 58 questions [AB].** 12 of the 14 are speculative misses (the other two are a

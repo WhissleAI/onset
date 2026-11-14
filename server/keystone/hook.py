@@ -321,7 +321,9 @@ def wrap_web(web_fn, f, query: str, meter: dict, final: bool = True):
                 res = await free_first(f, query, meter)
                 if res is not None:
                     return res
-            return await web_fn()
+            from .. import sitebrain
+            if (lr := await sitebrain.local(f, query, meter)) is None:   # a site read once (sitebrain.py)
+                return await web_fn()
         from ..lanes import WebResult
         res = WebResult(lr.docs)
         res.backend = "index"

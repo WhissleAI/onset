@@ -300,6 +300,8 @@ async def run_one(q: dict, mode: str, audio_dir: Path | None = None) -> dict:
         "stale": m.get("stale"), "drafts": m.get("drafts"), "draft_reused": m.get("draft_reused"),
         "draft_match": m.get("draft_match"), "query": m.get("query"), "intent": m.get("intent"),
         "spec_queries": spec_q, "sources": m.get("sources"),
+        # the final ranking's urls + snippets (offline verify / extract replays without re-searching)
+        "source_docs": [{k: d.get(k) for k in ("title", "url", "source", "tier", "text")} for d in sdocs],
         "plan": m.get("plan"), "verify": m.get("verify"),          # PLAN / VERIFY (server/planner.py, verify.py)
         "recheck": m.get("recheck"), "answer_patched": m.get("answer_patched"),   # VERIFY_RESEARCH (recheck.py)
         "correct_patched": score(m["answer_patched"], q.get("expect") or []) if m.get("answer_patched") else None,

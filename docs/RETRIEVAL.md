@@ -632,9 +632,9 @@ slower under load).
 
 ## 6. Limitations
 
-- **Wikipedia stands in for Tavily.** Paid latency and answers are Wikipedia's (p50 about 410 ms per routed
-  question). Tavily is slower and returns fresher, broader pages, which would raise the value of local reuse for
-  latency but change what counts as "same evidence".
+- **Wikipedia stands in for Tavily in sections 1-7.** Paid latency and answers there are Wikipedia's (p50 about
+  410 ms per routed question). The end-to-end A/B on real Tavily is section 10; the Keystone workload replay has not
+  been re-run on Tavily pages.
 - **Correctness is keyword or evidence based.** The evidence label is conservative: a correct local answer from a
   different page counts as wrong. The VOI labels inherit this. No answer-model judging was run on the replay.
 - **The stream is synthetic.** It is built from real question pools with Zipf popularity, sessions, paraphrases and
@@ -855,3 +855,80 @@ auto-routing chose). Telem documents no per-trace URL, so the details show these
 Measured: nothing yet. Every number in this section will come from `eval/telem_ab.py` (30 questions: entities, news
 and sports from 2026-11, travel and how-to, multi-part; Tavily via Telem vs auto vs family; hit@5, p50/p90, est. $ per
 question, failure rate), run once the Telem key is in `.env`, with a $3 cap.
+## 10. On real Tavily (2026-11-14)
+
+Everything above this section ran on the free Wikipedia lane. This section is the same pipeline on **real Tavily**
+(`WEB_BACKEND=tavily`, `search_depth` fast, 1 credit per call), with the demo's own settings: Deepgram Flux ear,
+director end of turn, router, Keystone, COST_MODE parity, and the Tavily endpoint timings that `server/config.py`
+switches on for this backend (`SEM_STABLE_MS` 550, `HEDGE_MS` 1000, `DRAFT_BUDGET` 2). Onset = `mode=headstart`;
+plain search = `mode=baseline` (same ear, router, lanes and answer model; it searches only after the end of the
+turn). One paired run per set, alternating arm order, `runs/.run_ab.lock` held per replay, git c9d40eb. The machine
+was shared (load average 31-41 during the runs), so absolute times are inflated; the paired gain is the fair number.
+Numbers file: `eval/results/tavily_ab_2026-11-14.json`. Credits = Tavily's own `usage.credits` per call, summed.
+
+| set | questions | Onset p50 / p90 ms | plain p50 / p90 ms | paired gain (Onset faster) | Onset right | plain right | Onset credits / q | plain credits / q |
+|---|---|---|---|---|---|---|---|---|
+| showcase | 30 | 1728 / 2297 | 2322 / 3223 | **656 ms** (26/30) | 15/15 | 15/15 | **0.70** | 0.73 |
+| 58 set | 58 | 2260 / 3823 | 2829 / 3712 | **410 ms** (41/58) | 58/58 | 57/58 | **0.22** | 0.52 |
+| current events (asked 2026-11-14) | 12 | 2086 / 2489 | 2480 / 3396 | **424 ms** (9/12) | 7/9 | 7/9 | 1.00 | 0.92 |
+| **all** | **100** | **2043 / 3145** | **2588 / 3642** | **486 ms** (76/100) | 80/82 | 79/82 | **0.46** | **0.63** |
+
+Every credit was one `fast` (or finance `basic`) search, so paid calls / q = credits / q. Total: 46 credits for Onset,
+63 for plain search, over the 100 questions. "Right" counts the questions with a keyword gold (showcase 15 of 30,
+current events 9 of 12; the rest change by the hour and are judged by hand).
+
+- **Cost:** Onset made fewer paid calls than plain search on Tavily: 0.46 vs 0.63 credits per question overall. On
+  the 58 set every one of the 17 extra baseline credits is the same pattern: the router's facts hedge (350 ms) in the
+  baseline pays for a web search while the free Wikidata lookup is still out, and the answer comes from Wikidata
+  anyway; parity waits for the free lookup instead (PROGRESS "Cost parity"). The current-events set is the one place
+  Onset spent more (12 vs 11): one question (cur09, "Ballon d'Or", heard as "ball") changed meaning after the first
+  paid call and took a second.
+- **Speed:** paired gain 410-656 ms per set, 486 ms over all 100, Onset faster on 76 of 100.
+- **Accuracy:** equal (80/82 vs 79/82 keyword-scored). By hand on the current-events set: both arms named the right
+  winner for 6 of the 9 gold questions; both hedged on the World Series (cur01: the top results were mid-series
+  reports; the keyword scorer counts it right because "Brewers" appears), both answered the 2024 NYC Marathon winner
+  (cur08, stale pages), and both misheard "Ballon d'Or" (cur09, ASR).
+- The earlier Tavily A/B (git 21be397, Arc ear, before the router, parity and Keystone: 2.43 vs 0.69 credits/q) is
+  superseded by this one.
+
+### 10b. /extract as the verify escalation (`server/extract.py`, VERIFY_EXTRACT, default off)
+
+When verify could not confirm the answer's key claim and the free re-check (Wikidata, local leads) came back
+"still unconfirmed", one `/extract` call reads the top cited url with the claim's sentence as the query (basic depth,
+`chunks_per_source` 3, 3 s timeout), and verify's matcher runs on those chunks: "re-checked ✓ page" or "still
+unconfirmed". It starts after the answer, so time to answer does not change. Under the flag the re-check also takes
+name claims that start with "The" ("The Milwaukee Brewers"), which it skipped before.
+
+- **Probe** (10 urls cited in the A/B, one call each, the question as the query): 8 of 10 read, p50 244 ms, p90
+  571 ms, max 1333 ms; Tavily reported 2 credits for the 8 pages (1 per 5).
+- **Offline on the A/B rows** (showcase + current events, 84 rows): 4 rows left a key claim unconfirmed with a cited
+  web page; the page confirmed 3 (p50 200 ms). Two of the 3 were the stale marathon answer (cur08): the page does say
+  it, about 2024. Reading the page checks that the source says it, not that it is true or current.
+- **Live** (current events, Onset arm, VERIFY_EXTRACT=1): 2 of 12 answers escalated, 1 confirmed; the page reads took
+  320 and 196 ms after the answer; 1.2 credits.
+- **Default stays off:** it changes a badge, not an answer (it would have fired on 4 of 84 A/B answers, and fired on 2 of 12 live). Turn it on
+  for a demo of the verify step (cost: ≤ 0.2 credits per escalation).
+
+### 10c. A site read once: docs.tavily.com in the local tier (`server/sitebrain.py`, `index/build_site.py`)
+
+`/map` on docs.tavily.com (50 urls, 5 credits, 0.9 s) and `/extract` of the 28 documentation pages it ranked first
+(5 credits, 1.1 s), cleaned and cut into 1,989 passages, embedded once with EmbeddingGemma 2 (CPU text model, small
+batches). The site tier sits after the Keystone lookup and before the paid web lane. A question is served from it
+when it names the site (the word, or the ear's near-miss: "tavely", "tavali") and its best passage clears the
+similarity gate. Answers cite "Onset index · docs.tavily.com" with "as of 2026-11-14". SITE_BRAIN=1 by default: with
+no site built, or a question that doesn't name one, it costs nothing (no other eval question names a site; tested).
+
+10 spoken questions about the Tavily API, one paired run (`eval/sitebrain/questions.jsonl`, gold from the docs):
+
+| arm | answered from the site | right | credits / q | p50 ms |
+|---|---|---|---|---|
+| Onset | 9/10 | 8/10 | 0.4 | 2247 |
+| plain search | 9/10 | 8/10 | 0.1 | 2925 |
+
+- Misses: tav04, the ear closed the turn after "how many free credits does" (the question never named Tavily, so it
+  went to the web and was wrong in both arms); tav10, the crawl endpoint page was not among the 28 pages read (map
+  limit), so both arms answered the extract timeout instead.
+- Onset's extra credits are 3 paid speculative searches on a mid-sentence prefix ("rate limit", "longest time out",
+  "topics choose tavalisse") sent before the site name was heard; the answers still came from the site.
+- Before the near-miss match and a longer embedding budget (800 ms), 5 of 10 went to paid web because the ear wrote
+  "tavely" / "tavali" (first run: 18 credits).

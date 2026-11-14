@@ -1,11 +1,11 @@
 {
   "title": "Onset: measured results",
   "subtitle": "The six problems the organizers named, each with one number we measured",
-  "lane_note": "Replays of recorded spoken questions, free Wikipedia lane standing in for paid web search; \"paid\" counts calls that would be Tavily credits.",
+  "lane_note": "Sooner answers: real Tavily, 100 recorded spoken questions (2026-11-14). The other cards: replays on the free Wikipedia lane standing in for paid web search; \"paid\" counts calls that would be Tavily credits.",
   "headline": [
-    {"id": "speed", "big": "0.61 s", "label": "sooner answers", "detail": "at the same paid searches as plain search (0.78/q)",
-     "source": {"doc": "PROGRESS.md", "section": "Cost parity", "date": "2026-11-13", "quote": "| **610** | 27/30 | 28/30 | **0.78** | **0.78** |",
-                "note": "showcase set, 2 paired runs, Parity budget (the default)"}},
+    {"id": "speed", "big": "486 ms", "label": "sooner answers", "detail": "on Tavily, with fewer paid searches (0.46 vs 0.63/q)",
+     "source": {"doc": "docs/RETRIEVAL.md", "section": "10. On real Tavily", "date": "2026-11-14", "quote": "| **all** | **100** | **2043 / 3145** | **2588 / 3642** | **486 ms** (76/100) | 80/82 | 79/82 | **0.46** | **0.63** |",
+                "note": "paired median over 100 spoken questions (showcase, 58 set, current events), one run, Parity budget, Flux ear"}},
     {"id": "keystone", "big": "0.369", "label": "paid searches per question", "detail": "vs 0.464 with a plain search cache, same answer quality",
      "source": {"doc": "docs/RETRIEVAL.md", "section": "4. Workload evaluation", "date": "2026-11-14", "quote": "| **(f) + VOI gate (θ 0.95 from dev)** | **0.369** |",
                 "note": "text-level workload stream; the plain cache row: \"today: search cache | 0.464\""}},

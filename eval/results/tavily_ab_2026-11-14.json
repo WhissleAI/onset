@@ -1,0 +1,261 @@
+{
+ "what": "Real Tavily A/B, Onset (mode headstart) vs plain search after the end of turn (mode baseline). Same ear (Deepgram Flux), director, router, Keystone, answer model; COST_MODE parity; WEB_BACKEND=tavily (search_depth fast, 1 credit); demo .env settings.",
+ "date": "2026-11-14",
+ "sets": {
+  "showcase": {
+   "baseline": {
+    "questions": 30,
+    "correct": 15,
+    "scored": 15,
+    "accuracy": 1.0,
+    "credits_per_q": 0.733,
+    "credits_total": 22.0,
+    "paid_calls_per_q": 0.733,
+    "ready_p50_ms": 2322,
+    "ready_p90_ms": 3223,
+    "answered": 30,
+    "errors": 0,
+    "answer_source": {
+     "card": 6,
+     "facts": 3,
+     "tavily": 21
+    }
+   },
+   "headstart": {
+    "questions": 30,
+    "correct": 15,
+    "scored": 15,
+    "accuracy": 1.0,
+    "credits_per_q": 0.7,
+    "credits_total": 21.0,
+    "paid_calls_per_q": 0.7,
+    "ready_p50_ms": 1728,
+    "ready_p90_ms": 2297,
+    "answered": 30,
+    "errors": 0,
+    "answer_source": {
+     "card": 6,
+     "facts": 4,
+     "tavily": 20
+    }
+   },
+   "paired": {
+    "n": 30,
+    "onset_faster": 26,
+    "median_gain_ms": 656,
+    "mean_gain_ms": 651
+   },
+   "git": "c9d40eb",
+   "created": "2026-11-14T12:42:19-0800"
+  },
+  "q58": {
+   "baseline": {
+    "questions": 58,
+    "correct": 57,
+    "scored": 58,
+    "accuracy": 0.983,
+    "credits_per_q": 0.517,
+    "credits_total": 30.0,
+    "paid_calls_per_q": 0.517,
+    "ready_p50_ms": 2829,
+    "ready_p90_ms": 3712,
+    "answered": 58,
+    "errors": 0,
+    "answer_source": {
+     "facts": 30,
+     "tavily": 28
+    }
+   },
+   "headstart": {
+    "questions": 58,
+    "correct": 58,
+    "scored": 58,
+    "accuracy": 1.0,
+    "credits_per_q": 0.224,
+    "credits_total": 13.0,
+    "paid_calls_per_q": 0.224,
+    "ready_p50_ms": 2260,
+    "ready_p90_ms": 3823,
+    "answered": 58,
+    "errors": 0,
+    "answer_source": {
+     "facts": 31,
+     "tavily": 27
+    }
+   },
+   "paired": {
+    "n": 58,
+    "onset_faster": 41,
+    "median_gain_ms": 410,
+    "mean_gain_ms": 430
+   },
+   "git": "c9d40eb",
+   "created": "2026-11-14T12:52:22-0800"
+  },
+  "current": {
+   "baseline": {
+    "questions": 12,
+    "correct": 7,
+    "scored": 9,
+    "accuracy": 0.778,
+    "credits_per_q": 0.917,
+    "credits_total": 11.0,
+    "paid_calls_per_q": 0.917,
+    "ready_p50_ms": 2480,
+    "ready_p90_ms": 3396,
+    "answered": 12,
+    "errors": 0,
+    "answer_source": {
+     "card": 1,
+     "tavily": 11
+    }
+   },
+   "headstart": {
+    "questions": 12,
+    "correct": 7,
+    "scored": 9,
+    "accuracy": 0.778,
+    "credits_per_q": 1.0,
+    "credits_total": 12.0,
+    "paid_calls_per_q": 1,
+    "ready_p50_ms": 2086,
+    "ready_p90_ms": 2489,
+    "answered": 12,
+    "errors": 0,
+    "answer_source": {
+     "card": 1,
+     "tavily": 11
+    }
+   },
+   "paired": {
+    "n": 12,
+    "onset_faster": 9,
+    "median_gain_ms": 424,
+    "mean_gain_ms": 606
+   },
+   "git": "c9d40eb",
+   "created": "2026-11-14T12:49:22-0800"
+  }
+ },
+ "all": {
+  "baseline": {
+   "questions": 100,
+   "correct": 79,
+   "scored": 82,
+   "accuracy": 0.963,
+   "credits_per_q": 0.63,
+   "credits_total": 63.0,
+   "paid_calls_per_q": 0.63,
+   "ready_p50_ms": 2588,
+   "ready_p90_ms": 3642,
+   "answered": 100,
+   "errors": 0,
+   "answer_source": {
+    "card": 7,
+    "facts": 33,
+    "tavily": 60
+   }
+  },
+  "headstart": {
+   "questions": 100,
+   "correct": 80,
+   "scored": 82,
+   "accuracy": 0.976,
+   "credits_per_q": 0.46,
+   "credits_total": 46.0,
+   "paid_calls_per_q": 0.46,
+   "ready_p50_ms": 2043,
+   "ready_p90_ms": 3145,
+   "answered": 100,
+   "errors": 0,
+   "answer_source": {
+    "card": 7,
+    "facts": 35,
+    "tavily": 58
+   }
+  },
+  "paired": {
+   "n": 100,
+   "onset_faster": 76,
+   "median_gain_ms": 486,
+   "mean_gain_ms": 517
+  }
+ },
+ "extract": {
+  "what": "Tavily /extract as the verify escalation (VERIFY_EXTRACT, default off): read the top cited url with the claim sentence as the query, after the answer is shown.",
+  "probe": {
+   "urls": 10,
+   "extracted": 8,
+   "p50_ms": 244,
+   "p90_ms": 571,
+   "max_ms": 1333,
+   "credits_reported": 2,
+   "mean_chars_returned": 1553
+  },
+  "offline_on_ab_rows": {
+   "rows": 84,
+   "eligible": 4,
+   "confirmed": 3,
+   "p50_ms": 200,
+   "p90_ms": 1365,
+   "confirmed_but_answer_wrong": 2,
+   "note": "showcase + current-events rows; claims rebuilt from the stored snippets"
+  },
+  "live_current_events": {
+   "questions": 12,
+   "escalated": 2,
+   "confirmed": 1,
+   "extract_ms": [
+    320,
+    196
+   ],
+   "credits_extract": 1.2,
+   "ready_p50_ms": 2280,
+   "note": "Onset arm only, VERIFY_EXTRACT=1; the page read starts after the answer"
+  }
+ },
+ "site_brain": {
+  "what": "docs.tavily.com read once (/map 50 urls + /extract 28 pages) into the local tier; 10 spoken questions about the Tavily API.",
+  "build": {
+   "map_urls": 50,
+   "map_credits": 5,
+   "pages": 28,
+   "extract_credits": 5,
+   "passages": 1989,
+   "map_s": 0.91,
+   "extract_s": 1.12
+  },
+  "ab": {
+   "questions": 10,
+   "answered_from_site": {
+    "onset": 9,
+    "plain": 9
+   },
+   "right": {
+    "onset": 8,
+    "plain": 8
+   },
+   "credits_per_q": {
+    "onset": 0.4,
+    "plain": 0.1
+   },
+   "ready_p50_ms": {
+    "onset": 2247,
+    "plain": 2925
+   },
+   "misses": "tav04: the ear closed the turn after 'how many free credits does' (web search, wrong); tav10: the crawl endpoint page was not among the 28 read",
+   "onset_extra_credits": "3 paid speculative searches on a mid-sentence prefix ('rate limit', 'longest time out', 'topics choose tavalisse') before the site name was heard"
+  }
+ },
+ "credits_spent_by_step": {
+  "step1_ab_three_sets": 109,
+  "step1_warmup_replays_unmetered_est": 12,
+  "step2_extract_probe_and_offline": 2.6,
+  "step2_live_verify_extract_run": 13.2,
+  "step3_map_extract": 10,
+  "step3_site_ab_two_runs": 23,
+  "total_metered": 157.8,
+  "total_with_est": 169.8,
+  "budget": 300
+ }
+}
