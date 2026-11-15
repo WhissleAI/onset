@@ -6,7 +6,8 @@ the question as it forms (Arc), works out what you mean after a few words (Arc T
 
 **Download:** `Onset-0.1.0-arm64.dmg` below. Open it, drag Onset to Applications, open Onset. Signed with Whissle
 LLC's Developer ID and notarized by Apple. Check the download: `shasum -a 256 Onset-0.1.0-arm64.dmg` should match
-`Onset-0.1.0-arm64.dmg.sha256`.
+`Onset-0.1.0-arm64.dmg.sha256`
+(`bb51df8280d4c87395db163b107709ddbb109826de115e6dcaff2063a47831be`).
 
 ### Keys (all optional)
 Onset works with no keys: Arc listens on your Mac, answers come from Wikipedia and Wikidata, and the answer is the
@@ -34,7 +35,7 @@ your own account.
 ### System requirements
 - A Mac with Apple Silicon (M1 or later). Intel Macs are not supported.
 - macOS 13 Ventura or later.
-- Disk: DMG_SIZE download; the app takes APP_SIZE (all models are inside: nothing is downloaded at first run).
+- Disk: 1.44 GB download; the app takes 2.6 GB (all models are inside: nothing is downloaded at first run).
 - Memory: 8 GB or more (the local server measured 1.3 GB resident after a few questions).
 - Start-up: about 20 s while the models load (measured 17-21 s on an M3 Pro); the very first launch can take longer while macOS checks the app.
 - Microphone permission (asked once, the first time you hold Space or click Ask).
