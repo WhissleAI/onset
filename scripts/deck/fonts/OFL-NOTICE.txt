@@ -1,0 +1,8 @@
+Fonts embedded in the Onset deck (scripts/deck/deck.html, docs/Onset_deck.pdf). Both are licensed under the
+SIL Open Font License, Version 1.1 (https://openfontlicense.org, https://scripts.sil.org/OFL); unmodified.
+
+Sora-Regular.ttf, Sora-SemiBold.ttf, Sora-Bold.ttf
+  Copyright 2019 The Sora Project Authors (https://github.com/sora-xor/sora-font)
+
+Atkinson-Regular.ttf, Atkinson-Bold.ttf (Atkinson Hyperlegible)
+  Copyright 2020 Braille Institute of America, Inc.

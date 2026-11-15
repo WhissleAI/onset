@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Onset deck</title>
+<!--
+  Onset pitch deck: 5 slides at 1920x1080. Build: python3 scripts/deck/build.py -> docs/Onset_deck.pdf + docs/img/deck/*.png
+  Every number sits inside an element with data-src="<doc>"; tests/test_deck.py checks each one appears verbatim in that doc.
+  Text outside data-src may carry no digits, except names (.nm), source lines (.src) and page numbers (.pg).
+-->
+<style>
+@font-face { font-family: Sora; src: url(fonts/Sora-Regular.ttf); font-weight: 400; }
+@font-face { font-family: Sora; src: url(fonts/Sora-SemiBold.ttf); font-weight: 600; }
+@font-face { font-family: Sora; src: url(fonts/Sora-Bold.ttf); font-weight: 700; }
+/* digits from Sora: Atkinson Hyperlegible's slashed zero reads oddly in numbers */
+@font-face { font-family: Digits; src: url(fonts/Sora-Regular.ttf); font-weight: 400; unicode-range: U+30-39; }
+@font-face { font-family: Digits; src: url(fonts/Sora-SemiBold.ttf); font-weight: 700; unicode-range: U+30-39; }
+@font-face { font-family: Atkinson; src: url(fonts/Atkinson-Regular.ttf); font-weight: 400; }
+@font-face { font-family: Atkinson; src: url(fonts/Atkinson-Bold.ttf); font-weight: 700; }
+:root {
+  --bg: #FFFFFF; --ink: #02140E; --pine: #124E3F; --body: #3A2D2D; --muted: #62626E; --tert: #868692;
+  --card: #F0F0F1; --stroke: #D5D6D8; --red: #F14E52; --red-soft: #FDECEC; --mint: #ACEDDC; --pale: #E3F7F2;
+  --head: Sora, ui-sans-serif, system-ui, sans-serif; --text: Digits, Atkinson, ui-sans-serif, system-ui, sans-serif;
+}
+@page { size: 1920px 1080px; margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); }
+body { color: var(--body); font: 400 26px/1.4 var(--text); -webkit-font-smoothing: antialiased; }
+.slide { width: 1920px; height: 1080px; position: relative; overflow: hidden; background: var(--bg);
+  padding: 76px 100px 0; display: flex; flex-direction: column; break-after: page; page-break-after: always; }
+.slide:last-child { break-after: auto; page-break-after: auto; }
+h1, h2, h3 { font-family: var(--head); color: var(--ink); margin: 0; letter-spacing: -0.02em; }
+h2 { font-size: 58px; line-height: 1.08; font-weight: 700; max-width: 1500px; }
+h2 em, h1 em { font-style: normal; color: var(--pine); }
+.kicker { font: 600 20px var(--head); color: var(--pine); letter-spacing: .12em; text-transform: uppercase; margin: 0 0 16px; }
+.foot { position: absolute; left: 100px; right: 100px; bottom: 34px; display: flex; justify-content: space-between; align-items: baseline;
+  gap: 40px; font-size: 17px; color: var(--tert); border-top: 1px solid var(--stroke); padding-top: 14px; }
+.foot .brand-s { font: 600 17px var(--head); color: var(--muted); white-space: nowrap; }
+.src { font-size: 16.5px; color: var(--tert); line-height: 1.3; }
+.src b { font-weight: 700; color: var(--muted); }
+.logo { display: inline-flex; align-items: flex-end; gap: 5px; height: 34px; }
+.logo i { width: 7px; border-radius: 4px; background: var(--pine); }
+.logo i:nth-child(1) { height: 15px; } .logo i:nth-child(2) { height: 34px; background: var(--mint); } .logo i:nth-child(3) { height: 23px; }
+
+/* slide 1 */
+.s1 .top { display: flex; align-items: center; gap: 16px; font: 700 34px var(--head); color: var(--ink); }
+.s1 .top span { font: 400 22px var(--text); color: var(--muted); margin-left: 10px; }
+.s1 h1 { font-size: 86px; line-height: 1.02; font-weight: 700; margin: 46px 0 22px; max-width: 1560px; letter-spacing: -0.035em; }
+.s1 .pitch { font-size: 31px; color: var(--body); max-width: 1380px; margin: 0; }
+.s1 .cols { display: grid; grid-template-columns: 1.08fr 1fr; gap: 36px; margin-top: 48px; align-items: start; }
+.panel { border-radius: 22px; padding: 30px 34px; }
+.panel h3 { font-size: 27px; font-weight: 600; margin: 0 0 16px; }
+.fails { background: var(--card); }
+.fails h3 { color: var(--red); }
+.fails ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 13px; }
+.fails ul { gap: 18px; }
+.fails li { display: flex; flex-direction: column; gap: 7px; font-size: 26px; color: var(--ink); }
+.tags { display: flex; gap: 8px; }
+.tag { font: 600 15px var(--head); color: var(--red); background: #fff; border: 1.5px solid #F7B9BB; border-radius: 999px; padding: 4px 11px; white-space: nowrap; }
+.insight { background: var(--pine); color: #fff; }
+.insight { padding: 36px 40px; }
+.insight h3 { color: #fff; font-size: 40px; font-weight: 700; margin-bottom: 18px; }
+.insight .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.insight .chips span { background: rgba(172,237,220,.18); border: 1.5px solid var(--mint); color: var(--mint); border-radius: 999px; padding: 6px 16px; font: 600 20px var(--head); }
+.insight p { margin: 0; font-size: 28px; color: #E3F7F2; }
+.insight p b { color: #fff; }
+
+/* slide 2 */
+.s2 .wrap { display: grid; grid-template-columns: 1180px 1fr; gap: 44px; margin-top: 56px; align-items: start; }
+.arch { margin: 0; }
+.arch svg { width: 1180px; height: auto; display: block; }
+.arch .zone { fill: #F7F7F8; stroke: var(--stroke); }
+.arch .zone.cloud { fill: none; stroke: var(--stroke); stroke-dasharray: 7 7; stroke-width: 1.5; }
+.arch .zl { fill: var(--pine); font: 700 14px var(--head); letter-spacing: .08em; text-transform: uppercase; }
+.arch .zl.c { fill: var(--muted); }
+.arch .rl { fill: var(--muted); font: 600 13px var(--head); }
+.arch .node rect { fill: #fff; stroke: var(--stroke); stroke-width: 1.4; }
+.arch .node text { fill: var(--ink); font: 600 15px var(--head); text-anchor: middle; }
+.arch .node text.s { fill: var(--muted); font: 400 12.5px var(--text); }
+.arch .node.dev rect { fill: var(--pine); stroke: var(--pine); }
+.arch .node.dev text { fill: #fff; } .arch .node.dev text.s { fill: var(--mint); }
+.arch .node.free rect { fill: var(--pale); stroke: #5FC9AC; stroke-width: 1.6; }
+.arch .node.paid rect { fill: var(--red-soft); stroke: var(--red); stroke-width: 1.8; }
+.arch .node.paid text { fill: #8E1D21; } .arch .node.paid text.s { fill: #B3363A; }
+.arch .node.out rect { fill: var(--ink); stroke: var(--ink); }
+.arch .node.out text { fill: #fff; }
+.arch .ln { fill: none; stroke: var(--tert); stroke-width: 1.6; }
+.arch .ln.dash { stroke-dasharray: 4 4; }
+.arch .ln.paidln { stroke: var(--red); stroke-width: 2; }
+.arch .ah { fill: var(--tert); }
+.legend { display: flex; gap: 26px; margin-top: 16px; font-size: 19px; color: var(--muted); }
+.legend i { display: inline-block; width: 16px; height: 16px; border-radius: 5px; vertical-align: -2px; margin-right: 8px; }
+.layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
+.layers li { border-left: 5px solid var(--pine); padding: 4px 0 4px 20px; }
+.layers li.f { border-color: var(--mint); } .layers li.p { border-color: var(--red); }
+.layers b { display: block; font: 700 25px var(--head); color: var(--ink); margin-bottom: 2px; }
+.layers span { font-size: 21px; color: var(--body); line-height: 1.32; display: block; }
+
+/* slide 3 */
+.frames { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 30px; }
+.frame { margin: 0; }
+.frame .img { border: 1.5px solid var(--stroke); border-radius: 14px; overflow: hidden; height: 360px; background: #fff; }
+.frame img { width: 172%; display: block; margin-top: -8px; margin-left: -4px; }
+.frame figcaption { margin-top: 10px; font-size: 19px; color: var(--body); line-height: 1.3; }
+.frame figcaption b { font: 600 19px var(--head); color: var(--ink); }
+.rec { display: inline-block; font: 600 13px var(--head); letter-spacing: .06em; text-transform: uppercase; color: var(--pine);
+  background: var(--pale); border-radius: 6px; padding: 3px 8px; margin-bottom: 6px; }
+.arcadds { margin-top: 34px; }
+.arcadds h3 { font-size: 27px; font-weight: 600; margin: 0 0 14px; }
+.arcadds h3 small { font: 400 20px var(--text); color: var(--muted); margin-left: 10px; letter-spacing: 0; }
+.tiles { display: grid; gap: 20px; }
+.t4 { grid-template-columns: repeat(4, 1fr); }
+.t3 { grid-template-columns: repeat(3, 1fr); }
+.tile { background: var(--card); border-radius: 18px; padding: 22px 26px 18px; display: flex; flex-direction: column; gap: 4px; }
+.tile .lab { font: 600 20px var(--head); color: var(--ink); }
+.tile .big { font: 700 50px/1.05 var(--head); color: var(--pine); letter-spacing: -0.03em; margin-top: 4px; }
+.tile .big small { font: 600 24px var(--head); color: var(--tert); letter-spacing: 0; margin-left: 6px; }
+.tile .note { font-size: 19px; color: var(--muted); line-height: 1.3; }
+.tile .src { margin-top: auto; padding-top: 8px; }
+
+/* slide 4 */
+.hero3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 44px; }
+.hero { background: var(--pale); border-radius: 22px; padding: 36px 36px 26px; display: flex; flex-direction: column; gap: 6px; }
+.hero .big { font: 700 108px/1 var(--head); color: var(--pine); letter-spacing: -0.04em; }
+.hero .big.sm { font-size: 108px; }
+.hero .lab { font: 600 27px var(--head); color: var(--ink); }
+.hero .note { font-size: 21px; color: var(--body); }
+.hero .src { margin-top: auto; padding-top: 10px; }
+.setline { margin: 14px 0 0; font-size: 21px; color: var(--muted); }
+.row2 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 34px; }
+.row2 .tile { padding: 26px 30px 20px; }
+.row2 .tile .big { font-size: 52px; }
+.row2 .tile .note { font-size: 20.5px; }
+.row2 .tile .kick { font: 600 15px var(--head); letter-spacing: .1em; text-transform: uppercase; color: var(--pine); }
+.row2 .tile.priv .kick { color: var(--pine); }
+.pair { display: flex; gap: 22px; align-items: baseline; flex-wrap: wrap; }
+.row2 .pair { flex-wrap: nowrap; gap: 26px; }
+.row2 .pair .big { font-size: 46px; white-space: nowrap; }
+
+/* slide 5 */
+.cols3 { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; margin-top: 44px; }
+.list h3 { font-size: 30px; font-weight: 600; margin: 0 0 14px; color: var(--pine); }
+.list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+.list li { font-size: 24px; color: var(--body); line-height: 1.32; padding-left: 26px; position: relative; }
+.list li::before { content: ""; position: absolute; left: 0; top: 11px; width: 11px; height: 11px; border-radius: 3px; background: var(--pine); }
+.list.next li::before { background: var(--mint); }
+.list li b { color: var(--ink); font-weight: 700; }
+.list .src { display: block; margin-top: 2px; }
+.stack { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 30px; }
+.stack span { font: 600 16px var(--head); color: var(--muted); border: 1.5px solid var(--stroke); border-radius: 8px; padding: 5px 11px; }
+.close { position: absolute; left: 100px; right: 100px; bottom: 92px; background: var(--ink); color: #fff; border-radius: 24px;
+  padding: 34px 44px; display: flex; justify-content: space-between; align-items: center; gap: 30px; }
+.close h1 { color: #fff; font-size: 54px; letter-spacing: -0.03em; display: flex; align-items: center; gap: 20px; }
+.close h1 em { color: var(--mint); }
+.close .links { text-align: right; font: 600 24px/1.6 var(--head); color: var(--mint); }
+.close .links span { color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ 1. problem -> insight -->
+<section class="slide s1" id="s1">
+  <div class="top"><span class="logo" aria-hidden="true"><i></i><i></i><i></i></span>Onset<span>by Whissle · built for SearchHack</span></div>
+  <h1>Voice search that hears <em>how</em> you ask, not just what.</h1>
+  <p class="pitch">Onset searches while you speak. On-device models read intent mid-sentence, a local memory keeps context, and it pays for web search once, only when the free lanes can't answer.</p>
+  <div class="cols">
+    <div class="panel fails">
+      <h3>Voice search today</h3>
+      <ul data-src="docs/AUDIT.md">
+        <li>Waits for you to stop talking, then searches<span class="tags"><span class="tag">06 low performance</span></span></li>
+        <li>Reads a flat transcript, not how it was said<span class="tags"><span class="tag">01 too much information</span><span class="tag">04 weak personalization</span></span></li>
+        <li>Forgets you between questions<span class="tags"><span class="tag">02 fragmented context</span><span class="tag">05 limited memory</span></span></li>
+        <li>Pays for web search on every question<span class="tags"><span class="tag">03 expensive at scale</span><span class="tag">06 wrong source</span></span></li>
+      </ul>
+    </div>
+    <div class="panel insight">
+      <h3>Speech carries more than words.</h3>
+      <div class="chips"><span>intent</span><span>who it's addressed to</span><span>hesitation</span><span>end of turn</span><span>who's speaking</span></div>
+      <p><b>Onset starts at the onset of speech:</b> free lookups begin mid-sentence, and the one paid search waits until the meaning is final.</p>
+    </div>
+  </div>
+  <div class="foot"><span class="src">Tags: the organizers' six problems, mapped in docs/AUDIT.md §2.</span><span class="brand-s">Onset · Whissle <span class="pg">1 / 5</span></span></div>
+</section>
+
+<!-- ============================================================ 2. how it works -->
+<section class="slide s2" id="s2">
+  <p class="kicker">How it works</p>
+  <h2>Hear it on the Mac. Free lanes first. <em>Pay once.</em></h2>
+  <div class="wrap">
+    <figure class="arch">
+      <svg viewBox="0 0 1000 430" role="img" aria-label="Onset architecture" data-src="docs/PITCH.md">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" class="ah"/></marker>
+        </defs>
+        <rect class="zone dev" x="10" y="10" width="640" height="410" rx="16"/>
+        <text class="zl" x="28" y="36">On your Mac</text>
+        <rect class="zone cloud" x="670" y="10" width="320" height="410" rx="16"/>
+        <text class="zl c" x="688" y="36">Cloud, only when needed</text>
+
+        <g class="node"><rect x="30" y="60" width="130" height="64" rx="10"/><text x="95" y="88">Mic</text><text class="s" x="95" y="107">your voice</text></g>
+        <g class="node dev"><rect x="200" y="60" width="190" height="64" rx="10"/><text x="295" y="88">Ear</text><text class="s" x="295" y="107">Arc audio metadata · live words</text></g>
+        <g class="node dev"><rect x="430" y="60" width="200" height="64" rx="10"/><text x="530" y="88">Arc Tagger · 10M</text><text class="s" x="530" y="107">intent · slots · corrections · done?</text></g>
+        <g class="node dev"><rect x="430" y="170" width="200" height="64" rx="10"/><text x="530" y="198">Director + speculator</text><text class="s" x="530" y="217">fire · cancel stale · draft</text></g>
+        <g class="node dev"><rect x="200" y="170" width="190" height="64" rx="10"/><text x="295" y="198">Memory graph</text><text class="s" x="295" y="217">“the old one” → Biden</text></g>
+        <g class="node dev"><rect x="30" y="170" width="130" height="64" rx="10"/><text x="95" y="198">Rerank</text><text class="s" x="95" y="217">EmbeddingGemma 2</text></g>
+
+        <text class="rl" x="30" y="362">Router · free lanes first, paid web last</text>
+        <g class="node free"><rect x="30" y="284" width="140" height="56" rx="10"/><text x="100" y="308">Live cards</text><text class="s" x="100" y="326">weather · prices</text></g>
+        <g class="node free"><rect x="185" y="284" width="140" height="56" rx="10"/><text x="255" y="308">Facts</text><text class="s" x="255" y="326">Wikidata</text></g>
+        <g class="node free"><rect x="340" y="284" width="140" height="56" rx="10"/><text x="410" y="308">Keystone</text><text class="s" x="410" y="326">verified answers</text></g>
+        <g class="node free"><rect x="495" y="284" width="140" height="56" rx="10"/><text x="565" y="308">Site brain</text><text class="s" x="565" y="326">docs read once</text></g>
+
+        <g class="node paid"><rect x="690" y="170" width="280" height="64" rx="10"/><text x="830" y="198">Paid web search</text><text class="s" x="830" y="217">Tavily · Telem failover · once, when final</text></g>
+        <g class="node"><rect x="690" y="60" width="280" height="64" rx="10"/><text x="830" y="88">Deepgram Flux</text><text class="s" x="830" y="107">streaming words (or Arc on device)</text></g>
+        <g class="node"><rect x="690" y="284" width="280" height="56" rx="10"/><text x="830" y="308">Answer model</text><text class="s" x="830" y="326">Claude · 1–2 cited sentences</text></g>
+        <g class="node out"><rect x="690" y="360" width="280" height="44" rx="10"/><text x="830" y="387">Cited answer, streamed</text></g>
+
+        <path class="ln" d="M160 92H196" marker-end="url(#ah)"/>
+        <path class="ln" d="M390 92H426" marker-end="url(#ah)"/>
+        <path class="ln dash" d="M390 76C520 40 600 40 690 76" marker-end="url(#ah)"/>
+        <path class="ln" d="M530 124V166" marker-end="url(#ah)"/>
+        <path class="ln" d="M430 202H394" marker-end="url(#ah)"/>
+        <path class="ln" d="M200 202H164" marker-end="url(#ah)"/>
+        <path class="ln" d="M530 234V262H100V280" marker-end="url(#ah)"/>
+        <path class="ln" d="M255 262V280M410 262V280M565 262V280"/>
+        <path class="ln paidln" d="M630 202H686" marker-end="url(#ah)"/>
+        <path class="ln" d="M635 312H686" marker-end="url(#ah)"/>
+        <path class="ln" d="M830 234V280" marker-end="url(#ah)"/>
+        <path class="ln" d="M830 340V356" marker-end="url(#ah)"/>
+      </svg>
+      <div class="legend"><span><i style="background:#124E3F"></i>on device</span><span><i style="background:#E3F7F2;border:1.5px solid #5FC9AC"></i>free lanes</span><span><i style="background:#FDECEC;border:1.5px solid #F14E52"></i>paid, once the meaning is final</span></div>
+    </figure>
+    <ul class="layers">
+      <li><b>Arc hears</b><span>Audio metadata next to the words: who's speaking, self-corrections, whether you're done.</span></li>
+      <li data-src="docs/PITCH.md"><b>Tagger tags</b><span>A 10M-parameter on-device model re-reads the partial sentence at 0.7 ms per word: intent, slots, complete?</span></li>
+      <li><b>Director routes</b><span>Fires lookups early, cancels stale ones, drafts the answer. Memory resolves “it” and “the old one”.</span></li>
+      <li class="f"><b>Free lanes first</b><span>Live cards, Wikidata facts, Keystone verified answers, sites read once.</span></li>
+      <li class="p"><b>Paid web once</b><span>Tavily (Telem as failover) only when free lanes can't answer. Every lane has a timeout and a fallback.</span></li>
+    </ul>
+  </div>
+  <div class="foot"><span class="src">Tagger size and speed: docs/PITCH.md, slide “The insight”. Diagram: the landing page, recoloured.</span><span class="brand-s">Onset · Whissle <span class="pg">2 / 5</span></span></div>
+</section>
+
+<!-- ============================================================ 3. it's real -->
+<section class="slide s3" id="s3">
+  <p class="kicker">It's real</p>
+  <h2>The real app, recorded. And what hearing <em>how</em> adds.</h2>
+  <div class="frames">
+    <figure class="frame"><div class="img"><img src="frames/race.jpg" alt="Race: Onset vs plain search on a rambling question"></div>
+      <figcaption><span class="rec">Recorded run of the real app</span><br><b>Race.</b> “…my kid asked me this… why is the sky blue”: Arc tags the turn, Onset answers first.</figcaption></figure>
+    <figure class="frame"><div class="img"><img src="frames/followup.jpg" alt="Follow-up: the old one resolved to the previous president"></div>
+      <figcaption><span class="rec">Recorded run of the real app</span><br><b>Follow-up.</b> “you know, the old one” resolves from memory to the previous president, answered from Wikidata.</figcaption></figure>
+    <figure class="frame"><div class="img"><img src="frames/openmic.jpg" alt="Open mic: the spoken request is answered"></div>
+      <figcaption><span class="rec">Recorded run of the real app</span><br><b>Open mic.</b> “honey, did you remember to feed the dog” is heard, not searched; the question to Onset is answered.</figcaption></figure>
+  </div>
+  <div class="arcadds">
+    <h3>Onset vs plain voice search<small>same ear, web lane and answer model; only Arc's understanding is switched off</small></h3>
+    <div class="tiles t4">
+      <div class="tile" data-src="docs/ARC_VALUE.md"><span class="lab">Follow-ups right</span><span class="big">32/34 <small>vs 2/34</small></span><span class="note">“it”, “there”, “the old one” resolved</span></div>
+      <div class="tile" data-src="docs/ARC_VALUE.md"><span class="lab">Multi-part, whole question</span><span class="big">22/26 <small>vs 13/26</small></span><span class="note">the planner searches each part</span></div>
+      <div class="tile" data-src="docs/ARC_VALUE.md"><span class="lab">Live data vs ground truth</span><span class="big">16/16 <small>vs 5/16</small></span><span class="note">weather, rates, time, units from cards</span></div>
+      <div class="tile" data-src="docs/ARC_VALUE.md"><span class="lab">Open mic, turns handled right</span><span class="big">86.8% <small>vs 49.1%</small></span><span class="note">answers requests, holds chatter</span></div>
+    </div>
+  </div>
+  <div class="foot"><span class="src">Frames: Pages demo, recorded runs of the app (Wikipedia lane). Tiles: docs/ARC_VALUE.md headline + §10, Wikipedia lane (live data and open mic after the §10 fixes).</span><span class="brand-s">Onset · Whissle <span class="pg">3 / 5</span></span></div>
+</section>
+
+<!-- ============================================================ 4. results -->
+<section class="slide s4" id="s4">
+  <p class="kicker">Results</p>
+  <h2>Real Tavily: sooner, <em>fewer paid searches</em>, as right.</h2>
+  <div class="hero3">
+    <div class="hero" data-src="docs/RETRIEVAL.md"><span class="big">0.49 s</span><span class="lab">sooner to the answer</span><span class="note">486 ms paired median; faster on 76/100</span><span class="src"><b>RETRIEVAL.md §10</b> · paired, alternating arms</span></div>
+    <div class="hero" data-src="docs/RETRIEVAL.md"><span class="big">27%</span><span class="lab">fewer paid searches</span><span class="note">0.46 vs 0.63 per question (46 vs 63 credits)</span><span class="src"><b>RETRIEVAL.md §10</b> · Tavily's own usage.credits</span></div>
+    <div class="hero" data-src="docs/RETRIEVAL.md"><span class="big sm">80/82</span><span class="lab">correct, vs 79/82</span><span class="note">keyword-scored; accuracy held</span><span class="src"><b>RETRIEVAL.md §10</b> · questions with a keyword gold</span></div>
+  </div>
+  <p class="setline" data-src="docs/RETRIEVAL.md">100 spoken questions, Onset vs plain search with the same ear, lanes and answer model; plain search only searches after you stop.</p>
+  <div class="row2">
+    <div class="tile" data-src="docs/RETRIEVAL.md"><span class="kick">Memory that gets cheaper</span><span class="big">0.64 → 0.36</span><span class="note">paid searches / q as Keystone warms, 58/58 correct. Replay: 0.369 vs 0.464 for a plain cache; shared verified answers 0.468 → 0.439.</span><span class="src"><b>RETRIEVAL.md §7, §4, §5.7</b> · Wikipedia lane</span></div>
+    <div class="tile" data-src="docs/RETRIEVAL.md"><span class="kick">Confidence you can trust</span><div class="pair"><span class="big">ECE 0.034</span><span class="big">AUC 0.72</span></div><span class="note">one calibrated confidence per answer, on a held-out split; shown as a badge</span><span class="src"><b>RETRIEVAL.md §8</b></span></div>
+    <div class="tile priv"><span class="kick">Private on device</span><span class="big" data-src="docs/ARC_VALUE.md">65/69 → 6/69</span><span class="note" data-src="docs/ARC_VALUE.md">spoken birth years leaking to search</span><span class="note" data-src="PROGRESS.md">Arc Tagger profanity masking: recall 0.40 → 0.84, precision 0.77 → 0.84. Memory and profile stay on the Mac.</span><span class="src"><b>ARC_VALUE.md</b> · <b>PROGRESS.md</b> “Typed questions”</span></div>
+  </div>
+  <div class="foot"><span class="src">Top row: docs/RETRIEVAL.md §10 (real Tavily, shared machine; the paired gain is the fair number). Bottom row: the free Wikipedia lane.</span><span class="brand-s">Onset · Whissle <span class="pg">4 / 5</span></span></div>
+</section>
+
+<!-- ============================================================ 5. built + next + close -->
+<section class="slide s5" id="s5">
+  <p class="kicker">Built, and what's next</p>
+  <h2>Built and running as a native Mac app.</h2>
+  <div class="cols3">
+    <div class="list">
+      <h3>Built</h3>
+      <ul>
+        <li><b>Native Mac app.</b> Developer ID signed and notarized, models bundled, keys set up on first run. Memory and caches stay local.</li>
+        <li><b>Voice and typing.</b> Search while you type, with the same tagger and masking.</li>
+        <li><b>Continuous training.</b> Retrains on new data; promotes a model only when it beats the current one on fixed held-out sets.</li>
+        <li><b>Tavily with Telem failover,</b> behind a flag.</li>
+        <li data-src="PROGRESS.md"><b>Live web demo:</b> 11 recorded runs of the real app, with their audio.</li>
+      </ul>
+    </div>
+    <div class="list next">
+      <h3>Next</h3>
+      <ul>
+        <li data-src="docs/PERSONALIZATION.md"><b>Personalization</b> (flag): right sense 6/9 → 8/9, right style 7/12 → 11/12, on a small set.</li>
+        <li data-src="PROGRESS.md"><b>ONNX-native models:</b> EmbeddingGemma 2 on ONNX Runtime done (669 MB instead of 1,525 MB); Arc in progress.</li>
+        <li data-src="docs/RETRIEVAL.md"><b>Tavily /extract verification:</b> built, flag off; reads the cited page in p50 244 ms.</li>
+        <li><b>Telem routing eval:</b> which engines for which question family.</li>
+      </ul>
+      <div class="stack"><span class="nm">Deepgram Flux</span><span>Whissle Arc</span><span>Arc Tagger</span><span class="nm">EmbeddingGemma 2</span><span>Wikidata</span><span>Tavily</span><span>Telem</span><span>Claude</span><span>ONNX Runtime</span><span>Swift</span></div>
+    </div>
+  </div>
+  <div class="close">
+    <h1><span class="logo" aria-hidden="true"><i></i><i></i><i></i></span>Onset. <em>Search that hears you.</em></h1>
+    <div class="links"><span>Demo</span> whissleai.github.io/headstart<br><span>Code</span> github.com/WhissleAI/headstart</div>
+  </div>
+  <div class="foot"><span class="src">PERSONALIZATION.md §4 · PROGRESS.md “Native runtime”, “GitHub Pages”, “Continuous training” · RETRIEVAL.md §10b · MACAPP.md “Release”</span><span class="brand-s">Onset · Whissle <span class="pg">5 / 5</span></span></div>
+</section>
+
+</body>
+</html>
