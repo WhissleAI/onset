@@ -2082,3 +2082,16 @@ in the bundle. Where it stands:
 - Tests: tests/test_release.py (8); full suite 667 passed.
 - Open: native ONNX runtime not switched yet (`MODELS_MANIFEST=… ONNX_RUNTIME=1 REQUIREMENTS=…`, about -600 MB once
   Arc drops torch); the repo itself has no LICENSE file; Arc / Arc Tagger NC terms vs any commercial use.
+## Pitch deck: 5 slides, PDF + PNGs (branch feat/deck; scripts/deck/, docs/Onset_deck.pdf, tests/test_deck.py)
+- **What**: `docs/Onset_deck.pdf` (5 pages, 1920x1080, ~1.1 MB, selectable text, Sora + Atkinson Hyperlegible embedded,
+  OFL, `scripts/deck/fonts/OFL-NOTICE.txt`) and `docs/img/deck/slide-1..5.png`. Whissle brand palette on white (ink green
+  headlines, pine primary, mint for free/local lanes, red only for the problem and the paid lane).
+- **Slides**: 1 problem → insight (the organizers' six problems as tags), 2 architecture (the landing SVG, recoloured) +
+  one line per layer, 3 three demo frames ("recorded run of the real app": Race, "the old one" follow-up, open mic) +
+  what Arc adds (ARC_VALUE), 4 results on real Tavily (RETRIEVAL §10) + Keystone, calibration, on-device privacy,
+  5 built / next + close and links. Mac app copy: Developer ID signed and notarized (MACAPP.md "Release").
+- **Build**: `python3 scripts/deck/build.py` (Python playwright + any Chromium; `DECK_CHROMIUM` or the Playwright cache);
+  `--frames` re-captures the demo frames from the Pages demo (`scripts/pages/build.py` into a temp dir).
+- **Numbers**: every digit on a slide sits in an element with `data-src="<doc>"` and `tests/test_deck.py` (47) checks it
+  appears verbatim in that doc. Two are derived and recomputed: 0.49 s = the 486 ms paired median; 27% = 1 − 46/63
+  credits. Digits outside a data-src element fail the test. README and the landing page (nav + footer) link the PDF.

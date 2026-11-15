@@ -1,5 +1,8 @@
 # Onset: voice search that starts before you finish talking
 
+**Slides:** [docs/Onset_deck.pdf](docs/Onset_deck.pdf) (5 slides; PNGs in [docs/img/deck/](docs/img/deck/), source in
+`scripts/deck/`, every number checked against its cited doc by `tests/test_deck.py`).
+
 Every voice search today waits for silence, then searches, then thinks. Onset understands the question **while it is
 being spoken**, searches from about the third word, drafts the answer, and has it ready when the speaker stops.
 
