@@ -14,6 +14,13 @@ Standard library only: runs with any Python 3.9+ (the repo venv, the app's bundl
     scripts/fetch_models.py import NAME=PATH [...]     copy an existing copy in (a model with no public source), sha256-checked
     scripts/fetch_models.py build-tagger [--out FILE]  compile vendor/arctag/src -> libarctag.dylib (cc + Accelerate)
     scripts/fetch_models.py hash DIR                   print a manifest "files" list for DIR (maintainers)
+    scripts/fetch_models.py bundle --out DIR [--src SRC] [--profile FILE]
+                                                        release builds: copy the models the release profile allows
+                                                        (models/release_profile.json) from SRC (default MODELS_DIR) into
+                                                        DIR (the app's Contents/Resources/models), sha256-checked, and
+                                                        write DIR/manifest.json listing exactly what was bundled
+                                                        ("bundled": true). `status --manifest DIR/manifest.json --dest DIR`
+                                                        then checks the read-only bundle like any models folder.
 
 --dest DIR overrides MODELS_DIR. --json-progress prints one JSON object per line (the macOS app reads them).
 Exit codes: 0 ok, 1 error, 2 something still missing (needs import or a failed download).
@@ -288,11 +295,93 @@ def cmd_hash(a) -> int:
     return 0
 
 
+PROFILE = ROOT / "models" / "release_profile.json"
+
+
+def _voiced(rows_files: list[str], prefixes: list[str]) -> set[str]:
+    """Audio files whose question rows were spoken by an allowed voice (e.g. "kokoro:": Apache-2.0 synthetic speech)."""
+    out = set()
+    for rel in rows_files:
+        p = ROOT / rel
+        if not p.exists():
+            continue
+        for line in p.read_text().splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            if str(r.get("voice", "")).startswith(tuple(prefixes)):
+                out.update([r["file"]] if r.get("file") else [])
+                out.update(r.get("files") or [])
+    return out
+
+
+def bundle_plan(man: dict, profile: dict) -> list[tuple[dict, list[dict], str]]:
+    """(model, files to bundle, note) per bundled model. A model the profile does not name is bundled whole when
+    required and left out when optional, so a new manifest (e.g. the ONNX one) needs no profile change."""
+    plan = []
+    rules = profile.get("models", {})
+    for m in models(man):
+        rule = rules.get(m["dir"])
+        if rule is None:
+            rule = {"files": "all"} if m.get("required", True) else {"skip": "optional, not in the release profile"}
+        if rule.get("skip"):
+            continue
+        files = list(m["files"])
+        if rule.get("include"):
+            files = [f for f in files if any(f["path"] == i or f["path"].startswith(i) for i in rule["include"])]
+        if rule.get("exclude"):
+            files = [f for f in files if not any(f["path"] == x or f["path"].startswith(x) for x in rule["exclude"])]
+        if rule.get("voices"):
+            keep = _voiced(rule.get("questions", []), rule["voices"])
+            files = [f for f in files if f["path"] in keep]
+        if files:
+            plan.append((m, files, rule.get("note", "")))
+    return plan
+
+
+def _clone(src: Path, out: Path) -> None:
+    """APFS clone (no extra disk) when possible, else a plain copy."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.exists():
+        out.unlink()
+    if sys.platform == "darwin" and subprocess.run(["cp", "-c", str(src), str(out)], capture_output=True).returncode == 0:
+        return
+    shutil.copy2(src, out)
+
+
+def cmd_bundle(man, a) -> int:
+    profile = json.loads(Path(a.profile).read_text())
+    src = Path(a.src).expanduser() if a.src else modelpaths.models_dir()
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    bundled, rc, total = [], 0, 0
+    for m, files, note in bundle_plan(man, profile):
+        bad = [f["path"] for f in files if not file_ok(src / m["dir"] / f["path"], f, deep=not a.no_verify)]
+        if bad:
+            emit("error", model=m["dir"], message=f"{m['dir']}: {src / m['dir']} lacks / differs in {', '.join(bad[:4])}")
+            rc = 2
+            continue
+        for f in files:
+            _clone((src / m["dir"] / f["path"]).resolve(), out / m["dir"] / f["path"])
+        size = sum(f["size"] for f in files)
+        total += size
+        bundled.append({**{k: v for k, v in m.items() if k not in ("files", "source", "dev_paths")},
+                        "source": {"type": "bundled", "from": m["source"]["type"]},
+                        **({"bundle_note": note} if note else {}), "files": files})
+        emit("bundled", model=m["dir"], message=f"{m['dir']}: {len(files)}/{len(m['files'])} files, {size / 1e6:.0f} MB")
+    (out / "manifest.json").write_text(json.dumps(
+        {"version": man.get("version", 1), "bundled": True,
+         "about": "Models bundled read-only inside the app (scripts/fetch_models.py bundle). Only these files ship.",
+         "models": bundled}, indent=1) + "\n")
+    emit("done", ok=rc == 0, message=f"bundled {total / 1e6:.0f} MB into {out}")
+    return rc
+
+
 def main(argv=None) -> int:
     global JSON_OUT
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dest", help="models dir (default: MODELS_DIR or ~/Library/Application Support/<APP_NAME>/models)")
-    ap.add_argument("--manifest", default=str(MANIFEST))
+    ap.add_argument("--manifest", default=os.environ.get("MODELS_MANIFEST") or str(MANIFEST))
     ap.add_argument("--json-progress", action="store_true")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("status"); p.add_argument("names", nargs="*"); p.add_argument("--json", action="store_true")
@@ -303,6 +392,8 @@ def main(argv=None) -> int:
     p = sub.add_parser("import"); p.add_argument("specs", nargs="+")
     p = sub.add_parser("build-tagger"); p.add_argument("--out"); p.add_argument("--arch")
     p = sub.add_parser("hash"); p.add_argument("dir")
+    p = sub.add_parser("bundle"); p.add_argument("--out", required=True); p.add_argument("--src")
+    p.add_argument("--profile", default=str(PROFILE)); p.add_argument("--no-verify", action="store_true")
     a = ap.parse_args(argv)
     JSON_OUT = a.json_progress
     if a.cmd == "build-tagger":
@@ -310,6 +401,8 @@ def main(argv=None) -> int:
     if a.cmd == "hash":
         return cmd_hash(a)
     man = load_manifest(Path(a.manifest))
+    if a.cmd == "bundle":
+        return cmd_bundle(man, a)
     dest = Path(a.dest).expanduser() if a.dest else modelpaths.models_dir()
     if a.cmd == "import":
         a.dev, a.verify, a.copy = False, True, True

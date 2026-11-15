@@ -247,7 +247,8 @@ The page opens in its compact "minimal" view, which hides the question list; ⌘
 A dropped websocket shows a "Reconnecting to the local server…" banner, and the page reconnects every 1.5 s.
 When the server is restarted after a crash or a Settings change, the page reloads against it.
 
-Settings stores the Anthropic, Tavily and Deepgram keys in the login Keychain (generic passwords, service = bundle id).
+Settings stores the Deepgram, Tavily, Telem and Anthropic keys in the login Keychain (generic passwords, service = bundle
+id; `<bundle id>.test` for a `-supportDir` test instance).
 A saved key is shown only as "saved". Saving restarts the server with the new environment.
 - **Ear**: Automatic uses Deepgram Flux when a Deepgram key is set, else Arc on this Mac. You can also pick Arc or
   Flux directly. With no Deepgram key everything runs on the local Arc ear (`EAR=arc`), which is verified below.
@@ -291,14 +292,67 @@ build only), so it never touches the installed app's grant.
   *Always Allow*. A stable signature (`ONSET_SIGN_ID`, above) removes the prompt.
 - Gatekeeper: a downloaded ad-hoc build is quarantined. Right-click > Open, or `xattr -dr com.apple.quarantine Onset.app`.
 
-## Later: notarization (needs a Developer ID)
-1. Sign inside-out with `codesign --options runtime --timestamp -s "Developer ID Application: …"`: every `.so`/`.dylib`
-   in `Resources/python` and `Resources/app/vendor`, then `python3.11` with `python.entitlements`, then the app with
-   `app.entitlements`. Notarization rejects ad-hoc and untimestamped signatures.
-2. `ditto -c -k --keepParent dist/Onset.app Onset.zip && xcrun notarytool submit Onset.zip --keychain-profile <profile> --wait`
-3. `xcrun stapler staple dist/Onset.app`, then build the dmg (`--dmg`) and staple that too.
-With a team ID, library validation could be turned back on for python (`disable-library-validation` removed), since
-every library would then carry the same team signature.
+## Release
+A public build anyone can download: the models are inside the app, nothing is fetched at first run, no `.env` is read,
+every Mach-O is signed with the Developer ID and a timestamp, and the DMG is notarized and stapled.
+
+```sh
+ONSET_SIGN_ID="Developer ID Application: Whissle LLC (XXK95K57U5)" NOTARY_PROFILE=<profile> \
+  nice -n 10 scripts/build_macapp.sh --release
+# -> dist/release/Onset.app, dist/release/Onset-<version>-arm64.dmg (+ .sha256), notarize-*.json (submission ids)
+```
+- `--release` refuses `--dev-env`, needs a `Developer ID Application:` identity and a notarytool keychain profile
+  (`xcrun notarytool store-credentials <profile> --apple-id <apple id> --team-id XXK95K57U5`, with an app-specific
+  password; the profile lives in the login Keychain). `--no-notarize` builds and signs only. It writes to
+  `dist/release/` and never touches `dist/Onset.app` or a running Onset.
+- **Models** (`--bundle-models`, implied): `scripts/fetch_models.py bundle` copies what `models/release_profile.json`
+  allows from `MODELS_DIR` (or `MODELS_SRC`) into `Contents/Resources/models` (APFS clones, sha256-checked) and writes
+  the bundle's own `manifest.json` (`"bundled": true`, exactly the files shipped). The app sees that manifest and
+  uses the bundle read-only as `MODELS_DIR`; its model check runs `fetch_models.py status --manifest <bundle>`.
+  The profile ships Arc v1, Arc Tagger, EmbeddingGemma 2, the Wikipedia leads (index-data/knowledge) and the Replay
+  questions voiced with Kokoro. It leaves out the local-moments index (third-party recordings, not ours to
+  redistribute) and questions voiced with macOS system voices; `/api/questions` lists only what is installed.
+- **Native runtime** (feat/native): `MODELS_MANIFEST=<onnx manifest> ONNX_RUNTIME=1 REQUIREMENTS=<slim
+  requirements> scripts/build_macapp.sh --release`. A model the profile does not name is bundled whole when required,
+  so the ONNX manifest needs no profile change. `ONNX_RUNTIME=1` reaches the server through Info.plist `HSServerEnv`.
+- **Signing**: every Mach-O is found by its header (not its extension) under `Resources/python` and `Resources/app`,
+  signed inside-out with `--options runtime --timestamp`; the Python executables get
+  `macapp/python.release.entitlements` (network only: library validation stays on since every library has our team
+  signature, and no JIT / unsigned-executable-memory: the release smoke test runs torch, ctypes and libarctag without
+  them); the app gets `macapp/app.entitlements` (audio-input, network client/server). `codesign --verify --strict --deep`.
+- **DMG**: the app plus an Applications link, lzma (`ULMO`), signed. Notarized with `notarytool submit --wait`; the
+  ticket covers the app inside, so the app is stapled, the DMG rebuilt around the stapled app, notarized again and
+  stapled (an app copied out of the DMG then opens offline too). `shasum -a 256` next to it.
+- **Licences**: `Contents/Resources/Licenses` (`macapp/licenses/THIRD_PARTY.md` is the index; Arc v1, Moonshine,
+  Arc Tagger licence + NOTICE, Apache 2.0, Python). Python packages keep theirs in their `.dist-info`.
+
+Verify:
+```sh
+spctl -a -vvv -t install dist/release/Onset-*.dmg     # accepted, source=Notarized Developer ID
+spctl -a -vvv dist/release/Onset.app
+xcrun stapler validate dist/release/Onset-*.dmg
+# clean account: a fresh support dir and the test Keychain service (<bundle id>.test, used by every -supportDir
+# instance), so the user's keys and defaults are never read or changed. Run it from the mounted (read-only) DMG.
+hdiutil attach -nobrowse -readonly dist/release/Onset-*.dmg
+"/Volumes/Onset/Onset.app/Contents/MacOS/Onset" -hidden YES -supportDir /tmp/onset_clean -snapshotDir /tmp/onset_shots \
+  -autoOnboarding skip -autoReplay q02.wav -autoQuit YES
+```
+`00_onboarding.png` shows the first-run sheet; `automation.log` says "onboarding shown", then "onboarding skipped
+(free mode)"; `page_after_replay.txt` holds the answer from the free path (Arc ear, Wikipedia, extractive answer).
+
+Publish: `gh release create v<version> --draft --title ... --notes-file ... <dmg> <dmg>.sha256` makes a DRAFT; a
+person publishes it. The README's "Download for Mac" links `releases/latest`.
+
+## First run: keys
+A release build (no `--dev-env`) opens a sheet before the server starts (so the models load once, with the keys).
+It explains each key, what it powers, what works without it and where to get one; each has **Test** (one free call:
+Anthropic `GET /v1/models`, Tavily `GET /usage`, Deepgram `GET /v1/projects`, Telem an empty `POST /v1/search` that
+is refused 400 after the key is accepted, never billed) showing "Works" or a plain error. Keys go only to the
+Keychain. **Continue** saves them, **Skip** runs the free mode. *Set Up Keys…* (app menu) reopens it; Settings has
+the same rows. The server environment follows the keys: web = Tavily with a Tavily key, else Telem, else Wikipedia
+(`WEB_FAILOVER=telem` when both are set, `VERIFY_FETCH=telem` with Telem alone); ear = Deepgram Flux with a Deepgram
+key, else Arc; answers = Claude with an Anthropic key, else the best source sentence. `KNOWLEDGE_DIR` points at the
+models' `index-data/knowledge` (the app never loaded the Wikipedia leads before: the default path is in-repo).
 
 ## Search cache across launches
 The app sets `CACHE_PERSIST=1` and `CACHE_PATH=<data>/search_cache.json`, so a search made in an earlier session is

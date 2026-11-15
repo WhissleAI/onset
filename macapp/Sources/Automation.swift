@@ -47,6 +47,20 @@ final class Automation {
         try? log.joined(separator: "\n").write(to: d.appendingPathComponent("automation.log"), atomically: true, encoding: .utf8)
     }
 
+    /// The first-run keys sheet appeared: snapshot it; -autoOnboarding skip then continues in the free mode.
+    func onboardingShown(_ view: NSView, app: AppDelegate) {
+        guard let d = dir else { return }
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        note("onboarding shown")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.saveView(view, "00_onboarding.png")
+            if UserDefaults.standard.string(forKey: "autoOnboarding") == "skip" {
+                self.note("onboarding skipped (free mode)")
+                app.skipOnboarding()
+            }
+        }
+    }
+
     func stateChanged(_ s: ServerManager.State, app: AppDelegate) {
         guard let d = dir else { return }
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)

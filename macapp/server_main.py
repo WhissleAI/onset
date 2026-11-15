@@ -43,7 +43,7 @@ def main() -> int:
     os.chdir(ROOT)
     import uvicorn
     from server import config
-    keys = [k for k in ("ANTHROPIC_API_KEY", "TAVILY_API_KEY", "DEEPGRAM_API_KEY") if os.environ.get(k)]
+    keys = [k for k in ("ANTHROPIC_API_KEY", "TAVILY_API_KEY", "DEEPGRAM_API_KEY", "TELEM_API_KEY") if os.environ.get(k)]
     print(f"[server] {config.APP_NAME}: port {a.port}, models {config.MODELS_DIR}, data {config.DATA_DIR}, "
           f"ear {config.EAR}, web {config.WEB_BACKEND}, keys set: {', '.join(keys) or 'none'}", flush=True)
     uvicorn.run("server.app:app", host=a.host, port=a.port, log_level="warning", ws_max_size=16 * 1024 * 1024)

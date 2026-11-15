@@ -24,8 +24,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         WKWebsiteDataStore.default().removeData(ofTypes: cacheTypes, modifiedSince: .distantPast) {}
         buildWindow()
         server.onState = { [weak self] s in self?.apply(s) }
-        server.start()
         if !Self.hidden { NSApp.activate(ignoringOtherApps: true) }
+        // first run of a release build: explain the keys before the server starts (it reads them once at launch,
+        // so starting first would load the models twice)
+        if !AppInfo.onboardingDone && AppInfo.devEnvPath == nil {
+            showOnboarding(firstRun: true)
+        } else {
+            server.start()
+        }
+    }
+
+    // MARK: onboarding (keys)
+
+    var onboardingSheet: NSWindow?
+
+    @objc func setUpKeys() { showOnboarding(firstRun: false) }
+
+    func showOnboarding(firstRun: Bool) {
+        guard onboardingSheet == nil else { return }
+        let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 720), styleMask: [.titled],
+                             backing: .buffered, defer: false)
+        let host = NSHostingView(rootView: OnboardingView(onDone: { [weak self] changed in
+            guard let self = self, let sh = self.onboardingSheet else { return }
+            self.window.endSheet(sh)
+            self.onboardingSheet = nil
+            if firstRun { self.server.start() } else if changed { self.loadedPort = 0; self.server.restart() }
+        }))
+        sheet.contentView = host
+        onboardingSheet = sheet
+        window.beginSheet(sheet)
+        Automation.shared.onboardingShown(host, app: self)
+    }
+
+    /// Automation (-autoOnboarding skip): press "Skip: use the free mode".
+    func skipOnboarding() {
+        guard let sh = onboardingSheet else { return }
+        AppInfo.onboardingDone = true
+        window.endSheet(sh)
+        onboardingSheet = nil
+        server.start()
     }
 
     // MARK: window
@@ -378,8 +415,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let credits = NSAttributedString(string: """
             Voice search that searches while you speak.
             Runs on this Mac: Arc v1 ear + Arc Tagger (Whissle, CC BY-NC 4.0), EmbeddingGemma 2 (Google, Apache 2.0), \
-            search director. Cloud (with your keys): Claude (answers), Tavily (web), Deepgram Flux (ear).
-            Models: ~/Library/Application Support/\(AppInfo.name)/models
+            search director. Cloud (with your keys): Deepgram Flux (ear), Tavily or Telem (web), Claude (answers).
+            Licences: \(AppInfo.name).app/Contents/Resources/Licenses
             """, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .applicationName: AppInfo.name])
     }
@@ -402,6 +439,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         app.addItem(withTitle: "About \(AppInfo.name)", action: #selector(showAbout), keyEquivalent: "")
         app.addItem(.separator())
         app.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        app.addItem(withTitle: "Set Up Keys…", action: #selector(setUpKeys), keyEquivalent: "")
         app.addItem(.separator())
         app.addItem(withTitle: "Forget Memory…", action: #selector(forgetMemory), keyEquivalent: "")
         app.addItem(withTitle: "Clear Search Cache…", action: #selector(clearCache), keyEquivalent: "")

@@ -131,6 +131,16 @@ async def health(probe: int = 0):
             **probes}
 
 
+def replayable(r: dict, audio_dir: Path, index_dir: Path) -> bool:
+    """A Replay row is listed only when it can run here: its audio is installed (the public app bundles a subset) and,
+    for a local-moments question, the local index is installed (the public app has none)."""
+    if r.get("file") and not (audio_dir / r["file"]).exists():
+        return False
+    if r.get("kind") == "local" and not (index_dir / "docs.jsonl").exists():
+        return False
+    return True
+
+
 @app.get("/api/questions")
 async def questions(set: str = "all"):
     """set=web: eval/questions.jsonl; set=local: index/questions_local.jsonl (kind "local"); all: both."""
@@ -140,14 +150,15 @@ async def questions(set: str = "all"):
     for p in srcs.get(set, srcs["web"] + srcs["local"] + srcs["multi"]):
         if p.exists():
             rows += [r for r in (json.loads(x) for x in p.read_text().splitlines() if x.strip())
-                     if not r.get("parts") or (AUDIO / r["file"]).exists()]       # multi-part: only if voiced
+                     if replayable(r, AUDIO, config.INDEX_DIR)]
     return JSONResponse(rows)
 
 
 @app.get("/api/conversations")
 async def conversations():
     p = ROOT / "eval" / "conversations.jsonl"
-    return JSONResponse([json.loads(x) for x in p.read_text().splitlines() if x.strip()] if p.exists() else [])
+    rows = [json.loads(x) for x in p.read_text().splitlines() if x.strip()] if p.exists() else []
+    return JSONResponse([r for r in rows if all((AUDIO / f).exists() for f in r.get("files") or [])])  # voiced here
 
 
 @app.get("/api/results")

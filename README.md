@@ -19,6 +19,15 @@ mic ─▶ Arc (streaming ASR + events) ─▶ Arc Tagger (10M, 0.7 ms/word) ─
 | **EmbeddingGemma 2** (Google, 740M, text+audio+image) | reranks the pool; local moments index; embeds the *spoken audio* of the question | one space for audio and text: retrieval can start before the words settle |
 | **Claude Haiku 5.5** | streaming 1–2 sentence answer with citations | thinking off, effort low: ~600 ms to first token |
 
+## Download for Mac
+**[Download Onset for Mac](https://github.com/WhissleAI/headstart/releases/latest)** (Apple Silicon, macOS 13 or later,
+about 6 GB free disk). Signed and notarized by Whissle LLC. Open the DMG, drag Onset to Applications, open it.
+
+It works without any keys: Arc listens on your Mac and answers come from Wikipedia. On first launch a short setup
+explains each optional key (Deepgram for the cloud ear, Tavily or Telem for the live web, Anthropic for written
+answers), with a **Test** button for each. Keys are stored only in your Mac's Keychain; questions, memory and history
+stay on your Mac. You can speak (hold Space) or type. Release steps: [MACAPP.md](MACAPP.md#release).
+
 ## The speculator in one screen
 - **Query frame** = (fine intent, typed slots, content words) from the tagger. Its signature changes only when the meaning
   changes, so filler words and repeated partials don't re-search.

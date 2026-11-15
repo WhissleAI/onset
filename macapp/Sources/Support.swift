@@ -17,9 +17,37 @@ enum AppInfo {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent(name, isDirectory: true)
     }
+    /// Release builds carry their models read-only in Contents/Resources/models (scripts/fetch_models.py bundle writes
+    /// its manifest.json there). Developer builds use ~/Library/Application Support/<APP_NAME>/models.
+    static var bundledModels: URL { resources.appendingPathComponent("models", isDirectory: true) }
+    static var hasBundledModels: Bool {
+        FileManager.default.fileExists(atPath: bundledModels.appendingPathComponent("manifest.json").path)
+    }
     static var modelsDir: URL {
         if let o = UserDefaults.standard.string(forKey: "modelsDir") { return URL(fileURLWithPath: o, isDirectory: true) }
+        if hasBundledModels { return bundledModels }
         return support.appendingPathComponent("models", isDirectory: true)
+    }
+    /// The manifest fetch_models.py checks: the bundle's own (exactly what shipped) when the models are bundled.
+    static var modelsManifest: URL? {
+        let m = modelsDir.appendingPathComponent("manifest.json")
+        return FileManager.default.fileExists(atPath: m.path) ? m : nil
+    }
+    /// Keychain service for the keys. A test instance (-supportDir) uses its own, so a clean-account test never sees
+    /// or changes the user's keys.
+    static var keychainService: String { supportOverride == nil ? bundleID : bundleID + ".test" }
+    /// First-run keys sheet done? A test instance keeps this in its own support folder, not the user's defaults.
+    static var onboardingDone: Bool {
+        get {
+            if supportOverride != nil { return FileManager.default.fileExists(atPath: support.appendingPathComponent(".onboarded").path) }
+            return UserDefaults.standard.bool(forKey: "onboardingDone")
+        }
+        set {
+            if supportOverride != nil {
+                try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+                FileManager.default.createFile(atPath: support.appendingPathComponent(".onboarded").path, contents: nil)
+            } else { UserDefaults.standard.set(newValue, forKey: "onboardingDone") }
+        }
     }
     static var portKey: String { supportOverride == nil ? "port" : "port.test" }
     static var dataDir: URL { support.appendingPathComponent("data", isDirectory: true) }
@@ -57,14 +85,15 @@ func appLog(_ msg: String) {
 /// API keys live in the login Keychain (generic passwords, service = bundle id). Values are never logged or written
 /// to disk by the app; they reach the server only as environment variables of its process.
 enum Keys {
-    static let all = ["ANTHROPIC_API_KEY", "TAVILY_API_KEY", "DEEPGRAM_API_KEY"]
+    static let all = ["DEEPGRAM_API_KEY", "TAVILY_API_KEY", "TELEM_API_KEY", "ANTHROPIC_API_KEY"]
     static let labels = ["ANTHROPIC_API_KEY": "Anthropic (answers)",
-                         "TAVILY_API_KEY": "Tavily (web search; else Wikipedia)",
-                         "DEEPGRAM_API_KEY": "Deepgram (cloud ear: Flux; else the local Arc ear)"]
+                         "TAVILY_API_KEY": "Tavily (web search)",
+                         "TELEM_API_KEY": "Telem (web search router)",
+                         "DEEPGRAM_API_KEY": "Deepgram (cloud ear: Flux)"]
 
     private static func query(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: AppInfo.bundleID,
+         kSecAttrService as String: AppInfo.keychainService,
          kSecAttrAccount as String: account]
     }
 

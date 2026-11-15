@@ -2051,3 +2051,34 @@ in the bundle. Where it stands:
   no Tavily. One showcase answer got worse (sc22 phone comparison: only "The sources don't cover this.").
 - Pages demo rebuilt from this web/ and checked (race, facts, live; light + dark; no console errors, no horizontal
   scroll). Shots: scratchpad feature_shots/polish/ (before_* / after_*). Tests: tests/test_polish2.py.
+
+## Public Mac release: notarized DMG, first-run keys, bundled models (branch feat/release; MACAPP.md "Release")
+- **Build**: `ONSET_SIGN_ID="Developer ID Application: Whissle LLC (XXK95K57U5)" NOTARY_PROFILE=<profile>
+  scripts/build_macapp.sh --release` -> `dist/release/Onset.app` (2.6 GB) + `Onset-0.1.0-arm64.dmg` (1.44 GB, ULMO,
+  1,437,474,851 bytes, sha256 bb51df82…31be). Never reads a `.env` (refuses `--dev-env`), never touches dist/Onset.app.
+- **Signing / notarization**: 288 Mach-O files (found by header) signed inside-out with the Developer ID, hardened
+  runtime and a timestamp. The Python executables carry only network entitlements (library validation on, no JIT /
+  unsigned-executable memory; torch, ctypes, libarctag all run). DMG notarized (fd17c270-25ef-49ee-9358-482fdea02da7,
+  Accepted), app stapled, DMG rebuilt around it, notarized again (6a82bbef-3bd7-4929-8873-774303142156, Accepted) and
+  stapled. `spctl -a -vvv -t install` on the DMG and `spctl -a -vvv` on the app: accepted, source=Notarized Developer ID.
+- **Models in the bundle** (`fetch_models.py bundle`, `models/release_profile.json`, read-only `Resources/models` with
+  its own manifest; 2.0 GB): Arc v1 (without the unused v1e decoder, -138 MB), Arc Tagger, EmbeddingGemma 2, the
+  Wikipedia leads (index-data/knowledge only) and 86 Kokoro-voiced Replay clips. Never shipped: the local-moments
+  index (broadcast clips + private recordings), macOS-voice / recorded clips. `/api/questions` and
+  `/api/conversations` list only what is installed; the Local tab hides itself.
+- **First run**: a keys sheet before the server starts (Deepgram, Tavily, Telem, Anthropic optional), each with what
+  it powers, what works without it, a link and a free **Test** call. Keychain only. Web = Tavily > Telem > Wikipedia
+  (`WEB_FAILOVER=telem` with both); ear = Flux with a Deepgram key, else Arc. `KNOWLEDGE_DIR` now points at the models'
+  leads (the app never loaded them before). Test instances (`-supportDir`) use their own Keychain service and
+  first-run flag. The model check now reads its output synchronously (one test launch showed "Could not read the
+  model manifest"; a likely readabilityHandler race, not seen again in 4 launches).
+- **Clean-account smoke test** (the notarized app run from the mounted read-only DMG, fresh support dir, empty
+  test Keychain): onboarding shown, skipped to the free mode, warm in 23 s, Replays q02/q08/q12 answered
+  (Arc ear, Wikidata facts, extractive), typed local-moments question answered by the normal lanes with no error;
+  no tracebacks; server RSS 1.3 GB after six questions.
+- **Distribution**: GitHub Release v0.1.0 DRAFT on WhissleAI/headstart (DMG + .sha256, notes in
+  docs/RELEASE_NOTES_0.1.0.md); Dropbox copy in ~/Dropbox/Onset/. README "Download for Mac" -> releases/latest.
+  Licences: `Resources/Licenses` (THIRD_PARTY.md index; Arc / Arc Tagger CC BY-NC 4.0: free for non-commercial use).
+- Tests: tests/test_release.py (8); full suite 667 passed.
+- Open: native ONNX runtime not switched yet (`MODELS_MANIFEST=… ONNX_RUNTIME=1 REQUIREMENTS=…`, about -600 MB once
+  Arc drops torch); the repo itself has no LICENSE file; Arc / Arc Tagger NC terms vs any commercial use.
