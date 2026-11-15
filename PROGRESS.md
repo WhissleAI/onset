@@ -2014,3 +2014,40 @@ in the bundle. Where it stands:
   model-backed tests skip without the export or with onnxruntime < 8-bit support.
 - Tools: scripts/native/{export_embed,quantize_embed,parity_embed,export_arc,parity_arc}.py;
   index/eval_local.py gains LOCAL_EVAL_CACHE / LOCAL_EVAL_OUT (a comparison never overwrites index data).
+
+## Polish 2: "the app crashed" + a calm answer card (branch feat/polish2; web/, macapp/Sources, server/answer.py)
+- **What happened at 15:03 / 15:04** (macOS unified log + server.log): neither the app nor the page's web content
+  process crashed (same WebContent pid before and after, no termination, no crash report). Both websocket closes were
+  `View > Reload` (⌘R: `performKeyEquivalent → WebPageProxy::reload`), pressed after typed questions that never
+  reached the server as Enter (runs 7 and 8: no endpoint, no answer). Reproduced neither a crash nor a hang: Chromium
+  (12 questions + long text, real key events) and a WKWebView test build (bundle id ai.whissle.onset.polishtest, own
+  data dir; 12 questions typed through AppKit key events and through insertText) answered every Enter; JS heap flat
+  (2-3 MB), DOM 500-1,500 nodes, no console errors, no server exceptions.
+- **Found and fixed on the typed path**:
+  - Enter pressed again re-asked the same question: a new run per press (6 presses = 6 runs, each cutting the previous
+    answer short, resetting the panes and paying for the searches again). Now ignored while that question is answered.
+  - Enter submitted only through the form's implicit submission; now also the box's own keydown (an input-method
+    commit is left alone). Inline predictions / autocorrect off in the box (`writingsuggestions`, `autocorrect`).
+  - Lookups run while you type, so results can be on screen with no answer: after 1.5 s without a keystroke the ear
+    state says "press Enter for the answer".
+- **App shell** (macapp/Sources/main.swift): `webViewWebContentProcessDidTerminate` logs to logs/app.log (new; the
+  server's stdout handle would overwrite lines in server.log), reloads the page against the same server and shows a
+  plain notice ("The page stopped unexpectedly and was reloaded. Your conversation memory is kept; ask again.") with
+  Dismiss; more than 3 in a minute: no reload loop, a sheet with Reload / Open Logs. ⌘R reloads and the page's own
+  uncaught errors are logged there too. Verified by killing the test instance's WebContent process: logged, reloaded,
+  notice shown. Automation: `-autoType "q1|q2"` (+ `-autoTypeKeys YES`, `-autoTypeRounds N`), `-autoKillPage YES`.
+- **Answer card**: answer in the proportional font; the clamp is a whole number of lines (`--alh × --aln`) with a fade
+  and a "more" button (click opens in place) instead of `-webkit-line-clamp`, which stopped half-way through a line in
+  WebKit; citations are superscript numbers. ONE trust line (web/confidence.js) merges the calibrated confidence and
+  the source check: "High confidence · 2 sources agree", "Unverified · sources don't cover this" (was "Low · sources
+  don't say" + "✓ matches 1 source"); numbers and per-claim detail in the tooltip. The "web · tavily" chip is gone
+  (source in the route chip's tooltip; live-data cards keep their card). Delta label in plain case ("0.56 s results
+  sooner"; ratio in the tooltip). Cost meter is one line (headline + details; this question, session and budget
+  toggle are behind details). Default view's "What Arc hears": words + search moments; tagger pins, end-of-turn ticks
+  and read-out chips are in details (D); safety / privacy / masking chips stay.
+- **Answer prompt**: never restate or interpret the question; "the sources don't cover it" in at most six words.
+  eval/prompt_ab.py (same Wikipedia docs per question, before = 65d59ed): 58 set web lane (38 scored) **37/38 → 37/38**,
+  preambles 1 → 0, mean 27.1 → 25.8 words; showcase (29) 14/15 → 14/15, 36.5 → 33.3 words. 134 answer-model calls,
+  no Tavily. One showcase answer got worse (sc22 phone comparison: only "The sources don't cover this.").
+- Pages demo rebuilt from this web/ and checked (race, facts, live; light + dark; no console errors, no horizontal
+  scroll). Shots: scratchpad feature_shots/polish/ (before_* / after_*). Tests: tests/test_polish2.py.

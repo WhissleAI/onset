@@ -22,6 +22,29 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (t.className = "toast" + (err ? " err" : "")), err ? 4500 : 2500);
   }
+  // a plain notice that stays until dismissed (the Mac app calls it after the page had to be reloaded)
+  window.__hsNotice = (msg) => {
+    let n = document.getElementById("pageNotice");
+    if (!n) {
+      n = document.createElement("div");
+      n.id = "pageNotice"; n.className = "page-notice"; n.setAttribute("role", "status");
+      n.innerHTML = '<span></span><button type="button" aria-label="Dismiss">Dismiss</button>';
+      n.querySelector("button").addEventListener("click", () => { n.hidden = true; });
+      document.body.appendChild(n);
+    }
+    n.querySelector("span").textContent = String(msg || "");
+    n.hidden = false;
+  };
+  // the page's own uncaught errors go to the Mac app's log (logs/app.log), at most 20 per page load
+  let errsSent = 0;
+  function reportError(msg) {
+    const nb = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.onset;
+    if (!nb || errsSent >= 20) return;
+    errsSent++;
+    try { nb.postMessage({ t: "log", msg: String(msg).slice(0, 400) }); } catch { /* bridge gone */ }
+  }
+  addEventListener("error", (e) => reportError(`error: ${e.message} at ${String(e.filename || "").split("/").pop()}:${e.lineno}`));
+  addEventListener("unhandledrejection", (e) => reportError(`unhandled rejection: ${e.reason && (e.reason.message || e.reason)}`));
 
   // ------------------------------------------------------------------ theme
   const savedTheme = store.get("hs-theme");
@@ -752,16 +775,36 @@
     box.className = "answer";
     const fb = q.metric[mode] && q.metric[mode].answer_fallback;
     const n = (q.sources[mode] || []).length;
-    let html = esc(txt).replace(/\[(\d+(?:\s*[,–-]\s*\d+)*)\]/g, (_, grp) =>
-      grp.split(/\s*[,–-]\s*/).map((d) => `<a class="cite" data-n="${d}" ${+d > n ? 'title="not in the source list"' : ""}>${d}</a>`).join(""));
+    // citations: clean superscript numbers ("…in 1993¹˒²"); a group [1, 2] is one superscript, comma-separated
+    let html = esc(txt).replace(/\s*\[(\d+(?:\s*[,–-]\s*\d+)*)\]/g, (_, grp) =>
+      `<sup class="cites">` + grp.split(/\s*[,–-]\s*/).map((d) => `<a class="cite" data-n="${d}" ${+d > n ? 'title="not in the source list"' : `title="source ${d}"`}>${d}</a>`).join('<span class="cs">,</span>') + `</sup>`);
     if (!q.metric[mode] && !q.error[mode]) html += txt ? '<span class="caret"></span>' : (q.endpointMs[mode] != null ? '<span class="wait">searching…</span>' : "");
     renderLane(mode);
     if (fb) html = `<span class="badge fb" title="the answer model was unreachable: this is the best-matching sentence of the top source">${esc(fb)} · not generated</span> ` + html;
     const old = q.superseded[mode];
     if (old && old.answer) html = `<div class="old"><span class="badge corr">superseded</span> ${old.correction ? "answered" : "answered early"} (${fmtS(old.ready)}), then you ${old.correction ? "corrected yourself" : "kept talking"}: <s>${esc(old.answer.slice(0, 140))}${old.answer.length > 140 ? "…" : ""}</s></div>` + html;
     box.innerHTML = html;
+    fitAnswer(box);
   }
-
+  // A clamped answer ends on a whole line: the box's height is a whole number of lines (CSS), and when the text runs
+  // past it the last line fades out under a "more" button (click anywhere on the answer opens it in place).
+  function fitAnswer(box) {
+    if (!box) return;
+    cancelAnimationFrame(box._fitRaf);
+    box._fitRaf = requestAnimationFrame(() => {
+      const open = box.classList.contains("open");
+      const over = !open && box.scrollHeight > box.clientHeight + 2;
+      box.classList.toggle("clamped", over);
+      let b = box.querySelector(":scope > .more");
+      if (over && !b) {
+        b = document.createElement("button");
+        b.type = "button"; b.className = "more"; b.textContent = "more";
+        b.setAttribute("aria-label", "Show the whole answer");
+        box.appendChild(b);
+      } else if (!over && b && !open) b.remove();
+      if (open && b) b.textContent = "less";
+    });
+  }
   // ------------------------------------------------------------------ router: which lane answered (+ the card)
   // Tiers (server/router.py): card = live data from a free API (or computed locally), facts = local knowledge
   // (Wikidata / local Wikipedia leads / Wiktionary), web = the paid search. Honesty: every card names its source and
@@ -842,8 +885,10 @@
     const L = laneOf(mode);
     if (!L || L.tier === "local") { box.innerHTML = ""; return; }
     const src = L.card ? L.card.source : (L.tier === "index" ? (L.d.snapshot || "").replace(/^from your /, "") : (L.d.source || ""));
-    const chip = `<span class="lane-chip lc-${esc(L.tier)}" title="${esc(L.byCard ? "answered by the card itself: no model call" : "the answer's first cited source came from this lane" + (L.d.snapshot ? ` (${L.d.snapshot})` : ""))}">${esc(L.tier === "index" && /^verified by Onset users/.test(L.d.snapshot || "") ? "shared index hit · 0 paid" : (LANE_NAME[L.tier] || L.tier))} · ${esc(src.replace(/ \(local.*\)$/, ""))}</span>`;
-    if (!L.card) { box.innerHTML = chip; return; }
+    // the lane + source live in the pane header's route chip (its tooltip names the source); no second chip here
+    const rc = pk(mode, "route");
+    if (rc && rc.textContent) rc.title = (rc.title || "").replace(/ · source: .*$/, "") + ` · source: ${(L.tier === "index" && /^verified by Onset users/.test(L.d.snapshot || "") ? "shared index hit · 0 paid" : (LANE_NAME[L.tier] || L.tier))} · ${src.replace(/ \(local.*\)$/, "")}`;
+    if (!L.card) { box.innerHTML = ""; return; }
     const c = L.card, asof = fmtAsOf(c.as_of);
     let body = "";
     if (c.vertical === "weather" && c.data && c.data.days) {
@@ -854,7 +899,7 @@
     } else {
       body = `<div class="lc-big">${esc(c.spoken)}</div>${c.detail ? `<div class="lc-sub">${esc(c.detail)}</div>` : ""}`;
     }
-    box.innerHTML = chip + `<div class="lane-card"><div class="lc-h">${esc(c.title)}</div>${body}<div class="lc-src">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.source)}</a>` : esc(c.source)}${asof ? ` · as of ${esc(asof)}` : ""}${c.live === false ? " · computed locally" : ""}</div></div>`;
+    box.innerHTML = `<div class="lane-card"><div class="lc-h">${esc(c.title)}</div>${body}<div class="lc-src">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.source)}</a>` : esc(c.source)}${asof ? ` · as of ${esc(asof)}` : ""}${c.live === false ? " · computed locally" : ""}</div></div>`;
   }
 
   function renderSources(mode) {
@@ -991,6 +1036,7 @@
     requestAnimationFrame(() => { for (const m of ["headstart", "baseline"]) renderResults(m); });
     const dh = pk("headstart", "delta"), db = pk("baseline", "delta");
     pane("headstart").classList.remove("winner"); pane("baseline").classList.remove("winner");
+    dh.title = db.title = "";
     if (a == null || b == null) { dh.innerHTML = db.innerHTML = ""; dh.className = db.className = "delta"; return; }
     const d = b - a, ad = Math.abs(d);
     if (ad < 100) {
@@ -1001,7 +1047,8 @@
     const [win, lose] = d >= 0 ? [dh, db] : [db, dh];
     const lo = Math.min(a, b), hi = Math.max(a, b), ratio = hi / Math.max(1, lo);
     const what = viewSel === "results" ? "results sooner" : "faster";
-    win.innerHTML = `<span class="dv">${fmtS(ad)}</span><span class="dl">${what}${lo > 100 && isFinite(ratio) && ratio >= 1.15 ? ` · ${ratio.toFixed(1)}×` : ""}</span>`;
+    win.innerHTML = `<span class="dv">${fmtS(ad)}</span><span class="dl">${what}</span>`;
+    win.title = `${fmtS(lo)} vs ${fmtS(hi)}` + (lo > 100 && isFinite(ratio) ? ` (${ratio.toFixed(1)}×)` : "");
     win.className = "delta hero";
     lose.innerHTML = `<span class="dl">${fmtS(ad)} behind</span>`;
     lose.className = "delta slow";
@@ -1318,7 +1365,10 @@
     };
     requestAnimationFrame(step);
   }
-  addEventListener("resize", () => { if (run) { loop(); for (const m of ["headstart", "baseline"]) renderResults(m); } });
+  // details on / off and the Answer | Results view change the clamp: re-fit the answers
+  new MutationObserver(() => { for (const m of ["headstart", "baseline"]) fitAnswer(pk(m, "answer")); })
+    .observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  addEventListener("resize", () => { if (run) { loop(); for (const m of ["headstart", "baseline"]) { renderResults(m); fitAnswer(pk(m, "answer")); } } });
 
   // ------------------------------------------------------------------ replay
   let questions = [], lastReplay = null;
@@ -1620,7 +1670,13 @@
   // hover tooltip, which popped up over the strip)
   document.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest(".pane .answer");
-    if (a && !e.target.closest("a")) a.classList.toggle("open");
+    if (a && !e.target.closest("a") && (a.classList.contains("clamped") || a.classList.contains("open"))) {
+      const open = a.classList.toggle("open");
+      if (open) a.classList.remove("clamped");
+      const b = a.querySelector(":scope > .more");
+      if (b) b.textContent = open ? "less" : "more";
+      if (!open) fitAnswer(a);
+    }
   });
 
   // ------------------------------------------------------------------ keyboard
@@ -1675,7 +1731,10 @@
   // ------------------------------------------------------------------ typed questions (server: {t:"type"})
   // The text box streams into the same pipeline as speech: finished words go to the Arc Tagger as they are typed (with
   // keystroke timings), so free lookups fire while you type; Enter is the endpoint. One run per question.
-  const typed = { open: false, rid: null, last: "" };
+  // asked: the text of the last question sent with Enter, and its run id. Enter again on the same, unedited text
+  // while that question is still being answered is ignored (Enter spam used to re-ask it: a new run per press, each
+  // cutting the previous answer short and paying for the same searches again).
+  const typed = { open: false, rid: null, last: "", asked: null, askedRid: null };
   function focusType() {
     const b = $("#typeBox");
     if (!b || $("#typeForm").hidden) return;
@@ -1686,6 +1745,7 @@
     const text = $("#typeBox").value;
     if (!typed.open) {
       if (!text.trim()) return;
+      if (final && typed.asked === text && run && run.rid === typed.askedRid && run.running) return;   // Enter spam
       if (mic.on) stopMic(true, "typing");
       const modes = modesFor(modeSel);
       if (!send({ t: "start", typed: true, modes })) return;
@@ -1696,14 +1756,34 @@
     if (text === typed.last && !final) return;
     typed.last = text;
     send({ t: "type", rid: typed.rid, text, final: !!final });
-    if (final) Object.assign(typed, { open: false, last: "" });
+    if (final) Object.assign(typed, { open: false, last: "", asked: text, askedRid: typed.rid });
   }
-  $("#typeBox").addEventListener("input", () => typeSend(false));
-  $("#typeForm").addEventListener("submit", (e) => {
-    e.preventDefault();
+  // a typed question is answered at Enter: after a pause in typing, say so where the ear state shows (lookups already
+  // run while you type, so a pause with results on screen and no answer read as the app being stuck)
+  let typeIdle = null;
+  $("#typeBox").addEventListener("input", () => {
+    typeSend(false);
+    clearTimeout(typeIdle);
+    typeIdle = setTimeout(() => {
+      if (typed.open && run && run.kind === "typed" && run.running && $("#typeBox").value.trim()) {
+        $("#earState").textContent = "press Enter for the answer";
+        $("#earState").className = "ear live hint";
+      }
+    }, 1500);
+  });
+  function typeSubmit() {
+    clearTimeout(typeIdle);
     if (!$("#typeBox").value.trim()) return;
     typeSend(true);
     $("#typeBox").select();                 // the next keystroke starts a new question
+  }
+  $("#typeForm").addEventListener("submit", (e) => { e.preventDefault(); typeSubmit(); });
+  // Enter in the box submits directly, not only through the form's implicit submission (which a capture-phase key
+  // handler or the browser can skip). An Enter that commits an input-method composition only commits it.
+  $("#typeBox").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    typeSubmit();
   });
   // "Mask profanity in the transcript" (default on): display only; masked words never reach the search either way
   window.HSMaskOn = () => $("#maskToggle").checked;

@@ -174,7 +174,7 @@
     const { T, P } = totals();
     const modes = MODES.filter((m) => T[m]);
     if (!rows.length || !modes.length) {
-      el.innerHTML = `<div class="mt-bar mt-empty"><div class="mt-hero"><b class="mt-idle">Cost meter</b><small>time, paid calls, model tokens and est. $ per question</small></div>${toggle()}</div>`;
+      el.innerHTML = `<div class="mt-bar mt-empty mt-slim"><div class="mt-hero"><b class="mt-idle">Cost meter</b><small>time, paid calls, model tokens and est. $ per question</small></div>${toggle()}</div>`;
       el.classList.remove("open");
       return;
     }
@@ -215,14 +215,13 @@
       s1 = `<b>${nQ}</b> question${nQ > 1 ? "s" : ""} · <b>${fmtUsd(t.usd)}</b> est.`;
       s2 = `paid <b>${t.paid}</b> · free <b>${t.free}</b> · wasted <b>${t.wasted}</b>`;
     }
-    let html = `<div class="mt-bar">
+    // the bar is one line (the session's headline + "details"); this question's row, the session totals and the
+    // search-budget toggle are behind "details" with the per-question table
+    let html = `<div class="mt-bar mt-slim">
       <div class="mt-hero"><b>${esc(hero)}</b><small>${esc(heroSub)}</small></div>
-      ${thisQ}
-      <div class="mt-sess"><label>session</label><div>${s1}</div><div>${s2}</div></div>
-      ${toggle()}
       <button class="mt-more" aria-expanded="${open}">${open ? "less" : "details"}</button>
     </div>`;
-    if (open) html += detail(T, P, modes);
+    if (open) html += `<div class="mt-open-row">${thisQ}<div class="mt-sess"><label>session</label><div>${s1}</div><div>${s2}</div></div>${toggle()}</div>` + detail(T, P, modes);
     el.innerHTML = html;
     el.classList.toggle("open", open);
   }

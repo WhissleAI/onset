@@ -65,6 +65,7 @@
   }
 
   function onVerify(e) {
+    if (window.HSConf && window.HSConf.verify) return window.HSConf.verify(e);   // merged into the one trust line
     const b = badgeBox(e.mode);
     if (!b) return;
     const cls = { agree: "ok", supported: "ok", disagree: "warn", partial: "part", unverified: "none" }[e.status] || "none";
@@ -75,17 +76,18 @@
 
   // VERIFY_RESEARCH (server/recheck.py): one targeted lookup on the key claim after the answer
   function onRecheck(e) {
+    if (e.status === "corrected" && e.patched) {
+      const pane = document.getElementById("pane-" + e.mode);
+      const a = pane && pane.querySelector('[data-k="answer"]');
+      if (a) a.insertAdjacentHTML("beforeend", `<div class="corrected-note">${esc(e.patched)}</div>`);
+    }
+    if (window.HSConf && window.HSConf.recheck) return window.HSConf.recheck(e);
     const b = badgeBox(e.mode);
     if (!b || !e.label || e.status === "skip") return;
     const cls = { rechecked: "ok", corrected: "warn", unconfirmed: "none" }[e.status] || "none";
     const why = `Re-checked "${e.claim}" after the answer: ${(e.lanes || []).join(" → ") || "no lane"}` +
       (e.paid ? " (1 paid call)" : " (free)") + (e.ms != null ? `, ${e.ms} ms` : "");
     b.insertAdjacentHTML("beforeend", ` <span class="vb ${cls} recheck" title="${esc(why)}">${esc(e.label)}</span>`);
-    if (e.status === "corrected" && e.patched) {
-      const pane = document.getElementById("pane-" + e.mode);
-      const a = pane && pane.querySelector('[data-k="answer"]');
-      if (a) a.insertAdjacentHTML("beforeend", `<div class="corrected-note">${esc(e.patched)}</div>`);
-    }
   }
 
   function clear(mode) {

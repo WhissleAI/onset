@@ -504,8 +504,8 @@
     else if (f.safety === "threat" || f.safety === "hate") out.push(chip("warn", "", `${f.safety} · not searched`, "Arc Tagger safety: no web search for this"));
     else if ((f.mask || []).length) out.push(chip("mask", "", `${(f.mask || []).length} masked · not searched`, "Arc Tagger profanity / toxicity: left out of the search, memory and logs"));
     if (r.jailbreak) out.push(chip("warn", "⚠", "prompt injection: no early search", "safety.jailbreak.attempt"));
-    if (a.for_me != null) out.push(chip(a.for_me >= 0.5 ? "arc" : "warn", "Arc audio", a.for_me >= 0.5 ? `to the assistant ${a.for_me.toFixed(2)}` : `not to the assistant ${a.for_me.toFixed(2)}`, "Arc audio head: device-directed"));
-    else if (r.directed != null) out.push(chip(r.directed >= 0.5 ? "arc" : "warn", "for me", r.directed.toFixed(2), "device-directed (Arc Tagger)"));
+    if (a.for_me != null) out.push(chip(a.for_me >= 0.5 ? "arc" : "low", "Arc audio", a.for_me >= 0.5 ? `to the assistant ${a.for_me.toFixed(2)}` : `not to the assistant ${a.for_me.toFixed(2)}`, "Arc audio head: device-directed"));
+    else if (r.directed != null) out.push(chip(r.directed >= 0.5 ? "arc" : "low", "for me", r.directed.toFixed(2), "device-directed (Arc Tagger)"));
     const tail = (x) => human(String(x || "").split(".").pop());
     if (a.speaker || a.role) out.push(chip("arc", "speaker", [a.speaker, a.role ? tail(a.role) : ""].filter(Boolean).join(" · "), "Arc audio: speaker id + role"));
     if (a.act && a.act.label && !S.act) out.push(chip("arc", "act (audio)", human(a.act.label)));

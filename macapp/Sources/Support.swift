@@ -25,11 +25,33 @@ enum AppInfo {
     static var dataDir: URL { support.appendingPathComponent("data", isDirectory: true) }
     static var logsDir: URL { support.appendingPathComponent("logs", isDirectory: true) }
     static var serverLog: URL { logsDir.appendingPathComponent("server.log") }
+    static var appLog: URL { logsDir.appendingPathComponent("app.log") }
     /// Developer builds only (build_macapp.sh --dev-env): the repo's .env, read for keys missing from the Keychain.
     static var devEnvPath: String? {
         guard let p = Bundle.main.object(forInfoDictionaryKey: "HSDevEnvPath") as? String, !p.isEmpty else { return nil }
         return FileManager.default.fileExists(atPath: p) ? p : nil
     }
+}
+
+/// One line from the app shell into logs/app.log (its own file: server.log is the server's stdout, written through a
+/// non-append handle that would overwrite lines added from here). Kept under ~1 MB (rotated to app.log.1).
+func appLog(_ msg: String) {
+    let f = DateFormatter()
+    f.dateFormat = "HH:mm:ss.SSS"
+    let line = "[app \(f.string(from: Date()))] \(msg.replacingOccurrences(of: "\n", with: " "))\n"
+    let fm = FileManager.default
+    let url = AppInfo.appLog
+    try? fm.createDirectory(at: AppInfo.logsDir, withIntermediateDirectories: true)
+    if let n = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, n > 1_000_000 {
+        let old = AppInfo.logsDir.appendingPathComponent("app.log.1")
+        try? fm.removeItem(at: old)
+        try? fm.moveItem(at: url, to: old)
+    }
+    if !fm.fileExists(atPath: url.path) { fm.createFile(atPath: url.path, contents: nil) }
+    guard let h = try? FileHandle(forWritingTo: url) else { return }
+    defer { try? h.close() }
+    _ = try? h.seekToEnd()
+    try? h.write(contentsOf: Data(line.utf8))
 }
 
 /// API keys live in the login Keychain (generic passwords, service = bundle id). Values are never logged or written

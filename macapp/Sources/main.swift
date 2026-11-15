@@ -111,13 +111,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if case .ready = server.state { showWeb(true) }
+        showPendingNotice()
         loadReplayMenu()
         Automation.shared.pageLoaded(app: self)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { retryLoad() }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { retryLoad() }
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { webView.reload() }
+    /// The page's web content process ended (it crashed, or macOS reclaimed its memory). The app and its server keep
+    /// running: log it, reload the page against the same server and say so in a plain notice on the reloaded page,
+    /// instead of leaving a blank window. More than 3 in a minute: stop reloading and ask (no reload loop).
+    private var pageEnds: [Date] = []
+    private var pendingNotice: String?
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = Date()
+        pageEnds = pageEnds.filter { now.timeIntervalSince($0) < 60 } + [now]
+        appLog("page content process ended (\(pageEnds.count) in the last minute); "
+               + (pageEnds.count > 3 ? "not reloading again" : "reloading the page"))
+        Automation.shared.note("page content process ended")
+        guard pageEnds.count <= 3 else {
+            showWeb(false)
+            let a = NSAlert()
+            a.messageText = "The page keeps stopping"
+            a.informativeText = "\(AppInfo.name)'s window stopped \(pageEnds.count) times in a minute. The local server is still running. Reload to try again, or open the logs."
+            a.addButton(withTitle: "Reload")
+            a.addButton(withTitle: "Open Logs")
+            a.beginSheetModal(for: window) { [weak self] r in
+                guard let self = self else { return }
+                if r == .alertSecondButtonReturn { self.openLogs() }
+                self.pageEnds.removeAll()
+                self.reloadAfterEnd()
+            }
+            return
+        }
+        reloadAfterEnd()
+    }
+
+    private func reloadAfterEnd() {
+        pendingNotice = "The page stopped unexpectedly and was reloaded. Your conversation memory is kept; ask again."
+        if case .ready(let port) = server.state {
+            web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/")!))
+        } else {
+            web.reload()
+        }
+    }
+
+    /// After a reload that followed a page crash: the plain notice on the page (web/app.js window.__hsNotice).
+    private func showPendingNotice() {
+        guard let n = pendingNotice else { return }
+        pendingNotice = nil
+        let d = (try? JSONSerialization.data(withJSONObject: [n])).flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+        web.evaluateJavaScript("window.__hsNotice && window.__hsNotice(\(d)[0]); true") { _, _ in }
+    }
 
     private func retryLoad() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -178,6 +223,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         switch t {
         case "settings":
             showSettings()
+        case "log":
+            // the page's own uncaught errors (web/app.js): one line each in logs/app.log, so a "crash" can be traced
+            if let m = body["msg"] as? String { appLog("page: " + String(m.prefix(400))) }
         case "mic":
             // listening: keep the app out of App Nap / timer throttling (it may sit behind other windows while held)
             let on = (body["on"] as? Bool) ?? false
@@ -324,7 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     @objc func openModels() { NSWorkspace.shared.open(AppInfo.modelsDir) }
     @objc func restartServer() { loadedPort = 0; server.restart() }
-    @objc func reloadPage() { web.reload() }
+    @objc func reloadPage() { appLog("page reloaded (View > Reload)"); web.reload() }
 
     @objc func showAbout() {
         let credits = NSAttributedString(string: """

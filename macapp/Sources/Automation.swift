@@ -14,11 +14,34 @@ final class Automation {
     /// 1 s apart (the second press starts while the first run is still flushing: the stale run_done race). Each
     /// release logs the page's capture counters; the server logs them too ("stop (client) | page: ...").
     private let autoMic = UserDefaults.standard.string(forKey: "autoMic")
+    /// -autoType "q1|q2|...": each question typed into the page's text box one character at a time through the web
+    /// view's own text input (insertText: the page sees trusted input events, as from the keyboard), Enter spam on every
+    /// second one, a new question while the last is still answering on every third; logs focus, the page's run state,
+    /// the WebContent memory (page heap, DOM size) after each, and any page-process end. -autoTypeRounds repeats the list.
+    private let autoType = UserDefaults.standard.string(forKey: "autoType")
+    private let autoTypeRounds = max(1, UserDefaults.standard.integer(forKey: "autoTypeRounds"))
+    /// -autoTypeKeys YES: type with synthesized key events (keyDown / keyUp sent to the web view, Return as key code 36)
+    /// instead of insertText + requestSubmit: the whole AppKit key path (text input client, key equivalents).
+    private let autoTypeKeys = UserDefaults.standard.bool(forKey: "autoTypeKeys")
+
+    private func key(_ app: AppDelegate, _ chars: String, code: UInt16) {
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+            if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: app.window.windowNumber, context: nil, characters: chars,
+                                        charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                if type == .keyDown { app.web.keyDown(with: e) } else { app.web.keyUp(with: e) }
+            }
+        }
+    }
+    /// -autoKillPage YES: end the page's web content process once, 4 s after the first page load (test of the app's
+    /// recovery: log, reload, plain notice), via WebKit's test hook; snapshot 07_after_page_end.png after the reload.
+    private let autoKillPage = UserDefaults.standard.bool(forKey: "autoKillPage")
+    private var killed = false
     private var splashShot = false
     private var pageDone = false
     private var log: [String] = []
 
-    private func note(_ s: String) {
+    func note(_ s: String) {
         guard let d = dir else { return }
         log.append("\(Date().timeIntervalSince1970) \(s)")
         try? log.joined(separator: "\n").write(to: d.appendingPathComponent("automation.log"), atomically: true, encoding: .utf8)
@@ -35,11 +58,36 @@ final class Automation {
     }
 
     func pageLoaded(app: AppDelegate) {
+        if dir != nil, killed, pageDone {
+            note("page reloaded after the page process ended")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                app.web.evaluateJavaScript("(document.getElementById('pageNotice') || {}).textContent || ''") { r, _ in
+                    self.note("notice: \((r as? String) ?? "")")
+                    self.saveWeb(app.web, "07_after_page_end.png") { self.finish(app) }
+                }
+            }
+            return
+        }
+        if dir != nil, autoKillPage, !killed {
+            killed = true
+            pageDone = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                self.note("ending the page process")
+                let sel = Selector(("_killWebContentProcess"))
+                if app.web.responds(to: sel) { app.web.perform(sel) } else { self.note("no test hook") }
+            }
+            return
+        }
         guard dir != nil, !pageDone else { return }
         pageDone = true
         note("page loaded")
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             self.saveWeb(app.web, "02_ui_loaded.png") {
+                if let t = self.autoType {
+                    let qs = t.split(separator: "|").map(String.init)
+                    let all = Array((0..<self.autoTypeRounds).map { _ in qs }.joined())
+                    return self.typeSequence(all, index: 0, app: app)
+                }
                 if let m = self.autoMic {
                     let holds = m.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
                     return self.micSequence(holds, index: 0, app: app)
@@ -127,6 +175,68 @@ final class Automation {
             app.web.evaluateJavaScript("(() => { const on = window.__hs.mic.on; const s = window.__hs.mic.stats(); window.__hs.mic.stop(); return JSON.stringify({still_on: on, ...s}) })()") { r, _ in
                 self.note("mic release \(index + 1) hold \(h) s: \((r as? String) ?? "?")")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.micSequence(holds, index: index + 1, app: app) }
+            }
+        }
+    }
+
+    private func pageState(_ app: AppDelegate, _ tag: String, then: @escaping () -> Void) {
+        let js = "JSON.stringify({focus: document.activeElement && (document.activeElement.id || document.activeElement.tagName), " +
+            "dom: document.getElementsByTagName('*').length, running: !!(window.__hs.run && window.__hs.run.running), " +
+            "kind: window.__hs.run && window.__hs.run.kind, film: !!(window.HSFilm && window.HSFilm.active), " +
+            "answers: window.__hs.run ? Object.keys(window.__hs.run.q.answer || {}).filter(k => (window.__hs.run.q.answer[k] || '').length > 0).length : 0, " +
+            "box: (document.getElementById('typeBox') || {}).value})"
+        app.web.evaluateJavaScript(js) { r, e in
+            self.note("\(tag) \((r as? String) ?? "error \(String(describing: e))")")
+            then()
+        }
+    }
+
+    private func typeChars(_ chars: [Character], _ i: Int, app: AppDelegate, done: @escaping () -> Void) {
+        guard i < chars.count else { return done() }
+        if autoTypeKeys { key(app, String(chars[i]), code: chars[i] == " " ? 49 : 0) } else { app.web.insertText(String(chars[i])) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05 + Double.random(in: 0...0.09)) {
+            self.typeChars(chars, i + 1, app: app, done: done)
+        }
+    }
+
+    private func typeSequence(_ qs: [String], index: Int, app: AppDelegate) {
+        guard index < qs.count else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                self.pageState(app, "type final") { self.saveWeb(app.web, "06_typed_done.png") { self.finish(app) } }
+            }
+            return
+        }
+        let q = qs[index]
+        note("type \(index + 1)/\(qs.count) \(q)")
+        // focus the box the way a person does (the "/" shortcut), select what is there, then type
+        app.web.evaluateJavaScript("(() => { const b = document.getElementById('typeBox'); b.focus(); b.select(); return document.activeElement.id })()") { _, _ in
+            self.typeChars(Array(q), 0, app: app) {
+                let spam = index % 2 == 1 ? 6 : 1
+                if self.autoTypeKeys { for _ in 0..<spam { self.key(app, "\r", code: 36) } }
+                let enter = self.autoTypeKeys ? "true"
+                    : "(() => { const f = document.getElementById('typeForm'); for (let k = 0; k < \(spam); k++) f.requestSubmit(); return true })()"
+                app.web.evaluateJavaScript(enter) { _, _ in
+                    self.pageState(app, "type \(index + 1) enter") {
+                        let next = { (delay: Double) in
+                            var waited = 0.0
+                            func poll() {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    waited += 0.5
+                                    app.web.evaluateJavaScript("!!(window.__hs.run && window.__hs.run.running)") { r, _ in
+                                        if ((r as? Bool) ?? false) && waited < 30 { return poll() }
+                                        self.pageState(app, "type \(index + 1) answered after \(waited) s\(waited >= 30 ? " (TIMEOUT)" : "")") {
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self.typeSequence(qs, index: index + 1, app: app) }
+                                        }
+                                    }
+                                }
+                            }
+                            poll()
+                        }
+                        // every third question: the next one starts while this one is still answering
+                        if index % 3 == 2 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.typeSequence(qs, index: index + 1, app: app) } }
+                        else { next(0.5) }
+                    }
+                }
             }
         }
     }
