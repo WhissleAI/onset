@@ -85,7 +85,8 @@
   <main class="main">
     <form class="typebar" id="typeForm" autocomplete="off" role="search" hidden>
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M10 4a6 6 0 1 0 3.47 10.9l4.31 4.31 1.42-1.42-4.31-4.31A6 6 0 0 0 10 4Zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"/></svg>
-      <input id="typeBox" type="text" spellcheck="false" autocomplete="off" aria-label="Type a question"
+      <input id="typeBox" type="text" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"
+             writingsuggestions="false" enterkeyhint="search" aria-label="Type a question"
              placeholder="Or type a question: lookups start as you type">
       <kbd class="tb-key" title="Press / or ⌘K to type">/</kbd>
       <button type="submit" class="tb-go">Search</button>

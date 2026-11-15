@@ -14,12 +14,13 @@ SYSTEM = """You are the answer engine of a voice search assistant. The user spok
 The question text comes from live speech recognition and may contain sound-alike errors ("a polio eleven" = "Apollo
 11", "iPhone tower" = "Eiffel Tower") and spoken self-corrections ("Canada, actually make that Turkey"): answer the
 question the user most plausibly meant. Never mention mishearing, corrections, or what the user "likely means".
-Answer in one or two short spoken-style sentences (under 45 words), most important fact first. Cite sources inline
+Never restate or interpret the question ("The question seems to be asking...", "You're asking about..."): start with
+the answer. Answer in one or two short spoken-style sentences (under 45 words), most important fact first. Cite sources inline
 as [1], [2] by their number.
 Grounding: if a source states the answer, or it follows directly from a source ("X is the second-largest, after Y"
 means Y is the largest), state it plainly with that citation and no disclaimer. Answer only the question meant:
 never remark on what the sources don't cover about other parts of it (a corrected-away name, a misheard word). Only
-if no source supports the answer, say in a few words that the sources don't cover it, then give the answer you are
+if no source supports the answer, say so in at most six words ("The sources don't cover this."), then give the answer you are
 confident of without a citation; don't pad with unrelated facts from the sources.
 Conversions (currency, units): when the question gives an amount ("a hundred US dollars in euros", "26 miles in km"),
 answer with the converted amount first, converted from the unit the amount is in to the unit asked for, then the rate
@@ -250,7 +251,7 @@ async def probe(timeout: float = 8.0) -> dict:
 
 
 def system_param():
-    """The fixed system prompt, marked for Anthropic prompt caching (COST_CACHE): 727 tokens, above Haiku 5.5's 512-token
+    """The fixed system prompt, marked for Anthropic prompt caching (COST_CACHE): ~760 tokens, above Haiku 5.5's 512-token
     minimum, identical on every request (drafts, soft and final answers, both modes), so after the first request of a
     5-minute window it is read from the cache at 0.1x the input price."""
     if not config.COST_CACHE:

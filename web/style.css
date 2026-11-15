@@ -612,7 +612,7 @@ pre.raw { font: 11px/1.4 var(--mono); max-height: 240px; overflow: auto; backgro
 .hc.c-fresh, .hc.c-fam { border-color: color-mix(in srgb, var(--draft) 45%, var(--line)); }
 .hc.c-mem { border-style: dashed; border-color: var(--audio); color: var(--audio); }
 .hc.c-priv { border-color: var(--hs); color: var(--hs); }
-.hc.c-warn { border-color: var(--err); color: var(--err); }
+.hc.c-warn, .hc.c-low { border-color: var(--err); color: var(--err); }
 .hc.c-arc { border-color: color-mix(in srgb, var(--spk) 35%, var(--line)); }
 .minimal .transcript-card { padding: 10px 16px 10px; }
 .minimal .hw-x { font-size: 27px; }
@@ -673,3 +673,46 @@ body:not(.minimal) .lane-card .lc-h { margin-bottom: 0; }
 .ul.mask { color: var(--ink-3); text-transform: none; letter-spacing: 0; }
 .hc.c-care { border-color: var(--hs); color: var(--hs); }
 .hc.c-mask { color: var(--ink-2); }
+
+/* a plain notice that stays until dismissed (window.__hsNotice: the Mac app after it had to reload the page) */
+.page-notice { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1001; display: flex; align-items: center;
+  gap: 12px; max-width: min(640px, calc(100vw - 32px)); padding: 9px 10px 9px 16px; border-radius: 12px; background: var(--card);
+  color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 13.5px; line-height: 1.35; }
+.page-notice[hidden] { display: none; }
+.page-notice button { flex: none; border: 1px solid var(--line); background: var(--card-2); color: var(--ink); border-radius: 8px;
+  padding: 4px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+
+/* ---------------------------------------------------------------- answer card (polish2): readable text, whole-line
+   clamp with a fade + "more", superscript citations. Overrides the -webkit-line-clamp rules above (they could stop
+   half-way through a line in WebKit and cut citation chips to "3…"). --alh = the answer's line height, --aln = lines. */
+.pane .answer, .view-results .pane .answer, .minimal .pane .answer {
+  --alh: 22px; --aln: 3; position: relative; display: block; -webkit-line-clamp: unset; overflow: hidden;
+  font: 400 14.5px/var(--alh) var(--sans); color: var(--ink); max-height: calc(var(--alh) * var(--aln)); }
+.minimal .pane .answer { --alh: 24px; --aln: 6; font-size: 15.5px; }
+.view-results .pane .answer { --alh: 21px; --aln: 2; font-size: 14px; color: var(--ink); }
+.minimal.view-results .pane .answer { --alh: 22px; --aln: 2; font-size: 14.5px; }
+.pane .answer.open, .view-results .pane .answer.open, .minimal .pane .answer.open { max-height: none; overflow: visible; }
+.pane .answer.clamped { cursor: pointer; }
+.pane .answer.clamped::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--alh);
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--card) 0%, transparent), var(--card) 92%); pointer-events: none; }
+.pane .answer > .more { position: absolute; right: 0; bottom: 0; z-index: 1; height: var(--alh); padding: 0 2px 0 18px; border: 0;
+  font: 600 12.5px/var(--alh) var(--sans); color: var(--web); cursor: pointer;
+  background: linear-gradient(to right, color-mix(in srgb, var(--card) 0%, transparent), var(--card) 16px); }
+.pane .answer.open > .more { position: static; display: inline; height: auto; padding: 0 0 0 6px; background: none; line-height: inherit; }
+.pane .answer > .more:hover { text-decoration: underline; }
+.answer .cites { font-size: 0; line-height: 0; vertical-align: super; white-space: nowrap; margin-left: 1px; }
+.answer .cite, .answer .cs { display: inline; font: 600 10.5px/1 var(--sans); padding: 0 1px; margin: 0; border: 0; border-radius: 3px;
+  background: none; color: var(--web); text-decoration: none; cursor: pointer; vertical-align: baseline; }
+.answer .cs { color: var(--ink-3); cursor: default; padding: 0; }
+.answer .cite:hover { background: var(--web); color: #fff; }
+.delta.hero .dl { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; }
+
+/* polish2, the default (minimal) view keeps what a judge needs: the question as heard, with the moments a search
+   fired under its words. Tagger pins (intent, act, command complete), the end-of-turn ticks and the read-out chips are
+   in the details view (D); safety, privacy and masking chips stay visible in both. */
+.minimal .hw-top { display: none; }
+.minimal .hw-line { min-height: 0; }
+.minimal .hw-tail { display: none; }
+.minimal .hw-chips .hc:not(.c-care):not(.c-warn):not(.c-mask):not(.c-priv) { display: none; }
+.minimal .hw-chips:not(:has(.c-care, .c-warn, .c-mask, .c-priv)) { display: none; }
+.ear.hint { color: var(--hs); font-weight: 700; }
