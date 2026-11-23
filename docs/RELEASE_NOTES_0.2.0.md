@@ -6,7 +6,7 @@ the question as it forms (Arc), works out what you mean after a few words (Arc T
 
 **Download:** `Onset-0.2.0-arm64.dmg` below. Open it, drag Onset to Applications, open Onset. Signed with Whissle
 LLC's Developer ID and notarized by Apple. Check the download: `shasum -a 256 Onset-0.2.0-arm64.dmg` should match
-`Onset-0.2.0-arm64.dmg.sha256` (`@DMG_SHA@`).
+`Onset-0.2.0-arm64.dmg.sha256` (`8951055c3873a085ae29d85017017a1ee062b8d9a8efbc1cd6605e2c3a28070a`).
 
 ### What's new
 - **Answers written on your Mac, no key needed.** A 4-bit Qwen2.5-0.5B writes the short answer from the sources
@@ -47,7 +47,7 @@ Usage on these services is billed to your own account.
 
 ### System requirements
 - A Mac with Apple Silicon (M1 or later), macOS 13 Ventura or later.
-- Disk: @DMG_MB@ MB download, plus 1.16 GB of models fetched once on first launch.
+- Disk: 270 MB download, plus 1.16 GB of models fetched once on first launch.
 - Memory: 8 GB or more.
 
 ### What's inside, and licences

@@ -146,6 +146,10 @@ final class ServerManager {
                 self.state = .failed("Could not read the model manifest (see Open Logs).")
             } else if !missing.isEmpty {
                 self.state = .needsModels(missing: missing)
+                // Automation (-autoDownloadModels YES): press Download, so a headless release smoke runs the first-run fetch.
+                if UserDefaults.standard.bool(forKey: "autoDownloadModels") && missing.allSatisfy({ $0.downloadable }) {
+                    self.downloadModels()
+                }
             } else {
                 self.launch()
             }
