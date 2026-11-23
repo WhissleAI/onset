@@ -18,8 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SITE = ROOT / "site"
-DOWNLOAD = "https://github.com/WhissleAI/headstart/releases/latest"
-REPO = "https://github.com/WhissleAI/headstart"
+DOWNLOAD = "https://github.com/WhissleAI/OnSet/releases/latest"
+REPO = "https://github.com/WhissleAI/OnSet"
 
 
 def demo_index(data: Path) -> dict:
@@ -64,16 +64,26 @@ def build_demo(out: Path):
     sc["now"] = {"cost_mode": meter.get("cost_mode"), "web_backend": health.get("web_backend"), "keystone": True}
     (data / "api" / "scorecard.json").write_text(json.dumps(sc))
     page = (demo / "index.html").read_text()
-    page = page.replace("<title>Onset</title>", "<title>Onset demo</title>", 1)
+    page = page.replace("<title>Onset</title>", "<title>OnSet demo</title>", 1)
     page = page.replace("</head>", '<link rel="stylesheet" href="demo.css?v=1">\n</head>', 1)
     i = page.index("<script src=")
     page = page[:i] + '<script src="demo.js?v=1"></script>\n' + page[i:]
     (demo / "index.html").write_text(page)
 
 
+def answer_lm() -> str:
+    """The on-device answer model's short name, from models/manifest.json (entry dir "answer-lm")."""
+    man = json.loads((ROOT / "models" / "manifest.json").read_text())
+    for m in man.get("models", []):
+        if m.get("dir") == "answer-lm":
+            return m.get("short") or m["name"].split(" (")[0]
+    return "small on-device model"
+
+
 def build_landing(out: Path):
     sc = json.loads((ROOT / "server" / "scorecard.json").read_text())
-    tok = {"DOWNLOAD": DOWNLOAD, "REPO": REPO, "HEADLINE_LABEL": html.escape(sc.get("headline_label", ""))}
+    tok = {"DOWNLOAD": DOWNLOAD, "REPO": REPO, "HEADLINE_LABEL": html.escape(sc.get("headline_label", "")),
+           "ANSWER_LM": html.escape(answer_lm())}
     cards = []
     for h in sc.get("headline", []):
         s = h.get("source") or {}

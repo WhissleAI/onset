@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Onset</title>
-<meta name="description" content="Voice search that hears how you ask, not just what. On-device models tag intent mid-sentence, a local memory graph keeps context, and it pays for web search only when needed.">
-<meta property="og:title" content="Onset: voice search that hears how you ask">
-<meta property="og:description" content="On-device models tag intent mid-sentence, a local memory graph keeps context, and it pays for web search only when needed: 27% fewer paid searches.">
+<title>OnSet</title>
+<meta name="description" content="Voice search that starts before you finish talking. Free and open source for Mac: on-device models hear and tag your question mid-sentence, search the web for free with DuckDuckGo, and write the answer on your Mac.">
+<meta property="og:title" content="OnSet: voice search that starts before you finish talking">
+<meta property="og:description" content="Free, open-source voice search for Mac. It searches while you speak and writes the answer on your Mac. No keys needed.">
+<meta property="og:image" content="https://i.ytimg.com/vi/h5BSgq6Rd8k/maxresdefault.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -15,9 +16,9 @@
 </head>
 <body>
 <header class="nav">
-  <a class="brand" href="./" aria-label="Onset home"><span class="logo" aria-hidden="true"><i></i><i></i><i></i></span>Onset</a>
+  <a class="brand" href="./" aria-label="OnSet home"><span class="logo" aria-hidden="true"><i></i><i></i><i></i></span>OnSet</a>
   <nav aria-label="Sections">
-    <a href="#how">How it works</a><a href="#results">Results</a><a href="#privacy">Privacy</a><a href="{{REPO}}/blob/main/docs/Onset_deck.pdf">Slides (PDF)</a><a href="{{REPO}}">GitHub</a>
+    <a href="#video">Video</a><a href="#how">How it works</a><a href="#results">Results</a><a href="#privacy">Privacy</a><a href="{{REPO}}/blob/main/docs/Onset_deck.pdf">Slides (PDF)</a><a href="{{REPO}}">GitHub</a>
   </nav>
   <button class="theme" id="themeBtn" type="button" aria-label="Toggle light or dark theme">
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.4 5.4 0 0 1-9.54-4.6A5.4 5.4 0 0 1 12 3Z"/></svg>
@@ -27,49 +28,58 @@
 <main>
   <section class="hero">
     <p class="eyebrow">Voice search for macOS</p>
-    <h1>Voice search that hears <em>how</em> you ask, not just what.</h1>
-    <p class="lede">On-device models tag intent mid-sentence, a local memory graph keeps context, and Onset pays for web search only when needed: 27% fewer paid searches.</p>
+    <h1>Voice search that starts <em>before</em> you finish talking.</h1>
+    <p class="lede">OnSet hears and understands your question while you are still saying it, searches from the third word, and writes the answer on your Mac. Free web search, no accounts, no keys.</p>
     <div class="cta">
       <a class="btn primary" href="{{DOWNLOAD}}">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M16.37 12.6c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.47.83-.72 0-1.82-.81-2.99-.79-1.54.02-2.96.9-3.75 2.27-1.6 2.78-.41 6.89 1.15 9.14.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.77.74 2.98.72 1.23-.02 2.01-1.12 2.76-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.39-.92-2.4-3.66ZM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.67 1.37-.58.67-1.1 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28Z"/></svg>
         Download for Mac</a>
       <a class="btn" href="demo/">Watch the live demo</a>
     </div>
-    <p class="fine">Notarized Mac app · macOS 13+ · <a href="#keys">bring your own keys</a></p>
+    <p class="fine">Free and open source · Apple Silicon, macOS 13+ · models download on first launch · <a href="#keys">keys optional</a></p>
+  </section>
+
+  <section id="video" class="video" aria-label="Video">
+    <div class="video-frame">
+      <iframe src="https://www.youtube-nocookie.com/embed/h5BSgq6Rd8k?rel=0" title="OnSet: voice search that starts before you finish" loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+    </div>
+    <p class="cap">Two minutes: OnSet answering while the question is still being asked. <a href="https://www.youtube.com/watch?v=h5BSgq6Rd8k">Watch on YouTube</a></p>
   </section>
 
   <section class="demo-teaser" aria-label="Demo">
     <a class="shot" href="demo/?play=race">
-      <div class="shot-bar"><i></i><i></i><i></i><span>Onset · Race vs Baseline</span></div>
+      <div class="shot-bar"><i></i><i></i><i></i><span>OnSet · Race vs Baseline</span></div>
       <div class="shot-body">
         <div class="said">“okay so my kid asked me this, and I didn't know, <mark>why is the sky blue</mark>”</div>
         <div class="race">
-          <div class="lane hs"><b>Onset</b><span class="bar" style="--w:42%"></span><span class="t">search started mid-sentence</span></div>
+          <div class="lane hs"><b>OnSet</b><span class="bar" style="--w:42%"></span><span class="t">search started mid-sentence</span></div>
           <div class="lane bl"><b>Baseline</b><span class="bar" style="--w:78%"></span><span class="t">waits for silence, then searches</span></div>
         </div>
         <div class="play"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>Play 11 recorded runs of the real app</div>
       </div>
     </a>
-    <p class="cap">The demo is the real Onset interface replaying recorded runs (real audio, real events, real timings). Nothing in it is mocked.</p>
+    <p class="cap">The demo is the real OnSet interface replaying recorded runs (real audio, real events, real timings). Nothing in it is mocked.</p>
   </section>
 
   <section id="how" class="sec">
     <h2>How it works</h2>
-    <p class="sec-lede">Most of the meaning arrives before you finish talking. Onset reads it as it arrives and starts the free lookups early; the one paid search waits until the meaning is final.</p>
+    <p class="sec-lede">Most of the meaning arrives before you finish talking. OnSet reads it as it arrives and starts the free lookups early; the web search waits until the meaning is final.</p>
     <figure class="arch">
       <svg viewBox="0 0 1000 430" role="img" aria-labelledby="archT archD">
-        <title id="archT">Onset architecture</title>
-        <desc id="archD">Microphone audio goes to the ear (Deepgram Flux words plus Whissle Arc audio metadata), then the Arc Tagger, then the director and speculator, which pick a lane through the router: live cards, Wikidata facts, the Keystone local store and site brain, or paid web search through Tavily or Telem. The answer model streams a cited answer. A local memory graph feeds context to the tagger and router.</desc>
+        <title id="archT">OnSet architecture</title>
+        <desc id="archD">Microphone audio goes to the ear (Whissle Arc on the Mac, or Deepgram Flux with a key), then the Arc Tagger, then the director and speculator, which pick a lane through the router: live cards, Wikidata facts, the Keystone local store, your own indexed recordings, or web search (DuckDuckGo for free; Tavily or Telem with a key). A small language model on the Mac streams a cited answer. A local memory graph feeds context to the tagger and router.</desc>
         <defs>
           <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" class="ah"/></marker>
         </defs>
         <rect class="zone dev" x="10" y="10" width="640" height="410" rx="16"/>
         <text class="zl" x="28" y="36">On your Mac</text>
         <rect class="zone cloud" x="670" y="10" width="320" height="410" rx="16"/>
-        <text class="zl" x="688" y="36">Cloud, only when needed</text>
+        <text class="zl" x="688" y="36">The web, only when needed</text>
 
         <g class="node"><rect x="30" y="60" width="130" height="64" rx="10"/><text x="95" y="88">Mic</text><text class="s" x="95" y="107">your voice</text></g>
-        <g class="node acc"><rect x="200" y="60" width="190" height="64" rx="10"/><text x="295" y="88">Ear</text><text class="s" x="295" y="107">Arc audio metadata · live words</text></g>
+        <g class="node acc"><rect x="200" y="60" width="190" height="64" rx="10"/><text x="295" y="88">Arc ear</text><text class="s" x="295" y="107">live words · audio metadata</text></g>
         <g class="node acc"><rect x="430" y="60" width="200" height="64" rx="10"/><text x="530" y="88">Arc Tagger · 10M</text><text class="s" x="530" y="107">intent · slots · corrections · done?</text></g>
         <g class="node"><rect x="430" y="170" width="200" height="64" rx="10"/><text x="530" y="198">Director + speculator</text><text class="s" x="530" y="217">fire · cancel stale · draft</text></g>
         <g class="node"><rect x="200" y="170" width="190" height="64" rx="10"/><text x="295" y="198">Memory graph</text><text class="s" x="295" y="217">“the old one” → Biden</text></g>
@@ -79,11 +89,11 @@
         <g class="node free"><rect x="30" y="284" width="140" height="56" rx="10"/><text x="100" y="308">Live cards</text><text class="s" x="100" y="326">weather · prices</text></g>
         <g class="node free"><rect x="185" y="284" width="140" height="56" rx="10"/><text x="255" y="308">Facts</text><text class="s" x="255" y="326">Wikidata</text></g>
         <g class="node free"><rect x="340" y="284" width="140" height="56" rx="10"/><text x="410" y="308">Keystone</text><text class="s" x="410" y="326">verified answers</text></g>
-        <g class="node free"><rect x="495" y="284" width="140" height="56" rx="10"/><text x="565" y="308">Site brain</text><text class="s" x="565" y="326">docs read once</text></g>
+        <g class="node free"><rect x="495" y="284" width="140" height="56" rx="10"/><text x="565" y="308">Your recordings</text><text class="s" x="565" y="326">Arc + Arc Tagger index</text></g>
 
-        <g class="node paid"><rect x="690" y="170" width="280" height="64" rx="10"/><text x="830" y="198">Paid web search</text><text class="s" x="830" y="217">Tavily · Telem failover · once, when final</text></g>
-        <g class="node"><rect x="690" y="60" width="280" height="64" rx="10"/><text x="830" y="88">Deepgram Flux</text><text class="s" x="830" y="107">streaming words (or Arc on device)</text></g>
-        <g class="node"><rect x="690" y="284" width="280" height="56" rx="10"/><text x="830" y="308">Answer model</text><text class="s" x="830" y="326">Claude · 1–2 cited sentences</text></g>
+        <g class="node paid"><rect x="690" y="170" width="280" height="64" rx="10"/><text x="830" y="198">Web search</text><text class="s" x="830" y="217">DuckDuckGo free · Tavily / Telem optional</text></g>
+        <g class="node"><rect x="690" y="60" width="280" height="64" rx="10"/><text x="830" y="88">Deepgram Flux</text><text class="s" x="830" y="107">optional cloud ear, with a key</text></g>
+        <g class="node acc"><rect x="690" y="284" width="280" height="56" rx="10"/><text x="830" y="308">Answer model, on your Mac</text><text class="s" x="830" y="326">{{ANSWER_LM}} · 1–2 cited sentences</text></g>
         <g class="node out"><rect x="690" y="360" width="280" height="44" rx="10"/><text x="830" y="387">Cited answer, streamed</text></g>
 
         <path class="ln" d="M160 92H196" marker-end="url(#ah)"/>
@@ -99,13 +109,15 @@
         <path class="ln" d="M830 234V280" marker-end="url(#ah)"/>
         <path class="ln" d="M830 340V356" marker-end="url(#ah)"/>
       </svg>
-      <figcaption>Teal = free and local. Amber = paid, and only once the meaning is final. Every lane has a timeout and a fallback.</figcaption>
+      <figcaption>Teal = free and local. Amber = goes to the web, once the meaning is final. Every lane has a timeout and a fallback.</figcaption>
     </figure>
     <ul class="points">
       <li><b>Hears how you ask.</b> Whissle Arc reads the audio itself (who is speaking, corrections, whether you're done) alongside the words.</li>
       <li><b>Searches while you speak.</b> The 10M-parameter Arc Tagger re-reads the partial sentence at about 0.7 ms per word, so lookups can start on word three.</li>
       <li><b>Remembers context.</b> A local memory graph resolves “it”, “there” and “the old one” before anything is searched.</li>
-      <li><b>Pays last.</b> Cards, facts, saved answers and site docs are free. Paid web search runs once, only when they can't answer.</li>
+      <li><b>Web last, and free.</b> Cards, facts, saved answers and your recordings come first. Web search (DuckDuckGo, no key) runs only when they can't answer.</li>
+      <li><b>Answers on your Mac.</b> A small language model writes the 1–2 sentence answer from the sources, with citations. No cloud LLM.</li>
+      <li><b>Searches your recordings.</b> Drop in meetings, lectures or podcasts: Arc transcribes them and the Arc Tagger marks people, places and numbers, so answers can cite “Team sync · 12:40”.</li>
     </ul>
   </section>
 
@@ -124,11 +136,11 @@
   <section id="privacy" class="sec two">
     <div>
       <h2>Private by default</h2>
-      <p class="sec-lede">Your memory, history and index never leave your Mac.</p>
+      <p class="sec-lede">Your voice, memory, recordings and answers stay on your Mac.</p>
     </div>
     <dl class="priv">
-      <div><dt>Stays on your Mac</dt><dd>Arc audio models, the Arc Tagger, the reranker, the memory graph, the Keystone answer store and every cache. All in <code>~/Library/Application Support/Onset</code>.</dd></div>
-      <div><dt>Leaves only when needed</dt><dd>Audio to Deepgram when a Deepgram key is set (the Flux ear). The final search query to Tavily or Telem when no free lane can answer. The question and its sources to Claude for the written answer.</dd></div>
+      <div><dt>Stays on your Mac</dt><dd>Arc (speech), the Arc Tagger, the reranker, the answer model, your indexed recordings, the memory graph, the Keystone answer store and every cache. All in <code>~/Library/Application Support/OnSet</code>.</dd></div>
+      <div><dt>Leaves only when needed</dt><dd>The search query, when no local lane can answer: to DuckDuckGo, or to Tavily / Telem if you add a key. Audio goes to Deepgram only if you add a Deepgram key.</dd></div>
       <div><dt>Never sent</dt><dd>Your memory graph, past questions, or a profile of you. Masked words never reach search, memory or logs. Keys live in the macOS Keychain.</dd></div>
     </dl>
   </section>
@@ -136,23 +148,22 @@
   <section id="keys" class="sec two">
     <div>
       <h2>Get started</h2>
-      <p class="sec-lede">Download, open, paste your keys in Settings.</p>
+      <p class="sec-lede">Download, open, ask. The models (about 3 GB) download once on first launch. Keys are optional upgrades.</p>
       <a class="btn primary" href="{{DOWNLOAD}}">Download for Mac</a>
     </div>
     <table class="keys">
       <thead><tr><th scope="col">Key</th><th scope="col">Used for</th><th scope="col">Without it</th></tr></thead>
       <tbody>
-        <tr><td><a href="https://console.deepgram.com/">Deepgram</a></td><td>Flux streaming ear</td><td>Arc ear, fully on device</td></tr>
-        <tr><td><a href="https://app.tavily.com/">Tavily</a></td><td>Paid web search, site brain</td><td>Free lanes + Wikipedia</td></tr>
-        <tr><td><a href="https://telem.ai/">Telem</a></td><td>Search failover, page reads</td><td>No failover</td></tr>
-        <tr><td><a href="https://console.anthropic.com/">Anthropic</a> <span class="opt">optional</span></td><td>Written answers</td><td>Best source sentence</td></tr>
+        <tr><td><a href="https://console.deepgram.com/">Deepgram</a> <span class="opt">optional</span></td><td>Flux cloud ear (fastest turn-taking)</td><td>Arc ear, fully on device</td></tr>
+        <tr><td><a href="https://app.tavily.com/">Tavily</a> <span class="opt">optional</span></td><td>Ranked web search with freshness</td><td>DuckDuckGo, free</td></tr>
+        <tr><td><a href="https://telem.ai/">Telem</a> <span class="opt">optional</span></td><td>Search router and failover</td><td>DuckDuckGo, free</td></tr>
       </tbody>
     </table>
   </section>
 </main>
 
 <footer class="foot">
-  <span>Onset · built by Whissle for SearchHack</span>
+  <span>OnSet · open source, built by <a href="https://whissle.ai">Whissle</a></span>
   <span><a href="{{REPO}}">Source on GitHub</a> · <a href="{{REPO}}/blob/main/docs/PITCH.md">Pitch</a> · <a href="{{REPO}}/blob/main/docs/Onset_deck.pdf">Slides (PDF)</a> · <a href="{{REPO}}/blob/main/docs/RETRIEVAL.md">Retrieval notes</a></span>
 </footer>
 <script>

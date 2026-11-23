@@ -47,6 +47,15 @@ def sha256(p: Path) -> str:
     return h.hexdigest()
 
 
+def dropbox_hash(p: Path) -> str:
+    """Dropbox's content_hash: sha256 over the concatenated sha256 of each 4 MiB block."""
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for b in iter(lambda: f.read(4 << 20), b""):
+            h.update(hashlib.sha256(b).digest())
+    return h.hexdigest()
+
+
 class Dropbox:
     def __init__(self, token: str):
         self.h = {"Authorization": f"Bearer {token}"}
@@ -158,9 +167,13 @@ def main(argv=None) -> int:
         url = ""
         if dbx:
             path = f"/onset-models/{a.tag}/{m['dir']}.tar"
-            print(f"   uploading to Dropbox:{path}", flush=True)
-            dbx.upload(tar, path)
             meta = dbx.rpc("files/get_metadata", {"path": path})
+            if meta.get("size") == size and meta.get("content_hash") == dropbox_hash(tar):
+                print(f"   Dropbox:{path} already holds this archive: not re-uploaded", flush=True)
+            else:
+                print(f"   uploading to Dropbox:{path}", flush=True)
+                dbx.upload(tar, path)
+                meta = dbx.rpc("files/get_metadata", {"path": path})
             if meta.get("size") != size:
                 raise SystemExit(f"{path}: Dropbox has {meta.get('size')} bytes, expected {size}")
             url = dbx.public_link(path)

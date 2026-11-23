@@ -206,7 +206,7 @@
   function bar(d) {
     const el = document.createElement("div");
     el.id = "demoBar"; el.className = "demo-bar";
-    el.innerHTML = `<div class="db-row"><a class="db-home" href="../">← Onset</a>
+    el.innerHTML = `<div class="db-row"><a class="db-home" href="../">← OnSet</a>
       <p class="db-msg"><b>Recorded runs of the real app.</b> <span>Download the Mac app to try it live.</span></p>
       <a class="db-dl" href="${d.download}">Download for Mac</a></div>
       <div class="db-row db-pick"><span class="db-lab">Pick a scenario</span><div class="db-chips" role="list"></div></div>

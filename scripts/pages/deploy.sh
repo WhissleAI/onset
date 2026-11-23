@@ -13,7 +13,7 @@ tmp=$(mktemp -d); cp -R _site/. "$tmp"; touch "$tmp/.nojekyll"
 git -C "$tmp" init -q -b gh-pages
 git -C "$tmp" add -A
 git -C "$tmp" -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \
-  commit -q -m "Onset site built from main $rev"
+  commit -q -m "OnSet site built from main $rev"
 git -C "$tmp" push -q -f "$remote" gh-pages
 rm -rf "$tmp"
-echo "pushed gh-pages ($rev); live in ~1 min at https://whissleai.github.io/headstart/"
+echo "pushed gh-pages ($rev); live in ~1 min at https://whissleai.github.io/OnSet/"
