@@ -77,7 +77,7 @@ def test_lane_falls_back_to_wikipedia_when_ddg_refuses(monkeypatch):
     monkeypatch.setattr(lanes, "wikipedia", wiki)
     meter = {}
     docs = asyncio.run(lanes._live("capital of turkey", "general", "", "", True, None, meter))
-    assert meter["backend"] == "wikipedia" and "DDGError" in meter["fallback"] and docs[0].source == "wikipedia"
+    assert meter["backend"] == "wikipedia" and "DDGError" in meter["ddg_error"] and docs[0].source == "wikipedia"
 
 
 def test_lane_uses_ddg_docs(monkeypatch):

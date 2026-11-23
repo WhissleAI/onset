@@ -703,9 +703,11 @@ async def _live(query: str, topic: str, intent: str, text: str, final: bool, led
                 res = WebResult(docs)
                 res.backend = "duckduckgo"
                 return res
-            meter["fallback"] = "duckduckgo: no results"
+            meter["ddg_error"] = "no results"
+            meter.setdefault("fallback", "duckduckgo: no results")
         except (ddg.DDGError, httpx.HTTPError, asyncio.TimeoutError) as e:
-            meter["fallback"] = f"{type(e).__name__}: {e}"[:120]
+            meter["ddg_error"] = f"{type(e).__name__}: {e}"[:120]
+            meter.setdefault("fallback", meter["ddg_error"])     # the first reason stays (e.g. a paid budget)
     meter.setdefault("credits", 0.0)
     meter["backend"] = "wikipedia"
     try:

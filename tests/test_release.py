@@ -125,7 +125,7 @@ def test_swift_keys_and_backend_rules():
     src = "\n".join(p.read_text() for p in (ROOT / "macapp" / "Sources").glob("*.swift"))
     for k in ("DEEPGRAM_API_KEY", "TAVILY_API_KEY", "TELEM_API_KEY", "ANTHROPIC_API_KEY"):
         assert f'"{k}"' in src
-    assert re.search(r'tavily \? "tavily" : \(telem \? "telem" : "wikipedia"\)', src)
+    assert re.search(r'tavily \? "tavily" : \(telem \? "telem" : "duckduckgo"\)', src)
     assert "type" in src.lower() and "speak" in src.lower()       # onboarding: you can type as well as speak
     # no key material in the app sources
     assert not re.search(r"sk-ant-[A-Za-z0-9]|tvly-[A-Za-z0-9]{8}", src)
