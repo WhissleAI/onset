@@ -44,6 +44,9 @@ for a in "$@"; do
   esac
 done
 REQUIREMENTS="${REQUIREMENTS:-macapp/requirements.txt}"
+# Release builds run the embedder on ONNX Runtime (embeddinggemma-2-onnx, 8-bit: the release profile ships that copy, not
+# the 1.5 GB torch one). ONNX_RUNTIME=0 scripts/build_macapp.sh --release forces the torch embedder.
+if [ "$RELEASE" = 1 ] && [ -z "${ONNX_RUNTIME:-}" ]; then ONNX_RUNTIME=1; fi
 # The app's manifest: the published release models (first-run download from public links) when present.
 if [ -z "${MODELS_MANIFEST:-}" ]; then
   MODELS_MANIFEST=models/manifest.json; [ -f models/manifest.release.json ] && MODELS_MANIFEST=models/manifest.release.json

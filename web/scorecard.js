@@ -283,7 +283,7 @@
     const docs = [...new Set([...hs, ...ss, ...ps].map((x) => x.source && x.source.doc).filter(Boolean))];
     ctx.font = `400 15px ${F}`;
     wrap(ctx, d.lane_note || "", W - 2 * P).slice(0, 2).forEach((ln, k) => ctx.fillText(ln, P, H - 62 + k * 20));
-    ctx.fillText("Sources: " + docs.join(", ") + " · github.com/WhissleAI/headstart", P, H - 18);
+    ctx.fillText("Sources: " + docs.join(", ") + " · github.com/WhissleAI/onset", P, H - 18);
     return cv;
   }
   async function savePng(btn) {

@@ -16,4 +16,4 @@ git -C "$tmp" -c user.name="$(git config user.name)" -c user.email="$(git config
   commit -q -m "OnSet site built from main $rev"
 git -C "$tmp" push -q -f "$remote" gh-pages
 rm -rf "$tmp"
-echo "pushed gh-pages ($rev); live in ~1 min at https://whissleai.github.io/OnSet/"
+echo "pushed gh-pages ($rev); live in ~1 min at https://whissleai.github.io/onset/"

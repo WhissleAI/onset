@@ -1,0 +1,17 @@
+OnSet
+Copyright (c) 2026 Whissle Inc. Licensed under the Creative Commons Attribution-NonCommercial 4.0 International License
+(CC BY-NC 4.0) and the Whissle terms in LICENSE; commercial use requires a separate written licence from Whissle Inc.
+(ksingla@whissle.ai, https://whissle.ai).
+
+Whissle models used by OnSet, under their own Whissle non-commercial licences (CC BY-NC 4.0 + Whissle terms):
+- Arc (speech ear) and Arc Tagger (on-device tagging; C runtime vendored in vendor/arctag with its LICENSE and NOTICE).
+
+Third-party components keep their own licences. They are not covered by LICENSE and are listed, with their licence
+texts, in macapp/licenses/THIRD_PARTY.md (shipped in the app as Contents/Resources/Licenses). In short:
+- EmbeddingGemma 2 (Google): Apache 2.0, Gemma Prohibited Use Policy applies.
+- Qwen2.5-0.5B-Instruct (Qwen team, Alibaba Cloud): Apache 2.0; the 4-bit ONNX build is modified by Whissle.
+- Moonshine Streaming tiny (inside Arc v1): MIT. cJSON (inside libarctag): MIT. ONNX Runtime: MIT.
+- Python (PSF License), libsndfile (LGPL-2.1, a separate replaceable library) and the Python packages in the app,
+  each under its own licence.
+- Wikipedia lead paragraphs: CC BY-SA 4.0, (c) Wikipedia contributors.
+Models are downloaded on first run, not stored in this repository.

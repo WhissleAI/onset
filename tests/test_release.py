@@ -151,3 +151,37 @@ def test_answer_model_ships_whole_with_its_licence():
     sh = (ROOT / "scripts" / "build_macapp.sh").read_text()
     assert "answer-lm/LICENSE:Qwen2.5-0.5B-Instruct-LICENSE.txt" in sh
     assert "Qwen2.5-0.5B-Instruct-LICENSE.txt" in (ROOT / "macapp" / "licenses" / "THIRD_PARTY.md").read_text()
+
+
+def test_updater_installs_only_verified_releases_of_this_repo():
+    """macapp/Sources/Updater.swift: GitHub releases of WhissleAI/onset; the DMG's sha256 is checked and the new app must
+    be validly signed by this app's own Developer ID team with this bundle id before it replaces anything."""
+    src = (ROOT / "macapp" / "Sources" / "Updater.swift").read_text()
+    assert 'static let repo = "WhissleAI/onset"' in src
+    assert "api.github.com/repos/" in src and '"draft"' in src and '"prerelease"' in src
+    assert "shasum" in src and "want == got" in src
+    assert "certificate leaf[subject.OU]" in src and "identifier" in src and "kSecCSStrictValidate" in src
+    assert "ownTeamID() != nil" in src            # ad-hoc developer builds never self-install
+    main = (ROOT / "macapp" / "Sources" / "main.swift").read_text()
+    assert "Check for Updates…" in main and "Updater.shared.checkAtLaunch()" in main
+
+
+def test_repo_is_whissle_noncommercial_only():
+    """The public repo carries Whissle's non-commercial licence (CC BY-NC 4.0 + Whissle terms) and no permissive licence
+    for OnSet's own code."""
+    lic = (ROOT / "LICENSE").read_text()
+    assert lic.startswith("OnSet - Copyright (c) 2026 Whissle Inc.")
+    assert "Attribution-NonCommercial 4.0 International" in lic and "Commercial use. Any commercial use requires" in lic
+    assert "MIT License" not in lic and "Apache License" not in lic
+    assert "CC BY-NC 4.0" in (ROOT / "NOTICE").read_text()
+    site = (ROOT / "site" / "index.html").read_text().lower()
+    assert "open source" not in site and "open-source" not in site and "non-commercial" in site
+
+
+def test_release_ships_the_onnx_embedder_not_the_torch_copy():
+    fm = _fetch_module()
+    man = json.loads((ROOT / "models" / "manifest.json").read_text())
+    plan = {m["dir"] for m, _, _ in fm.bundle_plan(man, PROFILE)}
+    assert "embeddinggemma-2-onnx" in plan and "embeddinggemma-2" not in plan and "answer-lm" in plan
+    sh = (ROOT / "scripts" / "build_macapp.sh").read_text()
+    assert 'if [ "$RELEASE" = 1 ] && [ -z "${ONNX_RUNTIME:-}" ]; then ONNX_RUNTIME=1; fi' in sh

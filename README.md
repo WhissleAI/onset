@@ -23,7 +23,7 @@ mic ─▶ Arc (streaming ASR + events) ─▶ Arc Tagger (10M, 0.7 ms/word) ─
 | **Qwen2.5-0.5B-Instruct** (Apache 2.0, on-device) | streaming one-sentence answer with a citation, written on this Mac | no key, no network: 4-bit ONNX (327 MB), ~0.5 s to first token with 5 short web sources on an M3 Pro; `ANSWER_BACKEND=claude` + `ANTHROPIC_API_KEY` switches back to Claude |
 
 ## Download for Mac
-**[Download Onset for Mac](https://github.com/WhissleAI/headstart/releases/latest)** (Apple Silicon, macOS 13 or later,
+**[Download Onset for Mac](https://github.com/WhissleAI/onset/releases/latest)** (Apple Silicon, macOS 13 or later,
 about 6 GB free disk). Signed and notarized by Whissle LLC. Open the DMG, drag Onset to Applications, open it.
 
 It works without any keys: Arc listens on your Mac, DuckDuckGo searches the web, and a small model on your Mac
@@ -113,4 +113,9 @@ labelled in `/api/health`, the `ready` event, the metric (`web_replayed`, `answe
 - Latency is measured from the end of the last spoken word (ASR word timestamps) to the first answer token, same ear,
   same lanes, same reranker, same model in both modes; modes run sequentially per question, alternating order.
 - Arc Mini mishears some synthetic voices ("a polio eleven"); the answer prompt tells the model the text is ASR output.
-- Arc, Arc Tagger: CC BY-NC 4.0 (research licence). EmbeddingGemma 2: Apache 2.0.
+
+## Licence
+OnSet is © 2026 Whissle Inc., licensed for **non-commercial use only** under CC BY-NC 4.0 plus the Whissle terms
+([LICENSE](LICENSE)). Commercial use needs a separate written licence from Whissle Inc. (ksingla@whissle.ai,
+https://whissle.ai). Whissle's Arc and Arc Tagger have their own Whissle non-commercial licences; third-party models and
+libraries keep theirs ([NOTICE](NOTICE), [macapp/licenses/THIRD_PARTY.md](macapp/licenses/THIRD_PARTY.md)).

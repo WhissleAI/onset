@@ -18,8 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SITE = ROOT / "site"
-DOWNLOAD = "https://github.com/WhissleAI/OnSet/releases/latest"
-REPO = "https://github.com/WhissleAI/OnSet"
+DOWNLOAD = "https://github.com/WhissleAI/onset/releases/latest"
+REPO = "https://github.com/WhissleAI/onset"
 
 
 def demo_index(data: Path) -> dict:

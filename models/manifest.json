@@ -248,11 +248,11 @@
    "source": {
     "type": "hf",
     "repo": "WhissleAI/arc-tagger",
-    "revision": "221e43d709c0eb17ecc55cbdfed101a7c2663e12"
+    "revision": "500449290c42fd8ad990106b62bece6852ab18a9"
    },
-   "revision": "v0.4.1 (Hub main, 2026-11-13). A local v0.3.0 copy is accepted too ('also').",
+   "revision": "Hub main 5004492 (2026-11-17): the v0.4.1 int8 weights, tokenizer and meta unchanged; the commit adds onnx/arctag_kids.json (kids / game thresholds, not used by OnSet: libarctag 0.5.0 has the same table built in). A local v0.3.0 copy is accepted too ('also').",
    "license": "CC BY-NC 4.0 + Whissle terms (models/arctag/LICENSE)",
-   "note": "The repo was built and tested on v0.3.0, which the Hub no longer has. Against v0.4.1: 47/48 of test_tagger_depth + test_speculation + test_planner pass (one planner filler case splits).",
+   "note": "Runtime: vendor/arctag = arc-tagger-c 0.5.0 (main d2c3e4d, 2026-11-23: kids / game profile + guard layer, off unless the kids profile is chosen; same native int8 kernels as 0.4.1).",
    "files": [
     {
      "path": "arctag_int8.onnx",
@@ -403,7 +403,7 @@
    "required": false,
    "source": {
     "type": "local",
-    "note": "Built from embeddinggemma-2 (rev f9972ac) by scripts/native/export_embed.py + scripts/native/quantize_embed.py (MACAPP.md 'Native runtime'); no hosted copy yet. Import a copy: fetch_models.py import embeddinggemma-2-onnx=PATH."
+    "note": "Built from embeddinggemma-2 (rev f9972ac) by scripts/native/export_embed.py + scripts/native/quantize_embed.py (MACAPP.md 'Native runtime'); the release copy is on Dropbox (manifest.release.json). Import a local copy: fetch_models.py import embeddinggemma-2-onnx=PATH."
    },
    "revision": "export of google/embeddinggemma-2@f9972ac22e696a105c482202646979e33e4b5a1e, MatMulNBits 8-bit block 32 accuracy_level 4 (onnxruntime 1.32.0)",
    "license": "Apache 2.0 (EmbeddingGemma 2 model card; modified: see NOTICE). Gemma Prohibited Use Policy applies to deployments.",
@@ -441,7 +441,7 @@
     {
      "path": "text.onnx",
      "size": 155347655,
-     "sha256": "af5a14e6372901010153f494cfdf4bca9fd598f4597966ce5bc19cb38cde5a16"
+     "sha256": "dbc9584746e2ae6e43b6dc0bf5f2d3b5158fc2a848604b3c67e7a5b81187f120"
     },
     {
      "path": "tokenizer.json",

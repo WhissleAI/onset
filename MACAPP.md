@@ -211,7 +211,7 @@ The "est." rows are not built yet: they are package sums, not a measured bundle.
 | ONNX Runtime | MIT | allowed | its `ThirdPartyNotices.txt` + LICENSE (inside the wheel; keep them when trimming) |
 | tokenizers (Apache 2.0), numpy (BSD), soundfile (BSD) + libsndfile (**LGPL-2.1**, shipped as a dylib in `_soundfile_data`) | as listed | allowed; LGPL: keep it a separate replaceable dylib and ship its licence | each package's licence; libsndfile LGPL text |
 | Search director, Keystone, calibration models | this repo (trained by us) | ours | — |
-| index-data | built from recordings: NBA/cricket/Olympics broadcasts, court audio, a parent-teacher meeting; Wikipedia leads CC BY-SA 4.0 | **NOT redistributable**: broadcast clips and private recordings, so it must not go in a public download. The Wikipedia leads can ship with attribution + CC BY-SA | ship only a rebuilt index without the private / broadcast moments, or none |
+| index-data | built from third-party videos: NBA/cricket/Olympics broadcasts, court audio, meeting role-plays; Wikipedia leads CC BY-SA 4.0 | **NOT redistributable**: third-party broadcast and video clips, so it must not go in a public download. The Wikipedia leads can ship with attribution + CC BY-SA | ship only a rebuilt index without the private / broadcast moments, or none |
 | demo-audio | synthetic TTS (macOS `say` voices, Kokoro-82M Apache 2.0) + recorded voices | **flag**: macOS system-voice output and the recorded voices need clearing before public redistribution | optional: leave out of the public build |
 
 Nothing here forbids redistributing the app as a free, non-commercial download. The two blockers are the NC terms

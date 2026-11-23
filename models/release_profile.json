@@ -12,11 +12,12 @@
    "note": "Whissle's own model (CC BY-NC 4.0 + Whissle terms)."
   },
   "embeddinggemma-2": {
+   "skip": true,
+   "note": "The release runs the 8-bit ONNX copy instead (embeddinggemma-2-onnx, ONNX_RUNTIME=1): 669 MB vs 1.5 GB, query cosine 0.99988, rerank top-5 agreement 0.958 (MACAPP.md)."
+  },
+  "embeddinggemma-2-onnx": {
    "files": "all",
-   "exclude": [
-    ".gitattributes"
-   ],
-   "note": "Google, Apache 2.0 (model card)."
+   "note": "Google EmbeddingGemma 2, Apache 2.0 (model card), exported to ONNX and weight-only 8-bit quantised by Whissle (modified: see NOTICE). Gemma Prohibited Use Policy applies."
   },
   "answer-lm": {
    "files": "all",
@@ -26,7 +27,7 @@
    "include": [
     "knowledge/"
    ],
-   "note": "Only the Wikipedia leads (knowledge/: 11,085 lead paragraphs, every row's url is en.wikipedia.org; CC BY-SA 4.0 with attribution). The local-moments index (arc/, audio/, docs.jsonl, vectors.npz, retrieval_eval.json) is built from broadcast clips and private recordings (incl. a parent-teacher meeting) and must never ship; local-moments search is simply absent in the release."
+   "note": "Only the Wikipedia leads (knowledge/: 11,085 lead paragraphs, every row's url is en.wikipedia.org; CC BY-SA 4.0 with attribution). The local-moments index (arc/, audio/, docs.jsonl, vectors.npz, retrieval_eval.json) is built from third-party broadcast and video clips (not ours to redistribute) and must never ship; local-moments search is simply absent in the release."
   },
   "demo-audio": {
    "voices": [

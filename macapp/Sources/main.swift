@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         } else {
             server.start()
         }
+        Updater.shared.checkAtLaunch()       // GitHub releases, at most once a day (Updater.swift)
     }
 
     // MARK: onboarding (keys)
@@ -462,6 +463,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let appItem = NSMenuItem(); main.addItem(appItem)
         let app = NSMenu()
         app.addItem(withTitle: "About \(AppInfo.name)", action: #selector(showAbout), keyEquivalent: "")
+        let upd = NSMenuItem(title: "Check for Updates…", action: #selector(Updater.checkNow), keyEquivalent: "")
+        upd.target = Updater.shared; app.addItem(upd)
         app.addItem(.separator())
         app.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         app.addItem(withTitle: "Set Up Keys…", action: #selector(setUpKeys), keyEquivalent: "")
