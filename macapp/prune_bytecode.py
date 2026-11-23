@@ -21,12 +21,14 @@ os.environ.setdefault("MODELS_DIR", str(app_root / "_no_models_"))
 
 import server.app  # noqa: E402,F401  (imports the whole server: lanes, session, ear, tagger, embed, ...)
 
-# loaded lazily at warm-up: sentence-transformers + the transformers model classes behind EmbeddingGemma 2 and Arc
+# loaded lazily at warm-up: sentence-transformers + the transformers model classes behind EmbeddingGemma 2 and Arc,
+# onnxruntime + tokenizers behind the answer model (server/answer_lm.py)
 for name in ["sentence_transformers", "transformers.models.auto.modeling_auto", "transformers.models.auto.processing_auto",
              "transformers.models.auto.tokenization_auto", "transformers.models.auto.feature_extraction_auto",
              "transformers.models.auto.image_processing_auto", "transformers.models.auto.video_processing_auto",
              "torch.nn", "safetensors.torch", "soundfile", "anthropic", "httpx", "websockets", "uvicorn",
-             "uvicorn.protocols.websockets.websockets_impl", "uvicorn.protocols.http.h11_impl", "rapidfuzz", "jellyfish"]:
+             "uvicorn.protocols.websockets.websockets_impl", "uvicorn.protocols.http.h11_impl", "rapidfuzz", "jellyfish",
+             "server.answer_lm", "onnxruntime", "tokenizers"]:
     try:
         importlib.import_module(name)
     except Exception as e:  # noqa: BLE001

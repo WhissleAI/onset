@@ -9,7 +9,7 @@ Onset.app/Contents/
   Resources/python/            python-build-standalone 3.11 + the server's pinned dependencies (macapp/requirements.txt)
   Resources/app/               server/, web/, scripts/fetch_models.py, models/manifest.json, libarctag.dylib (built from vendor/arctag/src)
 ~/Library/Application Support/Onset/
-  models/                      arc-v1, arctag, embeddinggemma-2, index-data, demo-audio (models/manifest.json)
+  models/                      arc-v1, arctag, embeddinggemma-2, answer-lm, index-data, demo-audio (models/manifest.json)
   data/                        memory (MEM_DIR=data/memory), search cache (data/search_cache.json)
   logs/server.log              server output + request log (server.log.1 … .5 = earlier runs). Keys are never logged.
 ```
@@ -80,6 +80,7 @@ Without `ONSET_SIGN_ID` the build stays ad-hoc.
 | `arctag` | Arc Tagger int8 ONNX + tokenizer + meta | HF `WhissleAI/arc-tagger@221e43d` `onnx/` (v0.4.1). The v0.3.0 that this repo was tested on is no longer on the Hub; a local v0.3.0 copy is accepted. | 10 MB |
 | (bundled) | `libarctag.dylib` | built from `vendor/arctag/src` (`fetch_models.py build-tagger`; the app build does it) | 0.2 MB |
 | `embeddinggemma-2` | EmbeddingGemma 2 | HF `google/embeddinggemma-2@f9972ac` (Apache 2.0, not gated) | 1.5 GB |
+| `answer-lm` | Qwen2.5-0.5B-Instruct, 4-bit ONNX: writes the answer on this Mac | built from `onnx-community/Qwen2.5-0.5B-Instruct@22942cb` by `scripts/native/quantize_answer_lm.py` (Apache 2.0) | 338 MB |
 | (repo) | search director | `server/director/` in git | 0.1 MB |
 | `index-data` | local moments index + 11k Wikipedia leads | **no public source** (built from unpublished recordings). Import a copy. | 103 MB |
 | `demo-audio` | spoken eval questions for the Replay buttons (optional) | **no public source**. Import a copy. | 18 MB |
@@ -109,6 +110,7 @@ port will plug in.
 |---|---|---|---|---|
 | EmbeddingGemma 2 (text 270M + audio 300M; vision unused) | torch + transformers + sentence-transformers. Docs + audio on MPS bf16, queries on CPU f32 (a second text-only copy) | `embeddinggemma-2/model.safetensors` 1.49 GB + tokenizer 32 MB | `server/embed.py` | query vectors: speculator (rank), lanes.local_text, knowledge (11k leads), sitebrain, keystone/hook, persona (categories). Doc vectors: speculator (fresh web docs, rerank). Audio vectors: lanes.local_audio (the audio lane, local-routed questions) |
 | **→ ONNX**: same model | onnxruntime + tokenizers + numpy | `embeddinggemma-2-onnx/` 669 MB (text.onnx 155, audio.onnx 346, embed_tokens.npz 135, tokenizer 32) | `server/embed_onnx.py` (ONNX_RUNTIME=1) | same calls |
+| Qwen2.5-0.5B-Instruct (answer writer) | onnxruntime + tokenizers (no torch): 4-bit weights incl. a 4-bit tied embedding/LM head, logits for the last position only (`scripts/native/quantize_answer_lm.py`), greedy, ≤ 96 new tokens, one generation at a time on a worker thread | `answer-lm/model.onnx` 327 MB + tokenizer 11 MB | `server/answer_lm.py` (warmed by `answer.warm()`) | `server/answer.py` Stream (drafts, soft and final answers). Measured 2026-11-23 on an M3 Pro (CPU, ANSWER_LM_THREADS=0): ~620-token prompt (5 short sources) first token ~0.5 s, ~1,460 tokens ~1.6 s; decode 65-110 tok/s. The earlier torch/MPS bf16 path was faster to first token (0.18 s at ~540 tokens) but a 988 MB download |
 | Arc v1 Mini (Moonshine Streaming tiny encoder 6 layers + Arc trunk 5 SeqLayers + tag/entity/diar/bio/word heads) | torch + transformers (MoonshineStreaming*) via the `arc_audio` package | `arc-v1/model.safetensors` 117 MB, `moonshine-streaming-tiny/model.safetensors` 176 MB (encoder + tagged decoder), `decoder_v1e` 138 MB, `decoder_release` 138 MB | `server/ear.py` arc() | EAR=arc: the local ear (builtin transcript = Moonshine decoder beam search). EAR=flux: `server/arcmeta.py` ARC_META=mini runs Arc's heads on Deepgram's words (command_complete, act/intent, speaker, bio events). `server/arcstate.py`: Arc's voice embedding per frame (diarization="voice") |
 | Arc Transcriber (Arc v1.1 full: Parakeet-TDT 0.6B tap + adapters) | torch (MPS), `arc_transcriber` code | not bundled (~3.1 GB RSS) | `server/arcmeta.py` transcriber() | ARC_META=transcriber only (opt-in read-out, never default). Must stay off in the public app |
 | Arc Tagger | **C** (`libarctag.dylib`: its own ONNX reader + Accelerate, no onnxruntime) via ctypes | `arctag/arctag_int8.onnx` 9 MB + tokenizer + meta; lib 0.2 MB | `server/tagger.py` | session (endpoint gate, frame read-out: entity/number/pii/events/intent/act/state), heard, memory, persona, confidence, trainlog; `server/safety.py` (TAGGER_SAFETY=1): profanity/toxicity span heads + utterance flags on the question handle, and a **second streaming handle** for the answer text (AnswerMasker) |
@@ -201,6 +203,7 @@ The "est." rows are not built yet: they are package sums, not a measured bundle.
 |---|---|---|---|
 | EmbeddingGemma 2 (and our ONNX build) | Apache 2.0 (model card → ai.google.dev/gemma/docs/gemma_4_license); deployments must follow the Gemma Prohibited Use Policy | allowed, modified files must say so | `embeddinggemma-2-onnx/LICENSE` (Apache 2.0 text) + `NOTICE` (what we changed); link to the Prohibited Use Policy in the app's About/licences |
 | Arc v1 (code + weights) | **CC BY-NC 4.0**, Whissle; "commercial use requires a separate licence from WhissleAI" | free non-commercial redistribution with attribution is allowed; WhissleAI is the rights holder, so shipping its own app is its decision, but **a paid / ad-supported / for-profit-business use of the downloaded app is outside the licence users receive** | `arc-v1/LICENSE`, `arc-v1/NOTICE` |
+| Qwen2.5-0.5B-Instruct (answer-lm, modified: 4-bit ONNX) | Apache 2.0 (Qwen team, Alibaba Cloud) | allowed; keep the licence | `answer-lm/LICENSE` (copied to Resources/Licenses as `Qwen2.5-0.5B-Instruct-LICENSE.txt`) |
 | Moonshine Streaming tiny (modified by Whissle, inside arc-v1) | MIT (Useful Sensors / Moonshine AI) | allowed; keep the copyright + licence | `arc-v1/moonshine-streaming-tiny/LICENSE`, `ORIGIN.md` |
 | jellyfish Metaphone fallback (in arc_audio/rescorer.py) | MIT | allowed | covered by arc-v1/NOTICE |
 | Arc Tagger (weights + libarctag C code) | **CC BY-NC 4.0 + Whissle terms** (the terms exclude use "in or with a product or service" and "by or for a for-profit organisation in its business") | the same NC flag as Arc; Whissle Inc. owns it | `models/arctag/LICENSE`, `models/arctag/NOTICE`, `vendor/arctag/LICENSE`, `vendor/arctag/NOTICE` |
@@ -247,7 +250,7 @@ The page opens in its compact "minimal" view, which hides the question list; ⌘
 A dropped websocket shows a "Reconnecting to the local server…" banner, and the page reconnects every 1.5 s.
 When the server is restarted after a crash or a Settings change, the page reloads against it.
 
-Settings stores the Deepgram, Tavily, Telem and Anthropic keys in the login Keychain (generic passwords, service = bundle
+Settings stores the Deepgram, Tavily and Telem keys in the login Keychain (generic passwords, service = bundle
 id; `<bundle id>.test` for a `-supportDir` test instance).
 A saved key is shown only as "saved". Saving restarts the server with the new environment.
 - **Ear**: Automatic uses Deepgram Flux when a Deepgram key is set, else Arc on this Mac. You can also pick Arc or
@@ -346,12 +349,13 @@ person publishes it. The README's "Download for Mac" links `releases/latest`.
 ## First run: keys
 A release build (no `--dev-env`) opens a sheet before the server starts (so the models load once, with the keys).
 It explains each key, what it powers, what works without it and where to get one; each has **Test** (one free call:
-Anthropic `GET /v1/models`, Tavily `GET /usage`, Deepgram `GET /v1/projects`, Telem an empty `POST /v1/search` that
+Tavily `GET /usage`, Deepgram `GET /v1/projects`, Telem an empty `POST /v1/search` that
 is refused 400 after the key is accepted, never billed) showing "Works" or a plain error. Keys go only to the
 Keychain. **Continue** saves them, **Skip** runs the free mode. *Set Up Keys…* (app menu) reopens it; Settings has
-the same rows. The server environment follows the keys: web = Tavily with a Tavily key, else Telem, else Wikipedia
+the same rows. The server environment follows the keys: web = Tavily with a Tavily key, else Telem, else DuckDuckGo
 (`WEB_FAILOVER=telem` when both are set, `VERIFY_FETCH=telem` with Telem alone); ear = Deepgram Flux with a Deepgram
-key, else Arc; answers = Claude with an Anthropic key, else the best source sentence. `KNOWLEDGE_DIR` points at the
+key, else Arc; answers are always written on this Mac by Qwen2.5-0.5B-Instruct (`answer-lm`; no key; a developer
+`.env` can still set `ANSWER_BACKEND=claude` + `ANTHROPIC_API_KEY`). `KNOWLEDGE_DIR` points at the
 models' `index-data/knowledge` (the app never loaded the Wikipedia leads before: the default path is in-repo).
 
 ## Search cache across launches
@@ -391,7 +395,8 @@ PROGRESS.md "Continuous training") reads the file locally. To delete the rows: r
   `fetch_models.py verify`).
 - **Mic does nothing**: System Settings > Privacy & Security > Microphone > enable Onset. To ask again:
   `tccutil reset Microphone ai.whissle.onset`.
-- **Answers say "extractive"**: no Anthropic key (Settings), or the API is unreachable.
+- **Answers say "extractive"**: the on-device answer model is missing (`fetch_models.py fetch answer-lm`) or failed to
+  load (Open Logs), or it gave no first token within `ANSWER_DEADLINE_MS` (4 s).
 - **Web inspector**: right-click > Inspect Element (enabled in this build).
 - **Memory gone after relaunch**: the page origin includes the port. The app reuses the last port; if another
   program has taken it, the browser-side id changes. The server-side store in `data/memory` is kept.

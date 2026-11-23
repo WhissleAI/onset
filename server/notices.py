@@ -14,7 +14,7 @@ _KEY_ERR = re.compile(r"api[_ ]?key|authenticat|unauthori[sz]ed|\b401\b|x-api-ke
 
 
 def _missing_key(a: dict) -> bool:
-    """The answer model is down because there is no (valid) Anthropic key, not because the network is."""
+    """The Claude answer backend is down because there is no (valid) Anthropic key, not because the network is."""
     if not (os.environ.get("ANTHROPIC_API_KEY") or "").strip():
         return True
     return bool(_KEY_ERR.search(str(a.get("last_error") or "")))
@@ -22,7 +22,14 @@ def _missing_key(a: dict) -> bool:
 
 def build(web: dict, ans: dict) -> list[dict]:
     out: list[dict] = []
-    if ans.get("status") == "down":
+    if ans.get("status") == "down" and ans.get("backend", "local") == "local":
+        missing = "not installed" in str(ans.get("last_error") or "")
+        out.append({"id": "answer-model", "level": "warn",
+                    "text": ("On-device answers not installed · showing the best source sentence" if missing
+                             else "On-device answers failed · showing the best source sentence"),
+                    "hint": ("scripts/fetch_models.py fetch answer-lm, then restart the server" if missing
+                             else "restart the server; see the server log")})
+    elif ans.get("status") == "down":
         if _missing_key(ans):
             out.append({"id": "answer-key", "level": "warn", "text": "Add an Anthropic key for full answers",
                         "action": "settings", "action_label": "Open Settings",

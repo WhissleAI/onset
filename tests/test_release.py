@@ -123,9 +123,31 @@ def test_release_build_refuses_dev_env_and_unsigned():
 
 def test_swift_keys_and_backend_rules():
     src = "\n".join(p.read_text() for p in (ROOT / "macapp" / "Sources").glob("*.swift"))
-    for k in ("DEEPGRAM_API_KEY", "TAVILY_API_KEY", "TELEM_API_KEY", "ANTHROPIC_API_KEY"):
+    for k in ("DEEPGRAM_API_KEY", "TAVILY_API_KEY", "TELEM_API_KEY"):
         assert f'"{k}"' in src
-    assert re.search(r'tavily \? "tavily" : \(telem \? "telem" : "wikipedia"\)', src)
+    # answers are written on this Mac: no Anthropic key in the first-run sheet or Settings
+    assert '"ANTHROPIC_API_KEY"' not in src and "On-device (" in src
+    assert re.search(r'tavily \? "tavily" : \(telem \? "telem" : "duckduckgo"\)', src)
     assert "type" in src.lower() and "speak" in src.lower()       # onboarding: you can type as well as speak
     # no key material in the app sources
     assert not re.search(r"sk-ant-[A-Za-z0-9]|tvly-[A-Za-z0-9]{8}", src)
+
+
+def test_answer_model_ships_whole_with_its_licence():
+    """The on-device answer writer (server/answer_lm.py) is required, pinned and bundled with its licence."""
+    man = json.loads((ROOT / "models" / "manifest.json").read_text())
+    (m,) = [x for x in man["models"] if x.get("dir") == "answer-lm"]
+    # built locally from a pinned onnx-community snapshot (scripts/native/quantize_answer_lm.py); the source commit is pinned
+    assert m["required"] and m["source"]["type"] == "local" and re.search(r"@[0-9a-f]{40}", m["source"]["note"])
+    assert "Apache 2.0" in m["license"]
+    paths = {f["path"] for f in m["files"]}
+    assert {"LICENSE", "config.json", "model.onnx", "tokenizer.json", "tokenizer_config.json"} <= paths
+    assert all(re.fullmatch(r"[0-9a-f]{64}", f["sha256"]) and f["size"] > 0 for f in m["files"])
+    assert m["size"] == sum(f["size"] for f in m["files"])
+    assert PROFILE["models"]["answer-lm"]["files"] == "all"
+    fm = _fetch_module()
+    plan = {x["dir"]: files for x, files, _ in fm.bundle_plan(man, PROFILE)}
+    assert {f["path"] for f in plan["answer-lm"]} == paths
+    sh = (ROOT / "scripts" / "build_macapp.sh").read_text()
+    assert "answer-lm/LICENSE:Qwen2.5-0.5B-Instruct-LICENSE.txt" in sh
+    assert "Qwen2.5-0.5B-Instruct-LICENSE.txt" in (ROOT / "macapp" / "licenses" / "THIRD_PARTY.md").read_text()

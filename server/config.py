@@ -35,7 +35,15 @@ EMBED_DIM = int(os.environ.get("EMBED_DIM", "768"))
 # ONNX_RUNTIME=1: every model on ONNX Runtime / C (no torch, transformers, sentence-transformers); MACAPP.md "Native runtime"
 ONNX_RUNTIME = os.environ.get("ONNX_RUNTIME", "0") == "1"
 EMBED_ONNX_DIR = _mp.resolve("embeddinggemma-2-onnx", "EMBED_ONNX_DIR")
-ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "claude-haiku-5-5")
+# Answer writer (server/answer.py): "local" (default) = a small instruct model on this Mac (server/answer_lm.py,
+# models/manifest.json "answer-lm", no key, no network); "extractive" = the best source sentence, no model;
+# "claude" = Anthropic's API, used only when chosen here AND ANTHROPIC_API_KEY is set (else local).
+ANSWER_BACKEND = os.environ.get("ANSWER_BACKEND", "local").strip().lower()
+ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "claude-haiku-5-5")      # the Claude model (ANSWER_BACKEND=claude only)
+ANSWER_LM_DIR = _mp.resolve("answer-lm", "ANSWER_LM_DIR")
+ANSWER_LM_NAME = os.environ.get("ANSWER_LM_NAME", "Qwen2.5-0.5B-Instruct")
+ANSWER_LM_THREADS = int(os.environ.get("ANSWER_LM_THREADS", "0"))        # onnxruntime intra-op threads (0 = onnxruntime picks; best first-token time on an M3 Pro)
+ANSWER_LM_MAX_TOKENS = int(os.environ.get("ANSWER_LM_MAX_TOKENS", "96"))  # answers are one sentence (< 30 words)
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 # No paid key: DuckDuckGo (free, keyless; server/ddg.py), with Wikipedia behind it. WEB_BACKEND=wikipedia skips DDG.
 WEB_BACKEND = os.environ.get("WEB_BACKEND", "tavily" if TAVILY_API_KEY else "duckduckgo")

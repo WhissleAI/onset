@@ -138,7 +138,8 @@ def test_notices_empty_when_all_is_well():
 
 def test_notice_missing_key_has_settings_action(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    n = notices.build(LIVE_WEB, {"status": "down", "last_error": "TypeError: Could not resolve authentication method"})
+    n = notices.build(LIVE_WEB, {"status": "down", "backend": "claude",
+                                 "last_error": "TypeError: Could not resolve authentication method"})
     assert len(n) == 1 and n[0]["id"] == "answer-key"
     assert n[0]["text"] == "Add an Anthropic key for full answers"
     assert n[0]["action"] == "settings" and n[0]["action_label"] == "Open Settings" and ".env" in n[0]["hint"]
@@ -146,10 +147,24 @@ def test_notice_missing_key_has_settings_action(monkeypatch):
 
 def test_notice_bad_key_vs_network(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
-    bad = notices.build(LIVE_WEB, {"status": "down", "last_error": "AuthenticationError: 401 invalid x-api-key"})
+    bad = notices.build(LIVE_WEB, {"status": "down", "backend": "claude",
+                                   "last_error": "AuthenticationError: 401 invalid x-api-key"})
     assert bad[0]["id"] == "answer-key"
-    net = notices.build(LIVE_WEB, {"status": "down", "last_error": "APIConnectionError: Connection error."})
+    net = notices.build(LIVE_WEB, {"status": "down", "backend": "claude",
+                                   "last_error": "APIConnectionError: Connection error."})
     assert net[0]["id"] == "answer-down" and "action" not in net[0]
+
+
+def test_notice_local_model_missing_or_failed(monkeypatch):
+    # the default backend never asks for a key: a missing model says how to fetch it, a failure says restart
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    miss = notices.build(LIVE_WEB, {"status": "down", "backend": "local",
+                                    "last_error": "FileNotFoundError: answer model not installed in /x (fetch)"})
+    assert len(miss) == 1 and miss[0]["id"] == "answer-model" and "not installed" in miss[0]["text"]
+    assert "fetch_models.py fetch answer-lm" in miss[0]["hint"] and "action" not in miss[0]
+    fail = notices.build(LIVE_WEB, {"status": "down", "backend": "local", "last_error": "RuntimeError: MPS"})
+    assert fail[0]["id"] == "answer-model" and "failed" in fail[0]["text"]
+    assert not any("Anthropic" in n["text"] for n in miss + fail)
 
 
 def test_notice_web():
@@ -159,12 +174,14 @@ def test_notice_web():
 
 
 def test_notice_copy_is_plain():
-    allv = notices.build({"status": "down", "cache_entries": 1}, {"status": "down", "last_error": "api_key"})
+    allv = notices.build({"status": "down", "cache_entries": 1}, {"status": "down", "last_error": "api_key"}) + \
+        notices.build(LIVE_WEB, {"status": "down", "backend": "claude", "last_error": "api_key"}) + \
+        notices.build(LIVE_WEB, {"status": "down", "backend": "claude", "last_error": "Connection error"})
     for n in allv:
         assert "degraded" not in n["text"].lower() and "mode" not in n["text"].lower() and len(n["text"]) <= 70
 
 
-def test_health_and_ready_carry_notices(client, monkeypatch):
+def test_health_and_ready_carry_notices(client, monkeypatch, claude_backend):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     answer._down("APIConnectionError: offline")
     h = client.get("/api/health").json()

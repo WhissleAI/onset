@@ -104,10 +104,11 @@ def main():
         check(OK if w.get("cache_entries") else WARN, "web replay cache",
               f"{w.get('cache_entries', 0)} entries" + (f", recorded {w.get('cache_recorded')}" if w.get("cache_recorded") else
                                                        " (record: eval/record_web_cache.py)"))
+    what = "Anthropic reachable" if an.get("backend") == "claude" else "answer model ready"
     if an.get("status") == "live":
-        check(OK, "Anthropic reachable", f"{an.get('model')}, probe {pr.get('answer_ms')} ms")
+        check(OK, what, f"{an.get('model')}, probe {pr.get('answer_ms')} ms")
     else:
-        check(WARN if an.get("fallback") == "extractive" else FAIL, "Anthropic reachable",
+        check(WARN if an.get("fallback") == "extractive" else FAIL, what,
               f"DOWN ({an.get('last_error')}); fallback: {an.get('fallback')} answers (flagged in UI)")
 
     def judge(name: str, label: str):

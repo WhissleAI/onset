@@ -1,12 +1,17 @@
-"""Answer generation (streaming) + a replayable buffer so a speculative draft can be handed over at the endpoint."""
+"""Answer generation (streaming) + a replayable buffer so a speculative draft can be handed over at the endpoint.
+
+Backends (config.ANSWER_BACKEND, see backend()):
+  local       default. A small instruct model on this Mac (server/answer_lm.py: Qwen2.5-0.5B-Instruct), no key.
+  extractive  no model: the best-matching sentence of the top source, with its citation.
+  claude      Anthropic's API (config.ANSWER_MODEL), only when chosen AND ANTHROPIC_API_KEY is set. `anthropic` is
+              imported lazily, so the app runs without the package.
+Every backend falls back to the extractive sentence when it fails (ANSWER_FALLBACK), flagged fallback="extractive"."""
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import time
-
-import httpx
-from anthropic import AsyncAnthropic
 
 from . import config
 
@@ -32,6 +37,17 @@ Answer from every moment that helps. Say when and who, and quote the key words a
 announcer said "Hunter gets a good look and nails it" [1]. The question can mishear words too ("who one the toss" = "who won
 the toss"). Don't comment on transcript quality. No preamble, no markdown."""
 
+# The on-device model's system prompt. A 0.5B model copies examples from its prompt (with SYSTEM above it answered
+# 'At 00:26 the announcer said "Hunter gets a good look..."' to a third of the web questions), so this one is short,
+# has no quoted example, and states each rule once. Picked on eval/questions.jsonl with real DuckDuckGo sources:
+# 34/38 checkable answers right vs 26/38 for the extractive sentence (runs/answer_lm_bench.md).
+SYSTEM_LOCAL = """You are a voice assistant. Answer the user's spoken question in one short sentence (under 30 words), using the numbered search results.
+Start with the answer itself. After the fact, write the number of the result it came from in brackets, like [2].
+Do not repeat the question, do not explain, no markdown.
+The question comes from speech recognition: if it corrects itself ("X, sorry, I mean Y"), answer about Y only.
+If the results do not contain the answer, give the answer you are confident of, without a bracket number.
+Some results are moments of a recording with a time (mm:ss): then say when it happened and who said it."""
+
 ROLE_LABEL = {"play_by_play": "play-by-play announcer", "analyst": "analyst", "judge": "judge", "counsel": "counsel",
               "device_user": "user"}
 
@@ -40,12 +56,32 @@ def mmss(t: float) -> str:
     return f"{int(t // 60):02d}:{int(t % 60):02d}"
 
 
-_client: AsyncAnthropic | None = None
+def backend() -> str:
+    """The answer backend in effect: "claude" only when chosen (ANSWER_BACKEND=claude) and ANTHROPIC_API_KEY is set,
+    "extractive" when chosen, else "local" (also for an unknown value)."""
+    b = (config.ANSWER_BACKEND or "local").strip().lower()
+    if b == "claude":
+        return "claude" if (os.environ.get("ANTHROPIC_API_KEY") or "").strip() else "local"
+    return b if b in ("local", "extractive") else "local"
 
 
-def client() -> AsyncAnthropic:
+def model_name() -> str:
+    b = backend()
+    if b == "claude":
+        return config.ANSWER_MODEL
+    if b == "extractive":
+        return "extractive"
+    return f"local:{config.ANSWER_LM_NAME}"
+
+
+_client = None          # AsyncAnthropic (backend "claude" only)
+
+
+def client():
     global _client
     if _client is None:
+        import httpx
+        from anthropic import AsyncAnthropic          # lazy: only the claude backend needs the package
         _client = AsyncAnthropic(max_retries=config.ANSWER_MAX_RETRIES,
                                  timeout=httpx.Timeout(60.0, connect=3.0))
     return _client
@@ -70,7 +106,7 @@ def is_down() -> bool:
 
 
 def health() -> dict:
-    return {"model": config.ANSWER_MODEL, "status": STATUS["status"], "live": STATUS["status"] == "live",
+    return {"model": model_name(), "backend": backend(), "status": STATUS["status"], "live": STATUS["status"] == "live",
             "fallback": "extractive" if config.ANSWER_FALLBACK else "none", "last_error": STATUS["last_error"]}
 
 
@@ -199,6 +235,25 @@ def extractive(question: str, docs) -> str | None:
     return f"{sent} [{i + 1}]"
 
 
+_CITED = re.compile(r"\[\d+\]")
+
+
+def _cite(text: str, docs) -> str:
+    """The small local model often leaves out the [n] citation. When the answer cites nothing, cite the source that
+    shares the most content words with it (the UI links citations to sources); "" when nothing clearly matches or
+    the answer already cites."""
+    if not text.strip() or _CITED.search(text):
+        return ""
+    a = _words(text)
+    best, bi = 0.0, -1
+    for i, d in enumerate(list(docs)[:8]):
+        shared = a & _words(f"{d.title or ''} {d.text or ''}")
+        score = len(shared) - 0.1 * i
+        if shared and score > best:
+            best, bi = score, i
+    return f" [{bi + 1}]" if bi >= 0 else ""
+
+
 def model_opts(model: str) -> dict:
     """Lowest time-to-first-token: thinking off, low effort. (Haiku 5.5 thinks by default; Sonnet 5.5 can't take
     "disabled" and uses "between_tools" instead.)"""
@@ -232,22 +287,41 @@ def build_prompt(question: str, docs, context: str = "", hint: str = "") -> str:
 
 
 async def warm():
-    """Open the HTTPS connection (and warm the route) so the first real answer doesn't pay for it; records whether the
-    answer model is reachable (STATUS)."""
-    await probe()
+    """Get the answer model ready so the first real answer doesn't pay for it: load the local model (and run one token
+    through it: MPS compiles its kernels on first use), or open the HTTPS connection to Claude. Records whether the
+    answer model works (STATUS)."""
+    await probe(timeout=120.0 if backend() == "local" else 8.0)
 
 
 async def probe(timeout: float = 8.0) -> dict:
-    """One 1-token request now; updates STATUS (the breaker opens if the model is unreachable)."""
+    """One 1-token generation now; updates STATUS (the breaker opens if the model is missing or unreachable)."""
     t = time.perf_counter()
+    b = backend()
     try:
-        await asyncio.wait_for(client().messages.create(
-            model=config.ANSWER_MODEL, max_tokens=1, **model_opts(config.ANSWER_MODEL),
-            messages=[{"role": "user", "content": "ok"}]), timeout)
-        _ok()
+        if b == "extractive":
+            _ok()
+        elif b == "local":
+            await asyncio.wait_for(_local_probe(), timeout)
+            _ok()
+        else:
+            await asyncio.wait_for(client().messages.create(
+                model=config.ANSWER_MODEL, max_tokens=1, **model_opts(config.ANSWER_MODEL),
+                messages=[{"role": "user", "content": "ok"}]), timeout)
+            _ok()
     except Exception as e:
         _down(f"{type(e).__name__}: {e}" if str(e) else type(e).__name__)
     return {**health(), "probe_ms": round((time.perf_counter() - t) * 1000)}
+
+
+async def _local_probe():
+    from . import answer_lm
+    g = answer_lm.Generation(SYSTEM_LOCAL, "Say ok.", 1, asyncio.get_running_loop()).start()
+    while True:
+        x = await g.queue.get()
+        if x is None:
+            return
+        if isinstance(x, BaseException):
+            raise x
 
 
 def system_param():
@@ -275,7 +349,12 @@ def cache_usage(part: dict) -> tuple:
 def request_usage(part: dict) -> tuple:
     """(input tokens, output tokens, estimated?) of one answer-model request; (None, 0, False) if it never reached the
     API (failed to connect). Exact when the API's usage arrived; else estimated at 4 characters per token. Input
-    includes cached tokens (cache_usage splits them out for pricing)."""
+    includes cached tokens (cache_usage splits them out for pricing). A local generation counts its own tokens."""
+    if part.get("local"):
+        g = part.get("g")
+        if g is None or not g.n_in:
+            return None, 0, False             # never reached the model (cancelled while waiting / load failed)
+        return g.n_in, g.n_out, False
     snap = None
     try:
         snap = part["s"].current_message_snapshot if part.get("s") is not None else None
@@ -322,6 +401,7 @@ class Stream:
         self.card: dict | None = None
         self.usage_parts: list[dict] = []       # one per model request (meter: usage())
         self._waiters: set[asyncio.Future] = set()
+        self._gen = None                        # the local model's Generation (backend "local")
         self.task = asyncio.create_task(self._run())
         self.task.add_done_callback(self._task_done)
 
@@ -385,8 +465,15 @@ class Stream:
         as a 529), send a duplicate and keep whichever answers first (cuts the API's time-to-first-token tail)."""
         if self._card_answer():
             return
+        b = backend()
+        if b == "extractive":
+            self._extractive("ANSWER_BACKEND=extractive")
+            return
         if config.ANSWER_FALLBACK and is_down():
             self._extractive(f"answer model down: {STATUS['last_error']}")    # breaker open: don't wait again
+            return
+        if b == "local":
+            await self._run_local()
             return
         loop = asyncio.get_running_loop()
         won = asyncio.Event()
@@ -457,6 +544,67 @@ class Stream:
                             p["cancelled"] = True
             self._finish()
 
+    async def _run_local(self):
+        """The on-device model (server/answer_lm.py): one generation on its worker thread, tokens streamed into the
+        buffer as they come. No hedge (a duplicate would only queue behind the first on the same model). No first
+        token within ANSWER_DEADLINE_MS, or a load / generation error: the extractive sentence instead. Cancel (or a
+        cancelled task) stops the generation within one token."""
+        from . import answer_lm
+        prompt = build_prompt(self.question, self.docs, self.context, self.hint)
+        g = answer_lm.Generation(SYSTEM_LOCAL, prompt, config.ANSWER_LM_MAX_TOKENS, asyncio.get_running_loop())
+        part = {"req": 0, "local": True, "g": g, "s": None, "chars": 0, "cancelled": False,
+                "prompt_chars": len(SYSTEM_LOCAL) + len(prompt)}
+        self.usage_parts.append(part)
+        self._gen = g
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + config.ANSWER_DEADLINE_MS / 1000 if config.ANSWER_FALLBACK else None
+        g.start()
+        try:
+            while True:
+                timeout = None
+                if self.winner is None and deadline is not None:
+                    timeout = max(0.0, deadline - loop.time())
+                try:
+                    x = await asyncio.wait_for(g.queue.get(), timeout)
+                except asyncio.TimeoutError:
+                    g.cancel()
+                    # slow, not broken (a long draft ahead of it on the model): no breaker
+                    self._extractive(f"local answer model: no token in {config.ANSWER_DEADLINE_MS} ms")
+                    return
+                if x is None:
+                    break
+                if isinstance(x, BaseException):
+                    raise x
+                part["chars"] += len(x)
+                if self.done:
+                    g.cancel()
+                    return
+                if self.winner is None:
+                    self.winner = 0
+                    self.t_first = time.perf_counter()
+                    _ok()
+                self.tokens.append(x)
+                self._notify()
+            cite = _cite(self.text(), self.docs)
+            if cite:
+                self.tokens.append(cite)
+                self._notify()
+        except asyncio.CancelledError:
+            g.cancel()
+            part["cancelled"] = True
+            self._finish("cancelled")
+            raise
+        except Exception as e:  # missing model, torch error: extractive, breaker open (don't retry every question)
+            g.cancel()
+            err = f"{type(e).__name__}: {e}"[:300]
+            if config.ANSWER_FALLBACK and not self.tokens:
+                _down(err)
+                self._extractive(err)
+            else:
+                self._finish(err)
+        finally:
+            self._finish()
+
     def _card_answer(self) -> bool:
         """Card path (ROUTER): a live-data card among the sources that fits this question IS the answer: its one-line
         spoken template, cited, with no model call (~0 ms instead of the model's time to first token)."""
@@ -474,7 +622,7 @@ class Stream:
         return True
 
     def _extractive(self, why: str):
-        """Answer without the model: best-matching sentence of the top source, flagged (never presented as Claude's)."""
+        """Answer without the model: best-matching sentence of the top source, flagged (never presented as a model's)."""
         self.fallback, self.fallback_reason = "extractive", why[:200]
         text = extractive(self.question, self.docs)
         if text is None:
@@ -542,6 +690,9 @@ class Stream:
         for p in self.usage_parts:
             if p["s"] is None:
                 p["cancelled"] = True           # a request on the wire may be billed: the meter counts it (est.)
+        g = getattr(self, "_gen", None)
+        if g is not None:
+            g.cancel()                          # the local model stops within one token (its thread checks this)
         if not self.task.done():
             self.task.cancel()
         self._finish("cancelled")

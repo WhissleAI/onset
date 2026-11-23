@@ -190,7 +190,7 @@ class DownClient:
 DOCS = [lanes.Doc(id="1", title="Canberra", text="Canberra is the capital city of Australia. It was founded in 1913.")]
 
 
-def test_answer_model_down_extractive_then_breaker(monkeypatch):
+def test_answer_model_down_extractive_then_breaker(monkeypatch, claude_backend):
     dc = DownClient()
     monkeypatch.setattr(answer, "_client", dc)
 
@@ -209,7 +209,7 @@ def test_answer_model_down_extractive_then_breaker(monkeypatch):
     assert b.fallback == "extractive" and tb < 0.05 and dc.calls == calls      # breaker: no new request
 
 
-def test_answer_model_hanging_hits_deadline(monkeypatch):
+def test_answer_model_hanging_hits_deadline(monkeypatch, claude_backend):
     monkeypatch.setattr(answer, "_client", DownClient(hang=True))
     monkeypatch.setattr(config, "ANSWER_DEADLINE_MS", 300)
     monkeypatch.setattr(config, "HEDGE_MS", 100)
@@ -223,7 +223,7 @@ def test_answer_model_hanging_hits_deadline(monkeypatch):
     assert s.fallback == "extractive" and s.text().endswith("[1]") and 0.25 < took < 1.0
 
 
-def test_fallback_off_keeps_the_error(monkeypatch):
+def test_fallback_off_keeps_the_error(monkeypatch, claude_backend):
     monkeypatch.setattr(answer, "_client", DownClient())
     monkeypatch.setattr(config, "ANSWER_FALLBACK", False)
 
@@ -262,7 +262,7 @@ async def speak(text, mode, events):
     return m
 
 
-def test_race_completes_offline_with_same_fallbacks_in_both_modes(tmp_path, monkeypatch, wire):
+def test_race_completes_offline_with_same_fallbacks_in_both_modes(tmp_path, monkeypatch, wire, claude_backend):
     make_cache(tmp_path, monkeypatch)
     wire.up = False                                          # venue Wi-Fi gone: web AND answer model unreachable
     monkeypatch.setattr(answer, "_client", DownClient())

@@ -221,7 +221,7 @@
     if (wsOpen && warm && Object.keys(deg).length) { cls = "degraded"; txt = "ready · limited"; }
     s.className = "status " + cls;
     // the details stay one hover away: which ear, web lane and answer model this server runs
-    s.title = txt + (health && wsOpen ? ` · ear: ${health.ear || "?"} · web: ${health.web_backend || "?"} · answers: ${String(health.answer_model || "?").replace(/^claude-/, "")}` : "");
+    s.title = txt + (health && wsOpen ? ` · ear: ${health.ear || "?"} · web: ${health.web_backend || "?"} · answers: ${String(health.answer_model || "?").replace(/^(claude-|local:)/, "")}` : "");
     s.querySelector("b").textContent = txt;
     paintDegraded(deg);
     paintEarLabel();
