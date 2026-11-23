@@ -918,14 +918,14 @@
       const asOf = cachedDoc && d.as_of ? cacheStamp(d.as_of) : "";
       const meta = [cachedDoc ? `${d.source} · CACHED${asOf ? " as of " + d.as_of.replace("T", " ") : ""}` : d.source, d.score != null ? `cos ${(+d.score).toFixed(2)}` : null].filter(Boolean).join(" · ");
       const ts = d.t != null ? `<span class="ts" title="moment starts at ${Math.round(d.t)} s">▶ ${mmss(d.t)}</span>` : "";
-      const title = d.t != null ? String(d.title || "").replace(/\s*·\s*\d+:\d+$/, "") : d.title;
+      const title = d.t != null ? String(d.title || "").replace(/\s*·\s*(\d+:)?\d+:\d+$/, "") : d.title;
       a.title = (title || "") + (meta ? `\n${lane} · ${meta}` : "") + (d.text ? "\n\n" + d.text : "");
-      a.innerHTML = `<div class="st"><span class="sn">[${i + 1}]</span>${lane ? `<span class="ln ${esc(lane)}">${esc(lane.slice(0, 3))}</span>` : ""}${ts}${cachedDoc ? (asOf ? `<span class="ln cached" title="search result from the cache, fetched ${esc(String(d.as_of).replace("T", " "))} (not live)">cache ${esc(asOf)}</span>` : '<span class="ln cached" title="replayed from the recorded web cache">cache</span>') : ""}<span class="tt">${esc(title || "(untitled)")}</span></div>`;
+      a.innerHTML = `<div class="st"><span class="sn">[${i + 1}]</span>${lane ? `<span class="ln ${esc(lane)}">${esc(lane.slice(0, 3))}</span>` : ""}${ts}${cachedDoc ? (asOf ? `<span class="ln cached" title="search result from the cache, fetched ${esc(String(d.as_of).replace("T", " "))} (not live)">cache ${esc(asOf)}</span>` : '<span class="ln cached" title="replayed from the recorded web cache">cache</span>') : ""}<span class="tt">${esc(title || "(untitled)")}</span></div>` + (d.chips ? HSResults.chipsHtml(d, 3) : "");
       box.appendChild(a);
     });
   }
 
-  const mmss = (t) => { t = Math.max(0, Math.round(+t)); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+  const mmss = (t) => HSResults.mmss(t);
 
   function paneState(mode) {
     const q = run.q;
@@ -1692,6 +1692,7 @@
   });
   addEventListener("keydown", async (e) => {
     if (e.target?.closest?.("input, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (document.body.classList.contains("rec-on")) return;     // the My recordings drawer is open (web/recordings.js)
     if (e.code === "Space") {
       e.preventDefault();
       if (e.repeat || ptt.held) return;

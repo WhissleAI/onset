@@ -31,6 +31,14 @@ explains each optional key (Deepgram for the cloud ear, Tavily or Telem for the 
 answers), with a **Test** button for each. Keys are stored only in your Mac's Keychain; questions, memory and history
 stay on your Mac. You can speak (hold Space) or type. Release steps: [MACAPP.md](MACAPP.md#release).
 
+## Index your own recordings
+Click **Recordings** in the top bar and drop in a meeting, call or voice memo (wav, mp3, m4a, aac, flac, ogg, or the
+audio of an mp4 / mov). On your Mac, Arc v1 transcribes it with word timings, Arc Tagger marks the people, places and
+numbers, and EmbeddingGemma 2 embeds each moment. Then ask "in the team sync, when is the load test?": the local lane
+answers with the moment ("Team sync · 01:12") and its tags. Nothing is uploaded. A 2-minute recording takes about 15 s;
+indexing pauses while you ask a question. Remove a recording and its moments leave the index. Details:
+[index/README.md](index/README.md#your-own-recordings-in-the-app).
+
 ## The speculator in one screen
 - **Query frame** = (fine intent, typed slots, content words) from the tagger. Its signature changes only when the meaning
   changes, so filler words and repeated partials don't re-search.

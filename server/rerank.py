@@ -157,7 +157,7 @@ _lex_cache: dict = {}
 
 
 def lexicon(index) -> Lexicon:
-    key = (id(index), len(index.docs))
+    key = (id(index), len(index.docs), getattr(index, "gen", 0))   # gen: a rebuilt index (user recordings) never hits a stale lexicon
     lx = _lex_cache.get(key)
     if lx is None:
         _lex_cache.clear()

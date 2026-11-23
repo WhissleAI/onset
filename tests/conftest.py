@@ -6,7 +6,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from server import answer, config, lanes, searchcache  # noqa: E402
+from server import answer, config, frame, lanes, searchcache, userindex  # noqa: E402
+
+_CUES = list(frame.LOCAL_CUES)
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +37,14 @@ def _isolate_fallback_state(monkeypatch, tmp_path):
     lanes.set_web_cache(None)
     lanes.reset_web_status()
     answer.reset_status()
+    # the user's own recordings (server/userindex.py) live in the app's support folder: never read or write it here
+    monkeypatch.setattr(config, "RECORDINGS_DIR", tmp_path / "recordings")
+    userindex.reset()
     yield
+    userindex.reset()
+    userindex.set_backend(None)
+    userindex.set_busy_probe(None)
+    frame.LOCAL_CUES[:] = _CUES
     lanes.set_web_cache(None)
     lanes.reset_web_status()
     answer.reset_status()

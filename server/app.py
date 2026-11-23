@@ -35,7 +35,7 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -45,6 +45,7 @@ from . import memory as memmod
 from . import persona as personamod
 from . import arcstate as arcstatemod
 from . import trainlog
+from . import userindex
 from .session import Session
 
 ROOT = config.ROOT
@@ -128,6 +129,7 @@ async def health(probe: int = 0):
         w, a = await asyncio.gather(lanes.probe_web(), answer.probe())
         probes = {"probe": {"web_ms": w.get("probe_ms"), "answer_ms": a.get("probe_ms")}}
     return {"ok": True, **status_payload(), "answer_model": config.ANSWER_MODEL, "local_docs": len(lanes.index()),
+            "user_recordings": len(userindex.ready_dirs()),
             **probes}
 
 
@@ -201,6 +203,105 @@ async def cache_clear():
     return {"ok": True, "cleared": n}
 
 
+# ------------------------------------------------------------------ the user's own recordings (server/userindex.py)
+import weakref  # noqa: E402
+LIVE_RUNS: weakref.WeakSet = weakref.WeakSet()      # runs in progress: indexing pauses while one runs (never competes with a live question)
+userindex.set_busy_probe(lambda: any(not r.closed for r in list(LIVE_RUNS)))
+
+
+def _local_request(request: Request) -> bool:
+    """Mutating recording calls come from this server's own page (or the native app, which sends no Origin): a web
+    page elsewhere must not make this Mac index (or delete) files."""
+    o = request.headers.get("origin")
+    if not o or o == "null":
+        return o is None
+    from urllib.parse import urlparse
+    return urlparse(o).netloc == request.headers.get("host", "")
+
+
+def _rec_error(msg: str, code: int = 400):
+    return JSONResponse({"ok": False, "error": msg}, status_code=code)
+
+
+@app.get("/api/recordings")
+async def recordings_list():
+    """Every recording (name, duration, moments, status, stage, progress 0-1, paused, stats). The page polls this
+    while a job runs."""
+    st = userindex.store()
+    return {"ok": True, "recordings": st.list(), "busy": not st.idle(),
+            "allowed": sorted(userindex.ALLOWED_EXT), "audio_vectors": config.USER_INDEX_AUDIO}
+
+
+@app.post("/api/recordings")
+async def recordings_add(request: Request):
+    """{"path": "/abs/file.m4a", "name"?: "Team sync"} or {"paths": [...]}: index files already on this Mac, read in
+    place (the native app passes paths). JSON only, same origin only."""
+    if not _local_request(request):
+        return _rec_error("cross-origin request refused", 403)
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        return _rec_error("send JSON", 415)
+    try:
+        body = await request.json()
+        assert isinstance(body, dict)
+    except Exception:  # noqa: BLE001
+        return _rec_error("bad JSON")
+    paths = body.get("paths") if isinstance(body.get("paths"), list) else [body.get("path")]
+    added, errors = [], []
+    for p in paths[:50]:
+        try:
+            src = userindex.safe_source(p)
+            added.append(userindex.store().add(src, name=body.get("name") if len(paths) == 1 else None,
+                                               domain=None, kind="path"))
+        except userindex.Unsupported as e:
+            errors.append({"path": str(p)[-120:] if isinstance(p, str) else "", "error": str(e)})
+        except OSError as e:
+            errors.append({"path": str(p)[-120:], "error": f"cannot read: {e.strerror or e}"})
+    rlog(f"recordings add: {len(added)} queued, {len(errors)} refused")
+    return JSONResponse({"ok": bool(added), "added": added, "errors": errors}, status_code=200 if added else 400)
+
+
+@app.post("/api/recordings/upload")
+async def recordings_upload(request: Request, name: str = ""):
+    """The web UI's drag-drop / picker: the file's bytes as the request body (any content type), its file name in
+    ?name=. Saved to RECORDINGS_DIR/_incoming/ until indexed, then deleted."""
+    if not _local_request(request):
+        return _rec_error("cross-origin request refused", 403)
+    try:
+        ext = userindex.check_ext(name)
+    except userindex.Unsupported as e:
+        return _rec_error(str(e), 415)
+    limit = config.USER_INDEX_MAX_MB * 1e6
+    path, f = userindex.write_upload_tmp(ext)
+    n = 0
+    try:
+        with f:
+            async for chunk in request.stream():
+                n += len(chunk)
+                if n > limit:
+                    raise ValueError(f"larger than {config.USER_INDEX_MAX_MB:.0f} MB")
+                f.write(chunk)
+        if n == 0:
+            raise ValueError("empty file")
+        rec = userindex.store().add(path, name=userindex.display_name(name), owned=True, kind="upload")
+    except Exception as e:  # noqa: BLE001
+        path.unlink(missing_ok=True)
+        return _rec_error(f"upload failed: {e}"[:200])
+    rlog(f"recordings upload: {ext} {n / 1e6:.1f} MB queued as {rec['id']}")
+    return {"ok": True, "added": [rec]}
+
+
+@app.delete("/api/recordings/{rid}")
+async def recordings_remove(rid: str, request: Request):
+    """Remove a recording and its moments (stops its job if it is being indexed)."""
+    if not _local_request(request):
+        return _rec_error("cross-origin request refused", 403)
+    if not userindex.valid_id(rid):
+        return _rec_error("bad id")
+    if not await asyncio.get_running_loop().run_in_executor(None, userindex.store().remove, rid):
+        return _rec_error("no such recording", 404)
+    return {"ok": True}
+
+
 @app.get("/audio/{name}")
 async def audio(name: str):
     p = (AUDIO / name).resolve()
@@ -234,6 +335,7 @@ class Run:
                  keyterms: list[str] | None = None, typed: bool = False):
         self.id = next(_run_ids)
         self.ws = ws
+        LIVE_RUNS.add(self)
         self.q: asyncio.Queue = asyncio.Queue()
         t0 = time.perf_counter()
         self.sessions = [Session(self._emitter(m), mode=m, domain=domain, t0=t0, cost_mode=cost_mode, arcstate=arcstate)
@@ -373,6 +475,7 @@ class Run:
             if self.ear is not None:
                 self.ear.close()
             self.closed = True
+            LIVE_RUNS.discard(self)
         await asyncio.sleep(0.05)
         for s in self.sessions:
             s.close()
@@ -384,6 +487,7 @@ class Run:
     def abort(self):
         """The client is gone: stop everything now, no flush, nothing more to send."""
         self.closed = True
+        LIVE_RUNS.discard(self)
         if self._stop is not None and not self._stop.done():
             self._stop.cancel()
         if self.ticker is not None:

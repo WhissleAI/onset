@@ -55,6 +55,18 @@ def data_dir(env=None, root: Path = ROOT) -> Path:
     return root / "runs"
 
 
+def recordings_dir(env=None, root: Path = ROOT) -> Path:
+    """The user's own indexed recordings (server/userindex.py). Always in the app's support folder, never the repo or
+    the app bundle: RECORDINGS_DIR env, else <HEADSTART_DATA_DIR>/recordings (the app), else
+    ~/Library/Application Support/<APP_NAME>/data/recordings (a repo run shares the app's recordings)."""
+    env = os.environ if env is None else env
+    if env.get("RECORDINGS_DIR"):
+        return Path(env["RECORDINGS_DIR"]).expanduser()
+    if env.get("HEADSTART_DATA_DIR"):
+        return Path(env["HEADSTART_DATA_DIR"]).expanduser() / "recordings"
+    return support_dir(env, root) / "data" / "recordings"
+
+
 def resolve(name: str, env_var: str | None = None, legacy: Path | None = None, env=None, root: Path = ROOT) -> Path:
     """Path of model `name` (a manifest "dir"), by the order in the module docstring."""
     env = os.environ if env is None else env

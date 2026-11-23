@@ -25,7 +25,18 @@
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (textW(t.slice(0, mid) + "…", px, wt) <= w) lo = mid; else hi = mid - 1; }
     return t.slice(0, lo).replace(/\s+\S*$/, "").replace(/[\s,.;:|–—-]+$/, "") + "…";
   }
-  const mmss = (t) => { t = Math.max(0, Math.round(+t)); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+  const mmss = (t) => {
+    t = Math.max(0, Math.round(+t));
+    const p2 = (x) => String(x).padStart(2, "0");
+    return t >= 3600 ? `${Math.floor(t / 3600)}:${p2(Math.floor(t % 3600 / 60))}:${p2(t % 60)}` : `${p2(Math.floor(t / 60))}:${p2(t % 60)}`;
+  };
+  // Arc / Arc Tagger read-out of a local moment (people, places, orgs, numbers): small chips under the snippet
+  const KIND = { person: "who", place: "where", org: "org", number: "#" };
+  function chipsHtml(d, max = 5) {
+    const c = Array.isArray(d.chips) ? d.chips.slice(0, max) : [];
+    if (!c.length) return "";
+    return `<div class="mchips">${c.map((x) => `<span class="mchip ${esc(x.kind)}" title="${esc(x.kind)} (Arc Tagger)"><small>${esc(KIND[x.kind] || "")}</small>${esc(x.text)}</span>`).join("")}</div>`;
+  }
   function dateOf(d) {
     const v = d.published_date || d.published || d.date || (d.meta && (d.meta.published_date || d.meta.date));
     if (!v) return "";
@@ -51,22 +62,26 @@
   // o: {cls: class prefix ("ri" film, "rr" main UI), px: snippet font px, numbered, max, snipLines}
   function itemHtml(d, i, o) {
     const p = o.cls;
-    const h = d.url ? host(d.url) : (d.source || d.lane || "");
-    const title = o.titleW ? oneLine(cleanTitle(d.title) || h || "(untitled)", o.titlePx || 23, o.titleW, 600)
-      : clip(cleanTitle(d.title) || h || "(untitled)", o.titleMax || 72);
+    const rec = !!d.recording;                         // the user's own recording (server/userindex.py)
+    const h = d.url ? host(d.url) : rec ? "your recording" : (d.source || d.lane || "");
+    // a moment's title is "<recording> · mm:ss": the time is already the ▶ badge
+    const t0 = d.t != null ? String(d.title || "").replace(/\s*·\s*(\d+:)?\d+:\d+$/, "") : d.title;
+    const title = o.titleW ? oneLine(cleanTitle(t0) || h || "(untitled)", o.titlePx || 23, o.titleW, 600)
+      : clip(cleanTitle(t0) || h || "(untitled)", o.titleMax || 72);
     const raw = d.text ? String(d.text).replace(/^#+\s*/gm, "").replace(/\s+/g, " ") : "";
     const snip = raw ? (o.snipLines > 1 ? clip(raw, o.snipChars || 220) : oneLine(raw, o.px || 17, o.snipW || 760)) : "";
     const num = o.numbered ? `<span class="${p}-n">[${i + 1}]</span>` : "";
     const ts = d.t != null ? `<span class="${p}-ts">▶ ${mmss(d.t)}</span>` : "";
     const dt = o.dates ? dateOf(d) : "";
     return `<div class="${p}-h">${num}<span class="fav" style="--h:${hue(h)}">${esc((h[0] || "?").toUpperCase())}</span><span class="dom">${esc(h)}</span>${ts}${dt ? `<span class="${p}-d">${esc(dt)}</span>` : ""}</div>` +
-      `<div class="${p}-t">${d.url && o.links ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(title)}</a>` : esc(title)}</div>` + (snip ? `<div class="${p}-s">${esc(snip)}</div>` : "");
+      `<div class="${p}-t">${d.url && o.links ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(title)}</a>` : esc(title)}</div>` + (snip ? `<div class="${p}-s">${esc(snip)}</div>` : "") +
+      (o.chips === false || p === "ri" ? "" : chipsHtml(d));   // (film mode: no chips)
   }
 
   // FLIP: measure old positions, re-render keyed by doc id, animate from old to new. Only whole items that fit are kept.
   function flip(box, docs, opts = {}) {
     const o = { cls: "ri", px: 17, ...opts };
-    const sig = docs.map((d) => d.id + "|" + (d.text ? 1 : 0)).join(",") + "|" + box.className + "|" + (o.max || "") + "|" + box.clientHeight + "|" + box.clientWidth;
+    const sig = docs.map((d) => d.id + "|" + (d.text ? 1 : 0) + (d.chips ? "c" : "")).join(",") + "|" + box.className + "|" + (o.max || "") + "|" + box.clientHeight + "|" + box.clientWidth;
     if (box._sig === sig) return;
     box._sig = sig;
     const old = new Map();
@@ -143,5 +158,5 @@
     return side === "baseline" ? (o.endpointed ? "" : "waiting for you to finish…") : "listening…";
   }
 
-  window.HSResults = { specDocs, view, flip, head, host, clip, cleanTitle, hue, oneLine, esc };
+  window.HSResults = { specDocs, view, flip, head, host, clip, cleanTitle, hue, oneLine, esc, mmss, chipsHtml };
 })();

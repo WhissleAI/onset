@@ -40,7 +40,11 @@ class Doc:
                 # router tiers (server/router.py): which kind of source answered, the card itself, "as of" time
                 **({"tier": self.meta["tier"]} if self.meta.get("tier") else {}),
                 **({"card": self.meta["card"]} if self.meta.get("card") else {}),
-                **({"snapshot": self.meta["snapshot"]} if self.meta.get("snapshot") else {})}
+                **({"snapshot": self.meta["snapshot"]} if self.meta.get("snapshot") else {}),
+                # local moments: Arc / Arc Tagger chips (people, places, orgs, numbers); the user's own recording
+                **({"chips": self.meta["chips"][:6]} if self.meta.get("chips") else {}),
+                **({"recording": self.meta["recording"], "label": self.meta.get("source_label", "")}
+                   if self.meta.get("recording") else {})}
 
 
 _client: httpx.AsyncClient | None = None
@@ -811,25 +815,53 @@ async def probe_web(timeout: float = 4.0) -> dict:
 
 
 class LocalIndex:
-    """A small in-memory index: docs.jsonl + text vectors (+ optional audio vectors) saved by index/build_index.py."""
+    """A small in-memory index: docs.jsonl + text vectors (+ optional audio vectors) saved by index/build_index.py,
+    plus `extra` folders in the same format (the user's own recordings, server/userindex.py), concatenated.
+    Immutable once built: adding / removing a recording builds a new LocalIndex and swaps it in (set_index), so a
+    question in flight keeps a consistent view. `gen` changes on every build (caches key on it)."""
 
-    def __init__(self, path=None):
+    _gens = iter(range(1, 1 << 62))
+
+    def __init__(self, path=None, extra=()):
         path = path or config.INDEX_DIR
         self.docs: list[Doc] = []
         self.tv = np.zeros((0, config.EMBED_DIM), np.float32)
         self.av = None
         self.av_rows = None
+        self.gen = next(LocalIndex._gens)
+        tvs, avs, rows = [], [], []
+        for p in [path, *extra]:
+            try:
+                self._load(Path(p), tvs, avs, rows)
+            except Exception as e:                 # a damaged user folder must never take the base index down
+                print(f"[local] skipped index folder {Path(p).name}: {type(e).__name__}: {e}", flush=True)
+        if tvs:
+            self.tv = np.concatenate(tvs).astype(np.float32, copy=False)
+        if avs:
+            self.av = np.concatenate(avs).astype(np.float32, copy=False)
+            self.av_rows = np.concatenate(rows).astype(np.int64, copy=False)
+
+    def _load(self, path: Path, tvs: list, avs: list, rows: list):
         meta = path / "docs.jsonl"
-        if meta.exists():
-            for line in meta.read_text().splitlines():
-                d = json.loads(line)
-                self.docs.append(Doc(id=d["id"], title=d.get("title", ""), text=d["text"], url=d.get("url", ""),
-                                     source="local", t=d.get("t"), meta=d.get("meta", {})))
-            z = np.load(path / "vectors.npz")
-            self.tv = z["text"][:, : config.EMBED_DIM]
-            if "audio" in z.files and len(z["audio"]):
-                self.av = z["audio"][:, : config.EMBED_DIM]
-                self.av_rows = z["audio_rows"]
+        if not meta.exists():
+            return
+        docs = []
+        for line in meta.read_text().splitlines():
+            if not line.strip():
+                continue
+            d = json.loads(line)
+            docs.append(Doc(id=d["id"], title=d.get("title", ""), text=d["text"], url=d.get("url", ""),
+                            source="local", t=d.get("t"), meta=d.get("meta", {})))
+        z = np.load(path / "vectors.npz")
+        tv = z["text"][:, : config.EMBED_DIM]
+        if len(tv) != len(docs):
+            raise ValueError(f"{len(docs)} docs but {len(tv)} text vectors")
+        off = len(self.docs)
+        self.docs += docs
+        tvs.append(tv)
+        if "audio" in z.files and len(z["audio"]):
+            avs.append(z["audio"][:, : config.EMBED_DIM])
+            rows.append(np.asarray(z["audio_rows"], np.int64) + off)
 
     def __len__(self):
         return len(self.docs)
@@ -867,10 +899,19 @@ _index: LocalIndex | None = None
 
 
 def index() -> LocalIndex:
+    """The local-moments index: the installed index-data (if any) + the user's own indexed recordings."""
     global _index
     if _index is None:
-        _index = LocalIndex()
+        from . import userindex
+        _index = LocalIndex(extra=userindex.ready_dirs())
+        userindex.sync_cues()
     return _index
+
+
+def set_index(ix: LocalIndex | None):
+    """Swap in a rebuilt index (userindex after an add / remove). None: rebuild lazily on next use."""
+    global _index
+    _index = ix
 
 
 async def local_text(query: str, k: int = 4) -> list[Doc]:
