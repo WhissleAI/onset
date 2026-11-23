@@ -1,0 +1,62 @@
+/* My recordings (web/recordings.js): a right-hand drawer over the app. Page colour tokens (style.css :root), light + dark. */
+.rec-open.working b::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%;
+  background: var(--local); vertical-align: 1px; animation: recPulse 1.1s ease-in-out infinite; }
+@keyframes recPulse { 50% { opacity: .25; } }
+
+body.rec-on { overflow: hidden; }
+.rec-dlg { position: fixed; inset: 0; z-index: 90; background: color-mix(in srgb, var(--ink) 18%, transparent);
+  display: flex; justify-content: flex-end; animation: recFade .15s ease-out; }
+.rec-dlg[hidden] { display: none; }
+@keyframes recFade { from { opacity: 0; } to { opacity: 1; } }
+.rec-panel { width: min(440px, 100vw); height: 100%; background: var(--bg); border-left: 1px solid var(--line); box-shadow: var(--shadow);
+  padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; animation: recIn .18s ease-out; }
+@keyframes recIn { from { transform: translateX(16px); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rec-dlg, .rec-panel { animation: none; } }
+
+.rec-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.rec-head h2 { font-size: 20px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); }
+.rec-sub { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; }
+#recCount { color: var(--local); font-weight: 600; }
+#recCount:not(:empty)::before { content: "· "; color: var(--ink-3); font-weight: 400; }
+.rec-head .icon-btn { font-size: 18px; line-height: 1; flex: none; }
+
+.rec-drop { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 18px 12px; border: 1.5px dashed var(--line);
+  border-radius: var(--radius); background: var(--card); color: var(--ink-2); text-align: center; cursor: pointer; transition: border-color .12s, background .12s; }
+.rec-drop svg { color: var(--local); margin-bottom: 2px; }
+.rec-drop b { color: var(--ink); font-size: 14px; }
+.rec-drop span { font-size: 12px; color: var(--ink-3); }
+.rec-drop u { color: var(--local); text-decoration: none; font-weight: 600; }
+.rec-drop:hover, .rec-drop:focus-visible, body.rec-dragging .rec-drop { border-color: var(--local); background: color-mix(in srgb, var(--local) 7%, var(--card)); outline: none; }
+body.rec-dragging:not(.rec-on)::after { content: "Drop to index this recording on your Mac"; position: fixed; inset: 10px; z-index: 95;
+  display: grid; place-items: center; border: 2px dashed var(--local); border-radius: 16px; font: 700 18px var(--sans); color: var(--local);
+  background: color-mix(in srgb, var(--bg) 88%, transparent); pointer-events: none; }
+
+.rec-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1; }
+.rec { display: flex; align-items: center; gap: 10px; padding: 9px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.rec.bad { border-color: color-mix(in srgb, var(--err) 40%, var(--line)); }
+.rec-ic { width: 26px; height: 26px; flex: none; border-radius: 7px; display: grid; place-items: center; font: 700 11px var(--mono);
+  color: var(--local); background: color-mix(in srgb, var(--local) 13%, transparent); }
+.rec.live .rec-ic { background: conic-gradient(var(--local) 0 25%, color-mix(in srgb, var(--local) 13%, transparent) 0); animation: recSpin 1s linear infinite; }
+.rec.bad .rec-ic { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
+@keyframes recSpin { to { transform: rotate(1turn); } }
+.rec-b { flex: 1; min-width: 0; }
+.rec-n { font-weight: 600; font-size: 13.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rec-m { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.rec-err { color: var(--err); white-space: normal; }
+.rec-bar { height: 3px; border-radius: 2px; background: var(--line-2); margin-top: 5px; overflow: hidden; }
+.rec-bar i { display: block; height: 100%; background: var(--local); border-radius: 2px; transition: width .4s ease; }
+.rec-bar.paused i { background: var(--stale); }
+.rec-x { flex: none; width: 26px; height: 26px; border-radius: 7px; border: 1px solid transparent; background: none; color: var(--ink-3); font-size: 17px; line-height: 1; }
+.rec-x:hover, .rec-x:focus-visible { color: var(--err); border-color: var(--line); outline: none; }
+.rec-empty { color: var(--ink-3); font-size: 12.5px; line-height: 1.45; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.rec-fine { margin: 0; font-size: 11.5px; color: var(--ink-3); line-height: 1.45; }
+.rec-eg { font: 700 10px var(--mono); color: var(--local); background: color-mix(in srgb, var(--local) 14%, transparent); padding: 1px 4px; border-radius: 3px; }
+
+/* Arc / Arc Tagger chips on a local moment (results list + sources strip) */
+.mchips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.mchip { font-size: 11px; font-weight: 600; line-height: 16px; padding: 0 6px; border-radius: 5px; background: var(--hl-entity); color: var(--ink); white-space: nowrap; }
+.mchip.number { background: var(--hl-number); }
+.mchip.place { background: color-mix(in srgb, var(--local) 16%, transparent); }
+.mchip.org { background: color-mix(in srgb, var(--audio) 14%, transparent); }
+.mchip small { font: 600 8.5px var(--mono); text-transform: uppercase; color: var(--ink-3); margin-right: 3px; }
+.src .mchips { margin-top: 2px; flex-wrap: nowrap; overflow: hidden; }

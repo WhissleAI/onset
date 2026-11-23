@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import gc
 import json
-import re
 import subprocess
 import sys
 import time
@@ -28,6 +27,7 @@ import soundfile as sf
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from server import config  # noqa: E402
+from server import moments as M  # noqa: E402  (segmentation, labels, tagging: shared with the in-app ingest)
 
 DATA = ROOT / "index" / "data"
 AUDIO = DATA / "audio"
@@ -93,21 +93,12 @@ SOURCES = [
      "domain": "assistant", "about": "29 spoken commands to a voice assistant (SLURP)", "seg": "assistant", "split_on_speaker": True},
 ]
 
-# segmentation (seconds): close a moment at a pause >= GAP once it is >= MIN long; at a sentence end once >= SOFT;
-# always at HARD or at a pause >= BREAK. Moments with < MIN_WORDS words are merged into a neighbour.
-SEG = {"default": dict(GAP=0.55, MIN=3.0, SOFT=9.0, HARD=16.0, BREAK=1.8, MIN_WORDS=5),
-       "assistant": dict(GAP=0.6, MIN=0.0, SOFT=9.0, HARD=16.0, BREAK=0.6, MIN_WORDS=1)}
-AUDIO_MIN, AUDIO_MAX = 0.6, 30.0
-CTX_WORDS = 14  # neighbour words kept in meta.context_before / context_after (not embedded)
+SEG, AUDIO_MIN, AUDIO_MAX, CTX_WORDS = M.SEG, M.AUDIO_MIN, M.AUDIO_MAX, M.CTX_WORDS
+mmss = M.mmss
 
 
 def log(*a):
     print(time.strftime("%H:%M:%S"), *a, flush=True)
-
-
-def mmss(t):
-    t = int(round(t))
-    return f"{t // 60:02d}:{t % 60:02d}"
 
 
 # ------------------------------------------------------------------ audio
@@ -191,118 +182,22 @@ def load_words_and_labels(s):
                "words_source": f"{d['sources'][s['words']]['label']} (Arc Live Replay export)",
                "labels_source": "gold (replay export)"}
         return words, lab
-    a = json.loads((ARC_CACHE / f"{s['id']}.json").read_text())
-    words = []
-    for u in a["transcript"]:
-        for w in u.get("words") or []:
-            if w.get("text", "").strip():
-                words.append((w["text"].strip(), float(w["start"]), float(w["end"])))
-    role_of = {}
-    for k, v in (a.get("speakers") or {}).items():
-        r = (((v.get("groups") or {}).get("speaker.role") or {}).get("label") or "").replace("speaker.role.", "")
-        if r and s["domain"] not in ("unknown", "talk") and not (r == "device_user" and not s["domain"].startswith("assistant")):
-            role_of[k] = r
-    lab = {"names": [(n["start"], n["end"], (n.get("entity") or n.get("heard") or "").strip(" .,?!"),
-                      (n.get("tag") or "").split(".")[-1]) for n in a.get("names") or []],
-           "numbers": [(n["start"], n["end"], n.get("heard"), n.get("kind") or n.get("kind_head"))
-                       for n in a.get("numbers") or []],
-           "events": [(e["t"], e["tag"]) for e in a.get("events") or []
-                      if not e["tag"].startswith(("speaker.", "meta."))],
-           "roles": [(d["start"], d["end"], role_of.get(d["speaker"])) for d in a.get("diarization") or []
-                     if role_of.get(d["speaker"])],
-           "spk": [(d["start"], d["end"], d["speaker"]) for d in a.get("diarization") or []],
-           "phases": [],
-           "words_source": "Arc v1 built-in decoder (offline predict)", "labels_source": "Arc v1"}
-    return words, lab
+    return M.arc_labels(json.loads((ARC_CACHE / f"{s['id']}.json").read_text()), s["domain"])
 
 
-# ------------------------------------------------------------------ moments
+# ------------------------------------------------------------------ moments (server/moments.py)
 
-_END = re.compile(r"[.?!]['\"]?$")
-
-
-def segment(words, p, bounds=()):
-    """bounds: extra cut times (e.g. gold speaker-turn starts); a moment never spans one."""
-    bounds = sorted(bounds)
-    segs, cur = [], []
-    for w in words:
-        if cur and any(cur[-1][2] - 0.25 <= b <= w[1] + 0.25 and b > cur[0][1] + 0.3 for b in bounds):
-            segs.append(cur)
-            cur = []
-        if cur:
-            gap = w[1] - cur[-1][2]
-            dur = cur[-1][2] - cur[0][1]
-            if (gap >= p["BREAK"] or (gap >= p["GAP"] and dur >= p["MIN"]) or (dur >= p["SOFT"] and _END.search(cur[-1][0]))
-                    or dur >= p["HARD"]):
-                segs.append(cur)
-                cur = []
-        cur.append(w)
-    if cur:
-        segs.append(cur)
-    # merge tiny moments into the nearer neighbour
-    changed = True
-    while changed and len(segs) > 1:
-        changed = False
-        for i, sg in enumerate(segs):
-            if len(sg) >= p["MIN_WORDS"]:
-                continue
-            gp = sg[0][1] - segs[i - 1][-1][2] if i > 0 else 1e9
-            gn = segs[i + 1][0][1] - sg[-1][2] if i + 1 < len(segs) else 1e9
-            j = i - 1 if gp <= gn else i + 1
-            if min(gp, gn) > 3.0:
-                continue
-            a, b = sorted((i, j))
-            segs[a:b + 1] = [segs[a] + segs[b]]
-            changed = True
-            break
-    return segs
-
-
-def _overlap_pick(items, a, b):
-    """items [(s,e,label)] -> label with most overlap with [a,b]."""
-    acc = {}
-    for s, e, lab in items:
-        ov = min(b, e) - max(a, s)
-        if ov > 0 and lab:
-            acc[lab] = acc.get(lab, 0) + ov
-    return max(acc, key=acc.get) if acc else ""
+segment = M.segment
+_overlap_pick = M.overlap_pick
+embed_text_of = M.embed_text_of
+embed_title_of = M.embed_title_of
 
 
 def build_moments(sources):
     docs = []
     for s in sources:
         words, lab = load_words_and_labels(s)
-        bounds = [a for a, _, _ in lab["spk"]] if s.get("split_on_speaker") else ()
-        segs = segment(words, SEG[s.get("seg", "default")], bounds)
-        texts = [" ".join(w[0] for w in sg) for sg in segs]
-        for i, sg in enumerate(segs):
-            a, b = sg[0][1], sg[-1][2]
-            text = texts[i][:600]
-            prev_tail = " ".join(w[0] for w in segs[i - 1][-CTX_WORDS:]) if i > 0 else ""
-            next_head = " ".join(w[0] for w in segs[i + 1][:CTX_WORDS]) if i + 1 < len(segs) else ""
-            tags = []
-            for ns, ne, t, k in lab["names"]:
-                if ns < b + 0.2 and ne > a - 0.2 and t:
-                    tags.append(t)
-            for ns, ne, t, k in lab["numbers"]:
-                if ns < b + 0.2 and ne > a - 0.2 and t:
-                    tags.append(str(t))
-            for t, tag in lab["events"]:
-                if a - 0.3 <= t <= b + 0.6:
-                    tags.append(tag.replace("event.", "").replace("discourse.", ""))
-            docs.append({
-                "id": f"{s['id']}-{i:03d}",
-                "title": f"{s['label']} · {mmss(a)}",
-                "text": text,
-                "url": "",
-                "t": round(a, 2),
-                "meta": {"source": s["id"], "source_label": s["label"], "about": s.get("about", ""),
-                         "end": round(b, 2), "speaker": _overlap_pick(lab["spk"], a, b),
-                         "role": _overlap_pick(lab["roles"], a, b) or "",
-                         "phase": _overlap_pick(lab["phases"], a, b) or "",
-                         "tags": tags, "domain": s["domain"], "words_source": lab["words_source"],
-                         "context_before": prev_tail, "context_after": next_head},
-            })
+        docs += M.build_docs(s, words, lab)
     return docs
 
 
@@ -316,41 +211,11 @@ def tag_moments(docs, sources):
         dom = tdom[d["meta"]["source"]]
         if dom not in taggers:
             taggers[dom] = Tagger(domain=dom)
-        r = taggers[dom].tag_text(d["text"])
-        tags = list(d["meta"]["tags"])
-        for sp in r.get("spans") or []:
-            fam, typ = sp.get("family"), sp.get("type", "")
-            if fam in ("entity", "number") and sp.get("score", 0) >= sp.get("thr", 1) and typ != "entity.numeral":
-                tags.append(sp["text"].strip(" .,?!"))
-        for ev in r.get("events") or []:
-            tags.append(ev["type"].replace("event.", ""))
-        for u in r.get("utterances") or []:
-            for it in u.get("intent") or []:
-                if it.get("on"):
-                    tags.append(it["tag"].replace("discourse.", ""))
-        seen, out = set(), []
-        for t in tags:
-            k = t.lower()
-            if t and k not in seen:
-                seen.add(k)
-                out.append(t)
-        d["meta"]["tags"] = out[:14]
+        M.tag_doc(taggers[dom], d)
     n = len(docs)
     for t in taggers.values():
         t.close()
     return time.perf_counter() - t0, n
-
-
-def embed_text_of(d):
-    """What the text vector sees: the moment's own words. (Adding neighbour context was tried and lowered recall@1 on
-    the local question set, 0.7 -> 0.5, so the neighbours only go in meta for the answer step.)"""
-    return d["text"][:600]
-
-
-def embed_title_of(d):
-    m = d["meta"]
-    role = f" · {m['role'].replace('_', ' ')}" if m.get("role") else ""
-    return f"{d['title']}{role} · {m['about']}"
 
 
 def main():

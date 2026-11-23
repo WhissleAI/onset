@@ -6,6 +6,26 @@ voice-assistant session) cut into utterance-level **moments**. Each moment has a
 **raw audio**. Both land in the same 768-d space as the query, so a spoken question's audio can search the index
 before its words settle.
 
+## Your own recordings (in the app)
+
+The public app ships no moments index (models/release_profile.json). Users index their own recordings instead, from
+the **Recordings** button in the top bar (drag-drop or *choose files*; the Mac app passes file paths, read in place).
+`server/userindex.py` runs the same pipeline as `build_index.py` through the same code, `server/moments.py`
+(`arc_labels`, `segment`, `build_docs`, `tag_doc`, `embed_title_of`): decode to 16 kHz mono (soundfile for
+wav/mp3/flac/ogg/aiff/caf; macOS `afconvert` for m4a/aac and the audio track of mp4/mov/m4v, no ffmpeg needed) ->
+Arc v1 offline `predict` in ~60 s chunks cut at the quietest 100 ms (`USER_INDEX_CHUNK_S`) -> moments -> Arc Tagger
+per moment (`meta.tags` for the ranker; `meta.chips` people / places / orgs / numbers for the UI) -> EmbeddingGemma 2
+text vector + the moment's audio vector (`USER_INDEX_AUDIO=0` to skip).
+
+Each recording is its own folder in `RECORDINGS_DIR` (default `~/Library/Application Support/<APP_NAME>/data/recordings`,
+or `<HEADSTART_DATA_DIR>/recordings`; never the repo or the bundle): `<id>/{docs.jsonl, vectors.npz}` in the format
+below, plus `manifest.json` (name, status, progress, duration, moments, stats). `lanes.index()` = installed index-data
+(if any) + every ready folder; add / remove rebuilds only that concatenation and swaps it in. One job at a time on a
+background thread, paused while a live question runs. A question routes to the local lane when it names a recording
+("in the team sync, ...") or says "my recordings" (cues added to `frame.LOCAL_CUES` per recording name).
+API: `GET /api/recordings`, `POST /api/recordings {"path"|"paths"}`, `POST /api/recordings/upload?name=` (raw bytes),
+`DELETE /api/recordings/<id>`. Tests: `tests/test_user_index.py` (fakes; `USER_INDEX_REAL=1` for the real models).
+
 ## Build
 
 ```bash

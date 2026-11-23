@@ -42,6 +42,13 @@ WEB_BACKEND = os.environ.get("WEB_BACKEND", "tavily" if TAVILY_API_KEY else "duc
 # A final question whose paid backend(s) failed tries DuckDuckGo before Wikipedia (free; the user is waiting).
 WEB_DDG_FAILOVER = os.environ.get("WEB_DDG_FAILOVER", "1") == "1"
 INDEX_DIR = _mp.resolve("index-data", "INDEX_DIR", legacy=ROOT / "index/data")
+RECORDINGS_DIR = _mp.recordings_dir()   # the user's own indexed recordings (server/userindex.py)
+# In-app indexing of the user's recordings (server/userindex.py): audio vectors per moment (EmbeddingGemma 2 audio
+# tower, ~0.4 s per moment on MPS) on/off; Arc chunk length for long files; the largest file accepted.
+USER_INDEX_AUDIO = os.environ.get("USER_INDEX_AUDIO", "1") == "1"
+USER_INDEX_CHUNK_S = float(os.environ.get("USER_INDEX_CHUNK_S", "60"))
+USER_INDEX_MAX_MB = float(os.environ.get("USER_INDEX_MAX_MB", "4096"))
+USER_INDEX_DOMAIN = os.environ.get("USER_INDEX_DOMAIN", "meeting")      # Arc + Arc Tagger domain for user recordings
 AUDIO_DIR = _mp.resolve("demo-audio", "AUDIO_DIR", legacy=ROOT / "eval/audio")   # replay questions (eval/audio/*.wav)
 
 # Tavily web lane (docs.tavily.com/documentation/api-reference/endpoint/search). Credits: ultra-fast/fast/basic = 1,

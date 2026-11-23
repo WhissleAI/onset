@@ -239,6 +239,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         return nil
     }
 
+    /// <input type="file"> (WKWebView shows no picker unless the app does it): audio / video files for My recordings
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = false
+        panel.beginSheetModal(for: window) { r in completionHandler(r == .OK ? panel.urls : nil) }
+    }
+
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
         let a = NSAlert(); a.messageText = AppInfo.name; a.informativeText = message
@@ -272,6 +281,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             } else if !on, let a = micActivity {
                 ProcessInfo.processInfo.endActivity(a)
                 micActivity = nil
+            }
+        case "pickRecordings":
+            // My recordings (web/recordings.js): pick audio / video files; the server reads them in place by path
+            // (no upload copy of a long recording), via HSRecordings.addPaths
+            let panel = NSOpenPanel()
+            panel.allowsMultipleSelection = true
+            panel.canChooseDirectories = false
+            panel.allowedContentTypes = [.audio, .movie]
+            panel.message = "Choose recordings to index on this Mac"
+            panel.beginSheetModal(for: window) { [weak self] r in
+                guard r == .OK, let self = self else { return }
+                let paths = panel.urls.map { $0.path }
+                guard let data = try? JSONSerialization.data(withJSONObject: paths),
+                      let json = String(data: data, encoding: .utf8) else { return }
+                self.web.evaluateJavaScript("window.HSRecordings && window.HSRecordings.addPaths(\(json))")
             }
         case "savePNG":
             guard let s = body["data"] as? String, let comma = s.firstIndex(of: ","), s.hasPrefix("data:image/png;base64"),
