@@ -52,9 +52,14 @@ for p in (tagger.MODEL_DIR / "arctag_int8.onnx", tagger.MODEL_DIR / "tokenizer.j
           config.INDEX_DIR / "docs.jsonl", config.AUDIO_DIR / "q01.wav", config.AUDIO_DIR / "local_05.wav"):
     if p.exists(): line("OK", str(p))
     else: line("FAIL", f"missing {p} (scripts/fetch_models.py status; build-tagger for the dylib)"); bad = True
-arc = config.ARC_DIR / "model.safetensors"
-if arc.exists(): line("OK", f"Arc ear weights ({config.ARC_DIR})")
-else: line("FAIL", f"Arc ear weights missing: {arc} (scripts/fetch_models.py status)"); bad = True
+from server import ear, modelpaths
+if ear.backend() == "v1":
+    arc = [config.ARC_DIR / "model.safetensors"]
+else:
+    arc = [config.ARC_MINI_DIR / "model.q4.safetensors", modelpaths.arc_lib()]
+for p in arc:
+    if p.exists(): line("OK", f"Arc ear ({ear.backend()}): {p}")
+    else: line("FAIL", f"Arc ear ({ear.backend()}) missing {p} (scripts/fetch_models.py status; build-arc for the dylib)"); bad = True
 from pathlib import Path
 if Path(config.EMBED_MODEL, "config.json").exists():
     line("OK", f"EmbeddingGemma 2 ({config.EMBED_MODEL})")

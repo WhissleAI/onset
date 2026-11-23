@@ -2095,3 +2095,19 @@ in the bundle. Where it stands:
 - **Numbers**: every digit on a slide sits in an element with `data-src="<doc>"` and `tests/test_deck.py` (47) checks it
   appears verbatim in that doc. Two are derived and recomputed: 0.49 s = the 486 ms paired median; 27% = 1 − 46/63
   credits. Digits outside a data-src element fail the test. README and the landing page (nav + footer) link the PDF.
+## Arc Mini in C replaces Arc v1 as the ear (branch feat/arc-mini; server/arc_c.py, vendor/arc, MACAPP.md "Arc Mini in C")
+- **What**: `ARC_BACKEND=mini` (default) runs Arc Mini (`WhissleAI/arc-v1.1` `mini/` v1.2.0, 71 MB, `MODELS_DIR/arc-mini`)
+  through libarc 1.4.1 (WhissleAI/arc_transcriber `c/` @955218a, vendored in `vendor/arc`, built by
+  `fetch_models.py build-arc`) via ctypes: the Arc ear, Arc metadata under Flux (`ARC_META=mini`, EXTERNAL stream) and
+  recordings (`arc_transcribe`). No torch. `ARC_BACKEND=v1` keeps arc_audio 1.0.1 for comparison.
+- **Patch** (`arc_stream_set_words`, vendor/arc/ORIGIN.md): word times on streamed partials + finals, and partials
+  decoded from a fresh encode of their window (as arc_audio 1.0.1). Without the re-encode, words showed ~0.25 s later
+  (complete p50 300 vs 60 ms).
+- **A/B** (`eval/arc_ear_eval.py`, 205 clean spoken questions + 52 at 10 dB SNR): WER 6.84 % vs 6.90 % clean,
+  35.3 % vs 43.5 % noisy; words shown as fast (complete p50 60 ms both, 0.16 vs 0.15 words behind); compute per 100 ms
+  12.6 vs 24.9 ms mean; cold start 0.2-0.6 vs 4.5 s; RSS 413 vs 1,098 MB; download 71 vs 577 MB.
+- **Release**: `models/release_profile.json` ships arc-mini, skips arc-v1 (now optional). The app build must also
+  build + sign `libarc.dylib` into `Resources/app/vendor/arc/` and copy the Arc licences (MACAPP.md hand-off).
+- **Gaps**: no Arc voice-embedding tap in libarc, so ArcState voice enrollment is off on Arc Mini; director v2's
+  unshipped Arc columns (affect, speaker change, ...) are None on it (DIRECTOR_STREAMS is off by default).
+- Tests: tests/test_arc_c.py (13); full suite 793 passed, 3 skipped.

@@ -16,7 +16,7 @@ mic ─▶ Arc (streaming ASR + events) ─▶ Arc Tagger (10M, 0.7 ms/word) ─
 
 | piece | role | why it matters |
 |---|---|---|
-| **Arc v1** (Whissle, on-device) | live words every ~100 ms, self-revising; its own `command_complete` | words + revisions while the person is still talking |
+| **Arc Mini** (Whissle, on-device, in C: libarc, 71 MB, no torch) | live words every ~100 ms, self-revising; its own `command_complete` | words + revisions while the person is still talking |
 | **Arc Tagger v0.3** (Whissle, 10M, native C int8) | partial sentence → intent, typed slots, dialogue act, `command_complete` | understands the query in ~1 ms/word instead of an LLM router's ~500 ms; updates as words revise |
 | **Speculator** (`server/speculator.py`) | when to search, what to search, cancel stale, draft early, verify reuse | the search intelligence |
 | **EmbeddingGemma 2** (Google, 740M, text+audio+image) | reranks the pool; local moments index; embeds the *spoken audio* of the question | one space for audio and text: retrieval can start before the words settle |
@@ -33,7 +33,7 @@ stay on your Mac. You can speak (hold Space) or type. Release steps: [MACAPP.md]
 
 ## Index your own recordings
 Click **Recordings** in the top bar and drop in a meeting, call or voice memo (wav, mp3, m4a, aac, flac, ogg, or the
-audio of an mp4 / mov). On your Mac, Arc v1 transcribes it with word timings, Arc Tagger marks the people, places and
+audio of an mp4 / mov). On your Mac, Arc Mini transcribes it with word timings, Arc Tagger marks the people, places and
 numbers, and EmbeddingGemma 2 embeds each moment. Then ask "in the team sync, when is the load test?": the local lane
 answers with the moment ("Team sync · 01:12") and its tags. Nothing is uploaded. A 2-minute recording takes about 15 s;
 indexing pauses while you ask a question. Remove a recording and its moments leave the index. Details:

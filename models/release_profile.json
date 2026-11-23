@@ -1,11 +1,13 @@
 {
  "about": "What the public Mac release bundles from models/manifest.json (scripts/fetch_models.py bundle). A model not named here is bundled whole when required and left out when optional. Every rule says why.",
  "models": {
+  "arc-mini": {
+   "files": "all",
+   "note": "Arc Mini (Whissle, CC BY-NC 4.0 + Whissle terms; Moonshine tiny inside is MIT): the ear, Arc metadata and recordings, run by libarc (no torch). LICENSE + NOTICE ship in the model folder and Resources/Licenses. 71 MB instead of arc-v1's 437 MB."
+  },
   "arc-v1": {
-   "exclude": [
-    "moonshine-streaming-tiny/decoder_v1e.safetensors"
-   ],
-   "note": "Whissle's own model (CC BY-NC 4.0); Moonshine tiny inside is MIT. Licence + NOTICE ship in Resources/Licenses. decoder_v1e (138 MB) is left out: the server uses the tagged decoder, and arc_audio only loads v1e when the file exists (else the built-in decoder)."
+   "skip": "replaced by arc-mini",
+   "note": "Replaced by arc-mini (ARC_BACKEND=mini; eval/arc_ear_eval.py A/B in MACAPP.md 'Arc Mini in C'): not shipped. ARC_BACKEND=v1 is a developer fallback only."
   },
   "arctag": {
    "files": "all",

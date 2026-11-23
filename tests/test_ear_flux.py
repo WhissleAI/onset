@@ -368,6 +368,7 @@ def test_arc_meta_rides_along_and_reaches_the_readout(monkeypatch):
     e_off = []
     monkeypatch.setattr(config, "ARC_META", "mini")
     monkeypatch.setattr(ear, "arc", lambda: fa)
+    monkeypatch.setattr(config, "ARC_BACKEND", "v1")   # the arc_audio-shaped fake
     no_tagger_gate(monkeypatch)
 
     async def go():
@@ -405,6 +406,7 @@ def test_arc_meta_failure_never_touches_words(monkeypatch):
             return s
     monkeypatch.setattr(config, "ARC_META", "mini")
     monkeypatch.setattr(ear, "arc", lambda: Boom())
+    monkeypatch.setattr(config, "ARC_BACKEND", "v1")   # the arc_audio-shaped fake
 
     async def go():
         async with FakeFlux(NVIDIA) as srv:
@@ -424,6 +426,7 @@ def test_eager_waits_for_arc_command_complete(monkeypatch):
     monkeypatch.setattr(config, "ARC_META", "mini")
     monkeypatch.setattr(config, "FLUX_SOFT", "eager+arc")
     monkeypatch.setattr(ear, "arc", lambda: fa)
+    monkeypatch.setattr(config, "ARC_BACKEND", "v1")   # the arc_audio-shaped fake
     no_tagger_gate(monkeypatch)
 
     async def go():

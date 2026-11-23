@@ -1,7 +1,7 @@
 """Recording -> utterance-level moments: the code shared by the offline index build (index/build_index.py) and the
 in-app ingest of the user's own recordings (server/userindex.py), so both produce the same moments, tags and vectors.
 
-  arc_labels(out, domain)        Arc v1 predict() output -> words [(text, start, end)] + labels (names, numbers, events,
+  arc_labels(out, domain)        Arc offline output (arc_audio predict() or server/arc_c.py's predict_shape) -> words [(text, start, end)] + labels (names, numbers, events,
                                  roles, speakers) on the clip's clock
   segment(words, p, bounds)      word timestamps -> moments (pause / sentence / length rules, tiny moments merged)
   build_docs(src, words, lab)    moments -> docs.jsonl rows (title "<label> · mm:ss", meta.tags, neighbour context)
@@ -37,7 +37,7 @@ def mmss(t: float) -> str:
 
 
 def arc_labels(a: dict, domain: str) -> tuple[list, dict]:
-    """Arc v1 offline predict() output (transcript='builtin') -> (words [(text, start, end)], labels
+    """Arc offline output (Arc v1 predict(transcript='builtin'), or Arc Mini via arc_c.predict_shape) -> (words [(text, start, end)], labels
     {names:[(s,e,text,kind)], numbers:[(s,e,value,kind)], events:[(t,tag)], roles:[(s,e,role)], spk:[(s,e,speaker)],
     phases, words_source, labels_source})."""
     words = []
@@ -60,7 +60,8 @@ def arc_labels(a: dict, domain: str) -> tuple[list, dict]:
                      if role_of.get(d["speaker"])],
            "spk": [(d["start"], d["end"], d["speaker"]) for d in a.get("diarization") or []],
            "phases": [],
-           "words_source": "Arc v1 built-in decoder (offline predict)", "labels_source": "Arc v1"}
+           "words_source": f"{a.get('model_name') or 'Arc v1'} built-in decoder (offline)",
+           "labels_source": a.get("model_name") or "Arc v1"}
     return words, lab
 
 

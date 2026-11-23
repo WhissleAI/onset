@@ -27,6 +27,14 @@ from . import modelpaths as _mp  # noqa: E402
 APP_NAME = _mp.app_name()
 MODELS_DIR = _mp.models_dir()
 DATA_DIR = _mp.data_dir()
+# The Arc ear (and Arc metadata, recordings): ARC_BACKEND=mini (default) = Arc Mini in C (libarc, vendor/arc; weights
+# MODELS_DIR/arc-mini = WhissleAI/arc-v1.1 mini/ v1.2.0; no torch) | v1 = the old Arc v1 Mini (arc_audio 1.0.1 + torch,
+# MODELS_DIR/arc-v1). MACAPP.md "Arc Mini in C" has the A/B (eval/arc_ear_eval.py).
+ARC_BACKEND = os.environ.get("ARC_BACKEND", "mini").strip().lower()
+ARC_MINI_DIR = _mp.resolve("arc-mini", "ARC_MINI_DIR")
+ARC_C_THREADS = int(os.environ.get("ARC_C_THREADS", "2"))         # libarc worker threads per stream / engine
+ARC_PARTIAL_MS = int(os.environ.get("ARC_PARTIAL_MS", "400"))     # a partial every ... ms of audio (arc-v1: 400)
+ARC_PARTIAL_ENCODE = os.environ.get("ARC_PARTIAL_ENCODE", "1") == "1"   # partials re-encode their window (arc-v1 did)
 ARC_DIR = _mp.resolve("arc-v1", "ARC_DIR")
 ARC_THREADS = int(os.environ.get("ARC_THREADS", "6"))
 EMBED_MODEL = _mp.embed_model()

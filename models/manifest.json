@@ -3,9 +3,122 @@
  "about": "Every model / data file Onset needs, where it comes from, and its checksum. scripts/fetch_models.py fills MODELS_DIR (default ~/Library/Application Support/<APP_NAME>/models) from this; server/modelpaths.py resolves paths by 'dir'.",
  "models": [
   {
-   "name": "Arc v1 (streaming ear: words, revisions, command_complete; also Arc metadata under Flux)",
-   "dir": "arc-v1",
+   "name": "Arc Mini (the streaming ear: words with times, revisions, command_complete; also Arc metadata under Flux and recordings), run by libarc in C",
+   "dir": "arc-mini",
    "required": true,
+   "source": {
+    "type": "hf",
+    "repo": "WhissleAI/arc-v1.1",
+    "revision": "6f637153ea4953d81811e68168cd29572316d32b",
+    "note": "Gated repo (accept the Arc licence on Hugging Face; set HF_TOKEN to fetch). Files are the repo's mini/ folder plus its LICENSE and NOTICE."
+   },
+   "revision": "v1.2.0 (WhissleAI/arc-v1.1 tag; mini/ = the v1.1.1 weights), 4-bit weights read by libarc 1.4.1 (vendor/arc)",
+   "license": "CC BY-NC 4.0 + Whissle terms (Arc weights, LICENSE); bundled Moonshine Streaming tiny (modified): MIT (moonshine-streaming-tiny/LICENSE); see NOTICE",
+   "note": "Default ear since ARC_BACKEND=mini (MACAPP.md 'Arc Mini in C'). No torch: loaded by server/arc_c.py through libarc.dylib.",
+   "files": [
+    {
+     "path": "LICENSE",
+     "size": 22053,
+     "sha256": "47377b0214c20476d0c6a2c934d9b9845e54155f8df860e7f668eaf8f460b11a"
+    },
+    {
+     "path": "NOTICE",
+     "size": 1352,
+     "sha256": "55037ef591c392a4989b0a2c082788b7d2f14805c7d14e165444caee8dca1134"
+    },
+    {
+     "path": "config.json",
+     "size": 106001,
+     "sha256": "d3573c09e5f4e3a01a6a19d267169b2b11d80d933d8bbc1b29c30532df19ee49",
+     "remote": "mini/config.json"
+    },
+    {
+     "path": "heads.safetensors",
+     "size": 6727212,
+     "sha256": "4d598e53b4eb29a0dabb9fe58f36531ffc0aeb91e39e28668eec52f4ca7b25f5",
+     "remote": "mini/heads.safetensors"
+    },
+    {
+     "path": "model.q4.safetensors",
+     "size": 37098434,
+     "sha256": "cccf781963855beedcfd439fd7740a8756ae5b80518700eac7ac55906eccdc9f",
+     "remote": "mini/model.q4.safetensors"
+    },
+    {
+     "path": "moonshine-streaming-tiny/LICENSE",
+     "size": 14180,
+     "sha256": "fa7d1174dd8af6a7cd280be20b80d10095ed4c19b5b20b61a7715c3ad790dc5f",
+     "remote": "mini/moonshine-streaming-tiny/LICENSE"
+    },
+    {
+     "path": "moonshine-streaming-tiny/ORIGIN.md",
+     "size": 507,
+     "sha256": "ee0e6a8c47f582e84568d2a51e93bdacf869d0d4b4d1b3b0e8d3257138dfb232",
+     "remote": "mini/moonshine-streaming-tiny/ORIGIN.md"
+    },
+    {
+     "path": "moonshine-streaming-tiny/config.json",
+     "size": 1537,
+     "sha256": "5c00a220c4588d8ccc525eb0d9b0e9c23788addd0cab9007976fb7fcdfd5a0e9",
+     "remote": "mini/moonshine-streaming-tiny/config.json"
+    },
+    {
+     "path": "moonshine-streaming-tiny/generation_config.json",
+     "size": 163,
+     "sha256": "c875411220a20402cb62bf4ec2f17ad3148ea6ac119a4eb4bed3ba224e801215",
+     "remote": "mini/moonshine-streaming-tiny/generation_config.json"
+    },
+    {
+     "path": "moonshine-streaming-tiny/model.q4.safetensors",
+     "size": 25129580,
+     "sha256": "5a5ea9d7d0daf58008db6df4856b70ee01df5b69ee074ebe7d95d51bb7c9d9d8",
+     "remote": "mini/moonshine-streaming-tiny/model.q4.safetensors"
+    },
+    {
+     "path": "moonshine-streaming-tiny/processor_config.json",
+     "size": 340,
+     "sha256": "41db69af4b4f77d88e3d9d403d3bda2d027547b8880cda6507f2ac23dc09f1c1",
+     "remote": "mini/moonshine-streaming-tiny/processor_config.json"
+    },
+    {
+     "path": "moonshine-streaming-tiny/tokenizer.json",
+     "size": 1691602,
+     "sha256": "52f75b90b1308a44ab450f7c348af66ac2d75431f8753040c0f79a2993d5946d",
+     "remote": "mini/moonshine-streaming-tiny/tokenizer.json"
+    },
+    {
+     "path": "moonshine-streaming-tiny/tokenizer_config.json",
+     "size": 294,
+     "sha256": "68abd67d38150c56e3b44af16f005a5220d6ec2380cc98de16c35415c620c5af",
+     "remote": "mini/moonshine-streaming-tiny/tokenizer_config.json"
+    },
+    {
+     "path": "tags.json",
+     "size": 145150,
+     "sha256": "d68e86adca1aacf1d46cdd91ea24dfae0d902c9548544f71e23543e1eab4f902",
+     "remote": "mini/tags.json"
+    }
+   ],
+   "size": 70938405
+  },
+  {
+   "name": "Arc native library (libarc.dylib: Arc Mini in C11, no dependencies)",
+   "dir": null,
+   "required": true,
+   "source": {
+    "type": "build",
+    "from": "vendor/arc/src (in this repo: WhissleAI/arc_transcriber c/ @955218a, libarc 1.4.1, plus arc_stream_set_words)",
+    "command": "scripts/fetch_models.py build-arc"
+   },
+   "revision": "libarc 1.4.1, ABI 2 (vendor/arc/include/arc.h)",
+   "license": "CC BY-NC 4.0 + Whissle terms (vendor/arc/LICENSE); Metaphone port: MIT (vendor/arc/NOTICE)",
+   "files": [],
+   "size": 0
+  },
+  {
+   "name": "Arc v1 (the old ear: arc_audio 1.0.1 on torch; only with ARC_BACKEND=v1)",
+   "dir": "arc-v1",
+   "required": false,
    "source": {
     "type": "local",
     "note": "No public source: https://huggingface.co/WhissleAI/arc-v1 (named in its README) is not reachable anonymously. The public successor WhissleAI/arc-v1.1 (gated: accept terms) ships a different package + q4 weights and is not a drop-in for server/ear.py. Import a copy: fetch_models.py import arc-v1=PATH."
