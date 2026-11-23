@@ -247,9 +247,9 @@
    "name": "Arc Tagger (10M text tagger, int8 ONNX weights read by libarctag)",
    "dir": "arctag",
    "required": true,
-   "revision": "v0.4.1 (Hub main, 2026-11-13). A local v0.3.0 copy is accepted too ('also').",
+   "revision": "Hub main 5004492 (2026-11-17): the v0.4.1 int8 weights, tokenizer and meta unchanged; the commit adds onnx/arctag_kids.json (kids / game thresholds, not used by OnSet: libarctag 0.5.0 has the same table built in). A local v0.3.0 copy is accepted too ('also').",
    "license": "CC BY-NC 4.0 + Whissle terms (models/arctag/LICENSE)",
-   "note": "The repo was built and tested on v0.3.0, which the Hub no longer has. Against v0.4.1: 47/48 of test_tagger_depth + test_speculation + test_planner pass (one planner filler case splits).",
+   "note": "Runtime: vendor/arctag = arc-tagger-c 0.5.0 (main d2c3e4d, 2026-11-23: kids / game profile + guard layer, off unless the kids profile is chosen; same native int8 kernels as 0.4.1).",
    "size": 10056181,
    "source": {
     "type": "archive",
@@ -280,47 +280,42 @@
    ]
   },
   {
-   "name": "EmbeddingGemma 2 (740M; text + audio embeddings, reranker, local index)",
-   "dir": "embeddinggemma-2",
-   "required": true,
-   "revision": "f9972ac22e696a105c482202646979e33e4b5a1e",
-   "license": "Apache 2.0 (model card)",
-   "size": 1525810627,
+   "name": "EmbeddingGemma 2, ONNX (text + audio towers, 8-bit weights; used instead of embeddinggemma-2 when ONNX_RUNTIME=1)",
+   "dir": "embeddinggemma-2-onnx",
+   "required": false,
+   "revision": "export of google/embeddinggemma-2@f9972ac22e696a105c482202646979e33e4b5a1e, MatMulNBits 8-bit block 32 accuracy_level 4 (onnxruntime 1.32.0)",
+   "license": "Apache 2.0 (EmbeddingGemma 2 model card; modified: see NOTICE). Gemma Prohibited Use Policy applies to deployments.",
+   "size": 669300817,
    "source": {
     "type": "archive",
     "format": "tar",
-    "url": "https://www.dropbox.com/scl/fi/xo6kl23kzf34becet1us2/embeddinggemma-2.tar?rlkey=4m2kkab3trmv67j27lolmp56p&dl=1",
-    "size": 1525821440,
-    "sha256": "4a0b7bc623de610afc517b0cf452976670d31fbfdbbf7e3eeafc0ab46f9a749b",
+    "url": "https://www.dropbox.com/scl/fi/whe0thz132yml7y7h5s8o/embeddinggemma-2-onnx.tar?rlkey=87a2a5l3cwotf9tk2o3lapb60&dl=1",
+    "size": 669317120,
+    "sha256": "1d756d65bbc073c97988fae6bac1a8774c3668272335f91aeacfb951cc288348",
     "host": "Dropbox",
-    "origin": "google/embeddinggemma-2"
+    "origin": "local"
    },
-   "release_note": "Google, Apache 2.0 (model card).",
+   "release_note": "Google EmbeddingGemma 2, Apache 2.0 (model card), exported to ONNX and weight-only 8-bit quantised by Whissle (modified: see NOTICE). Gemma Prohibited Use Policy applies.",
    "files": [
     {
-     "path": "1_Pooling/config.json",
-     "size": 90,
-     "sha256": "8759bdf7c77efc7df7723f64856a593c8943b71ee38baf2a88771fbaf78438f9"
+     "path": "LICENSE",
+     "size": 11358,
+     "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
     },
     {
-     "path": "2_Normalize/config.json",
-     "size": 97,
-     "sha256": "cdb09dfca347a56aa2d691744e38d5ad3c7cbc2834e7181272b9a15328b82524"
+     "path": "NOTICE",
+     "size": 1139,
+     "sha256": "363cccce1927df693646c717a1d6e5271fc900cd203e3d9979aaefa63cd0718e"
     },
     {
-     "path": "README.md",
-     "size": 22234,
-     "sha256": "2c058c304c68221f1de80979594036eff3972b2bce686bb7b0f43621a6b0b011"
+     "path": "audio.onnx",
+     "size": 346234746,
+     "sha256": "8d6ac9b66eea82d6eab5763256d4d6e21dd69ce88e2ee7b4651df5963f6aa8cc"
     },
     {
-     "path": "chat_template.jinja",
-     "size": 1016,
-     "sha256": "4b852efc0b9960283e735363331e6f325b33bc74bdbaa076f595bc4e9b94d85e"
-    },
-    {
-     "path": "config.json",
-     "size": 4455,
-     "sha256": "b8f1e9931b57fbc054acdb445c41765d55b0074c58d145fa82839941ad1b5bb3"
+     "path": "audio_frontend.npz",
+     "size": 266784,
+     "sha256": "e60dc560ca61a2b358fcbb229228151032ea54bdf20106b2a12c29347675983c"
     },
     {
      "path": "config_sentence_transformers.json",
@@ -328,44 +323,95 @@
      "sha256": "031e56a498d33c349ab489a21885bcfe25b4fcba841149dc99e1e90d4a7c28f5"
     },
     {
-     "path": "model.safetensors",
-     "size": 1488915288,
-     "sha256": "197a32965d4b1105faf060417baa899e193fb73cd401f42ec9295234d5553d79"
+     "path": "embed_tokens.npz",
+     "size": 135267060,
+     "sha256": "982c3e23369aa1bc466f18bd86605c2134e07995c5afca48b6a7e78c6fe8b8b2"
     },
     {
-     "path": "modules.json",
-     "size": 413,
-     "sha256": "3d02572a0455b832de67fb8e63a54981bc7e8b46e337c95e917bd8122a533bfd"
-    },
-    {
-     "path": "preprocessor_config.json",
-     "size": 511,
-     "sha256": "ea2ae257e901064abdd98dceb19f2b0da06af600bed15e0f99f5c85c37ee9d78"
-    },
-    {
-     "path": "processor_config.json",
-     "size": 1788,
-     "sha256": "168f6a08522f3ce5dea596d94d003af2fd691742d4f41fe1f9d8cce76bfbf69c"
-    },
-    {
-     "path": "sentence_bert_config.json",
-     "size": 747,
-     "sha256": "b1bcd9f2dce3ae863b359e87d0710b5dbc3314a59ecb4e2f97c7778fc8e4b228"
+     "path": "text.onnx",
+     "size": 155347655,
+     "sha256": "dbc9584746e2ae6e43b6dc0bf5f2d3b5158fc2a848604b3c67e7a5b81187f120"
     },
     {
      "path": "tokenizer.json",
      "size": 32170510,
      "sha256": "4d777ef5bdc1aa36227abdfb77c3e49e7b9c892d16e1b6bda41c393504828be4"
+    }
+   ]
+  },
+  {
+   "name": "Qwen2.5-0.5B-Instruct, 4-bit ONNX (on-device answer writer: the short grounded answer from the sources)",
+   "dir": "answer-lm",
+   "required": true,
+   "revision": "onnx-community/Qwen2.5-0.5B-Instruct@22942cb7d7ba4cc81bb4673549ca4d4614469b5e, 4-bit tied embedding/LM head, last-position logits, accuracy_level 4 (onnxruntime 1.32.0)",
+   "license": "Apache 2.0 (LICENSE in the model folder)",
+   "note": "Loaded by server/answer_lm.py (onnxruntime + tokenizers, no torch). Without it answers fall back to the best source sentence (server/answer.py extractive).",
+   "size": 338214094,
+   "source": {
+    "type": "archive",
+    "format": "tar",
+    "url": "https://www.dropbox.com/scl/fi/lzutysytxy2n0eusp9s23/answer-lm.tar?rlkey=sgpgx3h8bgkv2m3neujywaeno&dl=1",
+    "size": 338227200,
+    "sha256": "9d8beea8027514321ed05104b97d8422903db4890a900d8510465e78556f2e73",
+    "host": "Dropbox",
+    "origin": "local"
+   },
+   "release_note": "Qwen2.5-0.5B-Instruct (Alibaba Cloud / Qwen team), Apache 2.0: LICENSE ships in the model folder and Resources/Licenses. Writes the on-device answer; no key needed.",
+   "files": [
+    {
+     "path": "LICENSE",
+     "size": 11343,
+     "sha256": "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e"
     },
     {
-     "path": "tokenizer.model",
-     "size": 4689013,
-     "sha256": "e594c8a90eb08d8bda498ff4747977dc827ae0c3c56b5c0d41a605a22d02ef03"
+     "path": "README.md",
+     "size": 4917,
+     "sha256": "b19c806a904db6dc878a0462e70b551f6b7ac78dfbb88c2eb966ca2b9109ae15"
+    },
+    {
+     "path": "added_tokens.json",
+     "size": 605,
+     "sha256": "58b54bbe36fc752f79a24a271ef66a0a0830054b4dfad94bde757d851968060b"
+    },
+    {
+     "path": "config.json",
+     "size": 678,
+     "sha256": "777e01f0fbb3346eb229cb6fb278ed6533c1e4dcb9ebf4bed0f6e94ef17fa1b5"
+    },
+    {
+     "path": "generation_config.json",
+     "size": 242,
+     "sha256": "f7e7ce458658b2d40d9eb213b91b77a8bf698845ab89360976722d7ac46928a3"
+    },
+    {
+     "path": "merges.txt",
+     "size": 1671853,
+     "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
+    },
+    {
+     "path": "model.onnx",
+     "size": 326707488,
+     "sha256": "8a282c794f5056c44df4e5e7c74360d29c90bda7c0d8e8b278b538d3fe2d5ecf"
+    },
+    {
+     "path": "special_tokens_map.json",
+     "size": 613,
+     "sha256": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd"
+    },
+    {
+     "path": "tokenizer.json",
+     "size": 7031673,
+     "sha256": "a8506e7111b80c6d8635951a02eab0f4e1a8e4e5772da83846579e97b16f61bf"
     },
     {
      "path": "tokenizer_config.json",
-     "size": 1599,
-     "sha256": "17bd5d6e9364ca49a534e1502076593317c298d4a663623091ed45388f004874"
+     "size": 7849,
+     "sha256": "6a14243f0ae04884e597b3f032c05e15de9f417318fdcac24ab4e2680e691430"
+    },
+    {
+     "path": "vocab.json",
+     "size": 2776833,
+     "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
     }
    ]
   },
@@ -385,7 +431,7 @@
     "host": "Dropbox",
     "origin": "local"
    },
-   "release_note": "Only the Wikipedia leads (knowledge/: 11,085 lead paragraphs, every row's url is en.wikipedia.org; CC BY-SA 4.0 with attribution). The local-moments index (arc/, audio/, docs.jsonl, vectors.npz, retrieval_eval.json) is built from broadcast clips and private recordings (incl. a parent-teacher meeting) and must never ship; local-moments search is simply absent in the release.",
+   "release_note": "Only the Wikipedia leads (knowledge/: 11,085 lead paragraphs, every row's url is en.wikipedia.org; CC BY-SA 4.0 with attribution). The local-moments index (arc/, audio/, docs.jsonl, vectors.npz, retrieval_eval.json) is built from third-party broadcast and video clips (not ours to redistribute) and must never ship; local-moments search is simply absent in the release.",
    "files": [
     {
      "path": "knowledge/leads.jsonl",
