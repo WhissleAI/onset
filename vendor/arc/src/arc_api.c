@@ -1,0 +1,799 @@
+/* libarc public API: the release folder, the transcript (Arc.transcribe), and (arc_trunk.c / arc_heads.c) the trunk
+ * readout and events.
+ * Part of arc_transcriber (Whissle Inc.), CC BY-NC 4.0; see LICENSE. */
+#include "arc.h"
+
+#include <ctype.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "arc_base.h"
+#include "arc_moon.h"
+#include "arc_text.h"
+#include "arc_tok.h"
+#include "arc_engine.h"
+
+int arc_abi_version(void) { return ARC_ABI_VERSION; }
+const char* arc_version(void) { return ARC_VERSION; }
+
+/* ------------------------------------------------------------------ config */
+
+static int load_cfg(arc_engine* e, const char* dir) {
+  char path[1200];
+  snprintf(path, sizeof path, "%s/config.json", dir);
+  char* text = NULL;
+  size_t len = 0;
+  if (arc_read_file(path, &text, &len)) return -1;
+  e->cfg = arc_json_parse(text, len);
+  arc_free(text);
+  if (!e->cfg) return -1;
+  const arc_json* tr = arc_json_get(e->cfg, "transcription");
+  arc_seg_cfg_default(&e->seg);
+  e->seg.pause_s = (float)arc_json_num(arc_json_get(tr, "pause_s"), 0.4);
+  e->seg.min_s = (float)arc_json_num(arc_json_get(tr, "min_s"), 1.0);
+  e->seg.max_s = (float)arc_json_num(arc_json_get(tr, "max_s"), 15.0);
+  e->seg.cut_lookback_s = (float)arc_json_num(arc_json_get(tr, "cut_lookback_s"), 3.0);
+  e->seg.min_voiced_s = (float)arc_json_num(arc_json_get(tr, "min_voiced_s"), 0.3);
+  e->pad_s = arc_json_num(arc_json_get(tr, "pad_s"), 0.15);
+  e->tokens_per_s = arc_json_num(arc_json_get(tr, "tokens_per_s"), 7.0);
+  e->len_mult = arc_json_num(arc_json_get(arc_json_get(arc_json_get(tr, "decoders"), "tagged"), "len_mult"), 1.3);
+  e->loop_guard = (int)arc_json_num(arc_json_get(tr, "loop_guard"), 1);
+  e->beams = 4;   /* Arc.TRANSCRIPT_CFG['builtin'].final_beams */
+  /* tag offsets, suppressed ids (reserved tag slots and everything above the tag range), repeat guard */
+  const arc_json* off = arc_json_get(tr, "tag_offsets");
+  e->n_off = 0;
+  if (off && off->type == ARC_JOBJ)
+    for (int i = 0; i < off->n && e->n_off < 64; ++i) {
+      int id = arc_tag_id(off->keys[i]);
+      float v = (float)off->items[i].num;
+      if (id >= 0 && v != 0.0f) {
+        e->off_id[e->n_off] = id;
+        e->off_val[e->n_off++] = v;
+      }
+    }
+  e->n_sup = 0;
+  e->sup[e->n_sup++] = 32630;
+  e->sup[e->n_sup++] = 32631;
+  for (int i = 32636; i < ARC_MOON_VOCAB; ++i) e->sup[e->n_sup++] = i;
+  arc_align_cfg_load(&e->align, arc_json_get(e->cfg, "alignment"));
+  e->procs = (arc_moon_procs){e->n_off, e->off_id, e->off_val, e->loop_guard ? e->n_sup : 0, e->sup, e->loop_guard,
+                              8, 4, 6, NULL};
+  return 0;
+}
+
+/* ------------------------------------------------------------------ lifecycle */
+
+static __thread char g_err[512];
+const char* arc_last_error(void) { return g_err[0] ? g_err : arc_geterr(); }
+
+arc_engine* arc_create(const char* dir, int threads, char* err, size_t err_len) {
+  return arc_create_ex(dir, threads, 0, err, err_len);
+}
+
+int arc_has_decoder(const arc_engine* e) { return e && e->tok != NULL; }
+
+arc_engine* arc_create_ex(const char* dir, int threads, int flags, char* err, size_t err_len) {
+  arc_engine* e = arc_calloc(sizeof *e);
+  if (!e) goto fail;
+  if (threads <= 0) threads = 4;
+  e->dir = arc_strdup(dir);
+  if (load_cfg(e, dir)) goto fail;
+  char path[1200];
+  snprintf(path, sizeof path, "%s/%s", dir,
+           arc_json_str(arc_json_get(arc_json_get(e->cfg, "encoder"), "subfolder"), "moonshine-streaming-tiny"));
+  int no_dec = (flags & ARC_NO_DECODER) != 0;
+  if (!(e->moon = arc_moon_load_ex(path, threads, no_dec))) goto fail;
+  if (!no_dec) {
+    char tp[1300];
+    snprintf(tp, sizeof tp, "%s/tokenizer.json", path);
+    if (!(e->tok = arc_tok_load(tp))) goto fail;
+  }
+  if (arc_engine_load_trunk(e, dir)) goto fail;   /* trunk, heads, ontology (arc_engine.c) */
+  return e;
+fail:
+  if (err && err_len) snprintf(err, err_len, "%s", arc_geterr());
+  arc_destroy(e);
+  return NULL;
+}
+
+/* The Arc layer of an NFT2 folder (arc_nft2.c): config, the decoder alone (decoder/), its tokenizer, the trunk and
+ * heads (events / device-directed in adapters.safetensors), with the transcript settings Arc.nft2_finals uses
+ * (decoders.tagged: greedy, len_base / tokens_per_s / len_mult; the space tags 32636..32639 allowed). */
+arc_engine* arc_engine_create_nft2(const char* dir, int threads) {
+  arc_engine* e = arc_calloc(sizeof *e);
+  if (!e) return NULL;
+  if (threads <= 0) threads = 4;
+  e->dir = arc_strdup(dir);
+  e->aux_file = "adapters.safetensors";
+  e->word_external = 1;
+  e->space_names = 1;
+  if (load_cfg(e, dir)) goto fail;
+  const arc_json* tr = arc_json_get(e->cfg, "transcription");
+  const arc_json* tg = arc_json_get(arc_json_get(tr, "decoders"), "tagged");
+  e->tokens_per_s = arc_json_num(arc_json_get(tg, "tokens_per_s"), e->tokens_per_s);
+  e->len_mult = arc_json_num(arc_json_get(tg, "len_mult"), 1.0);
+  e->len_base = arc_json_num(arc_json_get(tg, "len_base"), arc_json_num(arc_json_get(tr, "len_base"), 4.0));
+  e->beams = (int)arc_json_num(arc_json_get(tg, "final_beams"), 1);
+  /* tagdec.NEVER_EMIT with the space tags: the reserved slots and 32640.. */
+  e->n_sup = 0;
+  e->sup[e->n_sup++] = 32630;
+  e->sup[e->n_sup++] = 32631;
+  for (int i = 32640; i < ARC_MOON_VOCAB; ++i) e->sup[e->n_sup++] = i;
+  e->procs.n_suppress = e->loop_guard ? e->n_sup : 0;
+  char path[1200];
+  snprintf(path, sizeof path, "%s/%s", dir,
+           arc_json_str(arc_json_get(arc_json_get(e->cfg, "encoder"), "subfolder"), "decoder"));
+  if (!(e->moon = arc_moon_load_parts(path, threads, 0, 1))) goto fail;
+  char tp[1300];
+  snprintf(tp, sizeof tp, "%s/tokenizer.json", path);
+  if (!(e->tok = arc_tok_load(tp))) goto fail;
+  if (arc_engine_load_trunk(e, dir)) goto fail;
+  return e;
+fail:
+  arc_destroy(e);
+  return NULL;
+}
+
+int arc_set_threads(arc_engine* e, int threads) {
+  if (threads <= 0) threads = 4;
+  if (arc_pool_size(e->moon->pool) == threads) return 0;
+  arc_pool* p = arc_pool_create(threads);
+  if (!p) return -1;
+  arc_pool_destroy(e->moon->pool);
+  e->moon->pool = p;
+  if (e->trunk) arc_engine_set_pool(e, p);
+  return 0;
+}
+
+void arc_destroy(arc_engine* e) {
+  if (!e) return;
+  arc_engine_free_trunk(e);
+  arc_moon_free(e->moon);
+  arc_tok_free(e->tok);
+  arc_json_free(e->cfg);
+  for (int i = 0; i < e->ctx_n; ++i) {
+    arc_free(e->ctx_kb[i]);
+    arc_free(e->ctx_ty[i]);
+  }
+  arc_free(e->ctx_kb);
+  arc_free(e->ctx_ty);
+  arc_free(e->ctx_dom);
+  arc_free(e->ctx_prev);
+  arc_free(e->nb_off);
+  arc_free(e->nb_ids);
+  arc_free(e->nb_w);
+  for (int i = 0; i < e->n_hist; ++i) arc_free(e->hist[i].text);
+  arc_free(e->enc_H);
+  arc_free(e->dir);
+  arc_free(e);
+}
+
+/* ------------------------------------------------------------------ context */
+
+static const char* kb_kind(const char* k) {
+  if (!k) return "term";
+  if (!strcmp(k, "person") || !strcmp(k, "team") || !strcmp(k, "place") || !strcmp(k, "law") ||
+      !strcmp(k, "product"))
+    return k;
+  if (!strcmp(k, "organization") || !strcmp(k, "org")) return "org";
+  return "term";
+}
+
+/* The decoder bias (bias.py Trie) over bias_forms(names): each name (spaces normalised), its last word when it has
+ * several (not a suffix like Jr / II), sorted and unique; tokenised as tok(form) without BOS. */
+/* extra: phrases taken as they are (aliases), spaces normalised */
+static void build_bias(arc_engine* e, const char* const* names, int n_names, const char* const* extra, int n_extra) {
+  arc_free(e->nb_off);
+  arc_free(e->nb_ids);
+  arc_free(e->nb_w);
+  e->nb_off = e->nb_ids = NULL;
+  e->nb_w = NULL;
+  e->nb_seq = 0;
+  if (!e->tok) return;   /* no decoder (ARC_NO_DECODER): nothing to bias */
+  e->nb_w = NULL;
+  e->nb_seq = e->nb_maxlen = 0;
+  if (n_names < 0) n_names = 0;
+  if (n_extra < 0) n_extra = 0;
+  if (n_names + n_extra > 0) {
+    int nf = 0;
+    char** forms = arc_calloc(sizeof(char*) * (size_t)(2 * n_names + n_extra + 1));
+    for (int i = 0; i < n_extra; ++i) {
+      char** w;
+      int nw = arc_split_words(extra[i], &w);
+      if (nw) {
+        size_t l = 0;
+        for (int k = 0; k < nw; ++k) l += strlen(w[k]) + 1;
+        char* full = arc_malloc(l + 1);
+        full[0] = 0;
+        for (int k = 0; k < nw; ++k) {
+          if (k) strcat(full, " ");
+          strcat(full, w[k]);
+        }
+        forms[nf++] = full;
+      }
+      arc_free_words(w, nw);
+    }
+    for (int i = 0; i < n_names; ++i) {
+      char** w;
+      int nw = arc_split_words(names[i], &w);
+      if (!nw) {
+        arc_free_words(w, nw);
+        continue;
+      }
+      size_t l = 0;
+      for (int k = 0; k < nw; ++k) l += strlen(w[k]) + 1;
+      char* full = arc_malloc(l + 1);
+      full[0] = 0;
+      for (int k = 0; k < nw; ++k) {
+        if (k) strcat(full, " ");
+        strcat(full, w[k]);
+      }
+      forms[nf++] = full;
+      int last = -1;   /* parts without suffixes; its last one */
+      int np = 0;
+      for (int k = 0; k < nw; ++k) {
+        char lw[64];
+        size_t j = 0;
+        for (const char* c = w[k]; *c && j < sizeof lw - 1; ++c)
+          if (*c != '.') lw[j++] = (char)tolower((unsigned char)*c);
+        lw[j] = 0;
+        if (strcmp(lw, "jr") && strcmp(lw, "sr") && strcmp(lw, "ii") && strcmp(lw, "iii") && strcmp(lw, "iv")) {
+          last = k;
+          np++;
+        }
+      }
+      if (np > 1 && last >= 0) forms[nf++] = arc_strdup(w[last]);
+      arc_free_words(w, nw);
+    }
+    /* sorted(set(...)) */
+    for (int a = 0; a < nf; ++a)
+      for (int b = a + 1; b < nf; ++b)
+        if (strcmp(forms[b], forms[a]) < 0) {
+          char* t = forms[a];
+          forms[a] = forms[b];
+          forms[b] = t;
+        }
+    int total = 0, ids[512];
+    e->nb_off = arc_malloc(sizeof(int) * (size_t)(nf + 1));
+    e->nb_w = arc_malloc(sizeof(float) * (size_t)(nf + 1));
+    e->nb_ids = arc_malloc(sizeof(int) * (size_t)(nf * 64 + 1));
+    for (int a = 0; a < nf; ++a) {
+      if (a && !strcmp(forms[a], forms[a - 1])) continue;
+      int m = arc_tok_encode(e->tok, forms[a], ids, 512);
+      if (m <= 0 || m > 64) continue;
+      e->nb_off[e->nb_seq] = total;
+      memcpy(e->nb_ids + total, ids, sizeof(int) * (size_t)m);
+      e->nb_w[e->nb_seq++] = 1.0f;   /* type 'player', always on: weight 'inside' = 1.0 */
+      total += m;
+      if (m > e->nb_maxlen) e->nb_maxlen = m;
+    }
+    e->nb_off[e->nb_seq] = total;
+    for (int a = 0; a < nf; ++a) arc_free(forms[a]);
+    arc_free(forms);
+  }
+  e->bias = (arc_moon_bias){e->nb_seq, e->nb_off, e->nb_ids, e->nb_w, e->nb_start > 0 ? e->nb_start : 2.0f,
+                            e->nb_cont > 0 ? e->nb_cont : 1.5f, e->nb_maxlen, 1};
+}
+
+int arc_set_bias(arc_engine* e, const char* const* names, int n) {
+  build_bias(e, names, n, NULL, 0);
+  return 0;
+}
+
+int arc_set_names(arc_engine* e, const arc_name_entry* names, int n) {
+  if (!e || n < 0) return -1;
+  if (arc_engine_set_names(e, names, n)) return -1;
+  /* the decoder bias: bias_forms(kb), names with their last words, and aliases */
+  int na = 0;
+  for (int i = 0; i < n; ++i) na += names[i].n_aliases > 0 ? names[i].n_aliases : 0;
+  const char** nm = arc_malloc(sizeof(char*) * (size_t)(n + 1));
+  const char** al = arc_malloc(sizeof(char*) * (size_t)(na + 1));
+  int k = 0;
+  for (int i = 0; i < n; ++i) {
+    nm[i] = names[i].name ? names[i].name : "";
+    for (int j = 0; j < names[i].n_aliases; ++j) al[k++] = names[i].aliases[j] ? names[i].aliases[j] : "";
+  }
+  build_bias(e, nm, n, al, k);
+  arc_free(nm);
+  arc_free(al);
+  return 0;
+}
+
+int arc_set_bias_strength(arc_engine* e, float start_bonus, float cont_bonus) {
+  if (!e || start_bonus < 0 || cont_bonus < 0) return -1;
+  e->nb_start = start_bonus;
+  e->nb_cont = cont_bonus;
+  e->bias.start_bonus = start_bonus > 0 ? start_bonus : 2.0f;
+  e->bias.cont_bonus = cont_bonus > 0 ? cont_bonus : 1.5f;
+  return 0;
+}
+
+int arc_set_context(arc_engine* e, const char* const* names, const char* const* kinds, int n_names,
+                    const char* const* terms, int n_terms, const char* topic, const char* previous_text,
+                    int auto_prev) {
+  for (int i = 0; i < e->ctx_n; ++i) {
+    arc_free(e->ctx_kb[i]);
+    arc_free(e->ctx_ty[i]);
+  }
+  arc_free(e->ctx_kb);
+  arc_free(e->ctx_ty);
+  arc_free(e->ctx_dom);
+  arc_free(e->ctx_prev);
+  e->ctx_kb = NULL;
+  e->ctx_ty = NULL;
+  e->ctx_dom = e->ctx_prev = NULL;
+  e->ctx_n = 0;
+  int n = (n_names > 0 ? n_names : 0) + (n_terms > 0 ? n_terms : 0);
+  if (n) {
+    e->ctx_kb = arc_calloc(sizeof(char*) * (size_t)n);
+    e->ctx_ty = arc_calloc(sizeof(char*) * (size_t)n);
+    for (int i = 0; i < n_names; ++i) {
+      e->ctx_kb[e->ctx_n] = arc_strdup(names[i]);
+      e->ctx_ty[e->ctx_n++] = arc_strdup(kb_kind(kinds ? kinds[i] : NULL));
+    }
+    for (int i = 0; i < n_terms; ++i) {
+      e->ctx_kb[e->ctx_n] = arc_strdup(terms[i]);
+      e->ctx_ty[e->ctx_n++] = arc_strdup("term");
+    }
+  }
+  if (topic && *topic) e->ctx_dom = arc_strdup(topic);
+  if (previous_text && *previous_text) e->ctx_prev = arc_strdup(previous_text);
+  e->auto_prev = auto_prev;
+  e->has_ctx = e->ctx_n || e->ctx_dom || e->ctx_prev;
+  build_bias(e, names, n_names, NULL, 0);
+  return 0;
+}
+
+/* prev_text(hist, t_now): normalised words of utterances in the last 60 s that ended 0.3 s before now, last 40 */
+static char* auto_prev_text(arc_engine* e, double t_now) {
+  char buf[8192];
+  size_t k = 0;
+  buf[0] = 0;
+  for (int i = 0; i < e->n_hist; ++i) {
+    if (e->hist[i].s >= t_now - 60.0 && e->hist[i].e <= t_now - 0.3) {
+      char* w = arc_norm_prev(e->hist[i].text);
+      size_t l = strlen(w);
+      if (l && k + l + 2 < sizeof buf) {
+        if (k) buf[k++] = ' ';
+        memcpy(buf + k, w, l);
+        k += l;
+        buf[k] = 0;
+      }
+      arc_free(w);
+    }
+  }
+  char** words;
+  int nw = arc_split_words(buf, &words);
+  int from = nw > 40 ? nw - 40 : 0;
+  size_t cap = strlen(buf) + 2, o = 0;
+  char* out = arc_malloc(cap);
+  out[0] = 0;
+  for (int i = from; i < nw; ++i) {
+    size_t l = strlen(words[i]);
+    if (o) out[o++] = ' ';
+    memcpy(out + o, words[i], l);
+    o += l;
+    out[o] = 0;
+  }
+  arc_free_words(words, nw);
+  return out;
+}
+
+static int prompt_ids(arc_engine* e, double t_now, int* out) {
+  if (!e->has_ctx && !e->auto_prev) return 0;
+  char* prev = NULL;
+  if (e->auto_prev && !e->ctx_prev) prev = auto_prev_text(e, t_now);
+  arc_ctx c = {e->ctx_dom, (const char* const*)e->ctx_kb, (const char* const*)e->ctx_ty, e->ctx_n,
+               e->ctx_prev ? e->ctx_prev : prev};
+  int n = arc_ctx_prompt(e->tok, &c, e->ctx_n ? "full" : "prev", 96, out);
+  arc_free(prev);
+  return n;
+}
+
+/* ------------------------------------------------------------------ transcript */
+
+/* FNV-1a over the samples the encoder sees (padded): which clip the cached encoder states belong to */
+static uint64_t samples_key(const float* w, int n) {
+  uint64_t h = 1469598103934665603ULL ^ (uint64_t)n;
+  const unsigned char* b = (const unsigned char*)w;
+  for (size_t i = 0; i < sizeof(float) * (size_t)n; ++i) h = (h ^ b[i]) * 1099511628211ULL;
+  return h;
+}
+
+/* Decode one audio segment (Transcriber.decode_audio + utterance): text and tag spans. */
+int arc_decode_segment(arc_engine* e, const float* seg, int n_in, double t_now, int beams, int bias, int words,
+                          double t0, arc_utt_build* u) {
+  int n = n_in < 3200 ? 3200 : n_in;
+  float* w = arc_calloc(sizeof(float) * (size_t)n);
+  if (!w) return -1;
+  memcpy(w, seg, sizeof(float) * (size_t)n_in);
+  int nn = n / 80 * 80;
+  if (nn < 80) nn = 80;
+  int T;
+  float* H = arc_moon_encode(e->moon, w, nn, &T);
+  uint64_t key = samples_key(w, nn);
+  arc_free(w);
+  if (!H) return -1;
+  int P[128];
+  int np = prompt_ids(e, t_now, P);
+  int max_len = 1 + (int)(e->len_mult * (4.0 + e->tokens_per_s * (double)n / ARC_SAMPLE_RATE)) + np;
+  enum { MAX_ALTS = 8, CAP = 1024 };   /* CAP: the cap for ids and for each beam (arc_moon_decode_nbest uses it for both) */
+  int ids[CAP];
+  arc_moon_procs pr = e->procs;
+  pr.bias = bias && e->nb_seq ? &e->bias : NULL;
+  int* alt_ids = arc_malloc(sizeof(int) * MAX_ALTS * CAP);
+  int alt_len[MAX_ALTS], n_alts = 0;
+  float alt_score[MAX_ALTS];
+  int ni = alt_ids ? arc_moon_decode_nbest(e->moon, H, T, P, np, max_len, beams, &pr, ids, CAP, MAX_ALTS, alt_ids, alt_len,
+                                           alt_score, &n_alts)
+                   : -1;
+  if (ni < 0) {
+    arc_free(alt_ids);
+    arc_free(H);
+    return -1;
+  }
+  /* the finished beams as texts, best first, distinct */
+  u->alts = arc_calloc(sizeof(char*) * MAX_ALTS);
+  u->alt_scores = arc_calloc(sizeof(float) * MAX_ALTS);
+  for (int a = 0; a < n_alts && u->alts && u->alt_scores; ++a) {
+    char* r = arc_tok_decode(e->tok, alt_ids + (size_t)a * CAP, alt_len[a]);
+    int dup = !r;
+    for (int b = 0; b < u->n_alts && !dup; ++b) dup = !strcmp(u->alts[b], r);
+    if (dup) {
+      arc_free(r);
+      continue;
+    }
+    u->alts[u->n_alts] = r;
+    u->alt_scores[u->n_alts++] = alt_score[a];
+  }
+  arc_free(alt_ids);
+  char* raw = arc_tok_decode(e->tok, ids, ni);
+  char* txt = arc_loopfix(raw, 2);
+  /* tag spans: readout words -> raw words -> loop-fixed words */
+  char** rw;
+  int nrw;
+  arc_span* sp;
+  int nsp;
+  arc_readout(e->tok, ids, ni, &rw, &nrw, &sp, &nsp);
+  char** raww;
+  int nraw = arc_split_words(raw, &raww);
+  arc_span* s1 = arc_malloc(sizeof(arc_span) * (size_t)(nsp + 1));
+  int n1 = arc_map_spans(rw, nrw, sp, nsp, raww, nraw, s1);
+  char** txw;
+  int ntx = arc_split_words(txt, &txw);
+  arc_span* s2 = arc_malloc(sizeof(arc_span) * (size_t)(n1 + 1));
+  int n2 = strcmp(txt, raw) ? arc_map_spans(raww, nraw, s1, n1, txw, ntx, s2) : n1;
+  if (!strcmp(txt, raw)) memcpy(s2, s1, sizeof(arc_span) * (size_t)n1);
+  u->text = txt;
+  u->spans = s2;
+  u->n_spans = n2;
+  u->words = txw;
+  u->n_words = ntx;
+  if (words && txt[0] && n_in >= 800) {
+    /* Arc._words_for: align the text over this segment (unpadded: the decode's states are the same once the
+     * segment is 0.2 s or longer), then tag_words */
+    float* Ha = H;
+    int Ta = T;
+    if (n_in < 3200) Ha = arc_moon_encode(e->moon, seg, n_in / 80 * 80, &Ta);
+    arc_aword* aw = NULL;
+    int na = Ha ? arc_align_words(e->moon, e->tok, &e->align, Ha, Ta, n_in, txt, t0, &aw) : -1;
+    if (Ha != H) arc_free(Ha);
+    if (na < 0) {
+      arc_free(H);
+      return -1;
+    }
+    u->aw = arc_calloc(sizeof(arc_wordb) * (size_t)(na + 1));
+    char** dst = arc_malloc(sizeof(char*) * (size_t)(na + 1));
+    for (int k = 0; k < na; ++k) {
+      u->aw[k] = (arc_wordb){.w = aw[k].w, .start = aw[k].start, .end = aw[k].end, .tag = -1};
+      dst[k] = aw[k].w;
+    }
+    u->n_aw = na;
+    arc_free(aw);
+    if (n2 && na) {   /* tag_words: the spans over text.split() moved onto the aligned words */
+      arc_span* s3 = arc_malloc(sizeof(arc_span) * (size_t)(n2 + 1));
+      int n3 = arc_map_spans(txw, ntx, s2, n2, dst, na, s3);
+      for (int k = 0; k < n3; ++k)
+        for (int j = s3[k].a > 0 ? s3[k].a : 0; j < s3[k].b && j < na; ++j) {
+          u->aw[j].tag = s3[k].tag;
+          u->aw[j].tag_begin = j == s3[k].a;
+        }
+      arc_free(s3);
+    }
+    arc_free(dst);
+  }
+  /* keep the encoder states for arc_score on the same samples */
+  arc_free(e->enc_H);
+  e->enc_H = H;
+  e->enc_T = T;
+  e->enc_key = key;
+  arc_free(raw);
+  arc_free(s1);
+  arc_free(sp);
+  arc_free_words(rw, nrw);
+  arc_free_words(raww, nraw);
+  return 0;
+}
+
+void arc_hist_add(arc_engine* e, double start, double end, const char* text) {
+  if (!text || !text[0]) return;   /* history for auto_prev (last 64) */
+  if (e->n_hist == 64) {
+    arc_free(e->hist[0].text);
+    memmove(e->hist, e->hist + 1, sizeof(e->hist[0]) * 63);
+    e->n_hist--;
+  }
+  e->hist[e->n_hist].s = start;
+  e->hist[e->n_hist].e = end;
+  e->hist[e->n_hist++].text = arc_strdup(text);
+}
+
+/* A quick read of encoder states already computed (a stream's partials): greedy, the context prompt and bias as for
+ * finals, the text loop-fixed and its inline tags read out. n_samples: the audio the states cover (for the length
+ * limit). */
+int arc_decode_states(arc_engine* e, const float* H, int T, int n_samples, double t_now, int bias, arc_utt_build* u) {
+  int P[128];
+  int np = prompt_ids(e, t_now, P);
+  int max_len = 1 + (int)(e->len_mult * (4.0 + e->tokens_per_s * (double)n_samples / ARC_SAMPLE_RATE)) + np;
+  enum { CAP = 1024 };
+  int ids[CAP];
+  arc_moon_procs pr = e->procs;
+  pr.bias = bias && e->nb_seq ? &e->bias : NULL;
+  int ni = arc_moon_decode(e->moon, H, T, P, np, max_len, 1, &pr, ids, CAP);
+  if (ni < 0) return -1;
+  char* raw = arc_tok_decode(e->tok, ids, ni);
+  char* txt = arc_loopfix(raw, 2);
+  char** rw;
+  int nrw;
+  arc_span* sp;
+  int nsp;
+  arc_readout(e->tok, ids, ni, &rw, &nrw, &sp, &nsp);
+  char** raww;
+  int nraw = arc_split_words(raw, &raww);
+  arc_span* s1 = arc_malloc(sizeof(arc_span) * (size_t)(nsp + 1));
+  int n1 = arc_map_spans(rw, nrw, sp, nsp, raww, nraw, s1);
+  char** txw;
+  int ntx = arc_split_words(txt, &txw);
+  arc_span* s2 = arc_malloc(sizeof(arc_span) * (size_t)(n1 + 1));
+  int n2 = strcmp(txt, raw) ? arc_map_spans(raww, nraw, s1, n1, txw, ntx, s2) : n1;
+  if (!strcmp(txt, raw)) memcpy(s2, s1, sizeof(arc_span) * (size_t)n1);
+  u->text = txt;
+  u->spans = s2;
+  u->n_spans = n2;
+  u->words = txw;
+  u->n_words = ntx;
+  arc_free(raw);
+  arc_free(s1);
+  arc_free(sp);
+  arc_free_words(rw, nrw);
+  arc_free_words(raww, nraw);
+  return 0;
+}
+
+arc_result* arc_transcribe(arc_engine* e, const float* pcm, size_t n, const arc_options* opt) {
+  double t0 = arc_time_ms();
+  g_err[0] = 0;
+  if (!e->tok) {
+    snprintf(g_err, sizeof g_err, "arc_transcribe: the engine was created without the decoder (ARC_NO_DECODER)");
+    return NULL;
+  }
+  arc_options o = {0};
+  if (opt) o = *opt;
+  int beams = o.beams > 0 ? o.beams : e->beams;
+  /* utterances: Arc's segmenter on 100 ms frame levels, or the whole clip */
+  int cap = 64, nu = 0;
+  int(*seg)[2] = arc_malloc(sizeof(int[2]) * (size_t)cap);
+  const int FR = 1600;
+  int nf = (int)((n + FR - 1) / FR);
+  if (o.one_utterance) {
+    /* one utterance, but never longer than Arc decodes well (transcription.max_s, 15 s): a longer clip is cut where
+     * the segmenter would cut it, at the quietest frame in the last cut_lookback_s before the limit. Decoded whole, a
+     * 38 s clip ran off into repeats ("falling over and over ... Pink."). */
+    int maxf = (int)(e->seg.max_s * 10 + 0.5f), look = (int)(e->seg.cut_lookback_s * 10 + 0.5f), f0 = 0;
+    if (maxf < 10) maxf = 10;
+    if (look < 1 || look > maxf) look = maxf / 5 > 0 ? maxf / 5 : 1;
+    while (nf - f0 > maxf) {
+      int cut = f0 + maxf - 1;
+      double lo = 1e9;
+      for (int f = f0 + maxf - look; f < f0 + maxf; ++f) {
+        size_t a = (size_t)f * FR, b = a + FR < n ? a + FR : n;
+        double db = arc_frame_db(pcm + a, (int)(b - a));
+        if (db < lo) { lo = db; cut = f; }
+      }
+      if (nu == cap) {
+        int(*ns)[2] = arc_malloc(sizeof(int[2]) * (size_t)cap * 2);
+        memcpy(ns, seg, sizeof(int[2]) * (size_t)nu);
+        arc_free(seg);
+        seg = ns;
+        cap *= 2;
+      }
+      seg[nu][0] = f0;
+      seg[nu++][1] = cut;
+      f0 = cut + 1;
+    }
+    if (nf > f0 && nu < cap) {
+      seg[nu][0] = f0;
+      seg[nu++][1] = nf - 1;
+    }
+  } else {
+    arc_seg* s = arc_seg_new(&e->seg);
+    int f0, f1;
+    const char* why;
+    for (int f = 0; f < nf; ++f) {
+      size_t a = (size_t)f * FR, b = a + FR < n ? a + FR : n;
+      if (arc_seg_feed(s, f, arc_frame_db(pcm + a, (int)(b - a)), &f0, &f1, &why)) {
+        if (nu == cap) {
+          int(*ns)[2] = arc_malloc(sizeof(int[2]) * (size_t)cap * 2);
+          memcpy(ns, seg, sizeof(int[2]) * (size_t)nu);
+          arc_free(seg);
+          seg = ns;
+          cap *= 2;
+        }
+        seg[nu][0] = f0;
+        seg[nu++][1] = f1;
+      }
+    }
+    if (arc_seg_flush(s, &f0, &f1, &why) && nu < cap) {
+      seg[nu][0] = f0;
+      seg[nu++][1] = f1;
+    }
+    arc_seg_free(s);
+  }
+  arc_result_build* R = arc_result_new(nu);
+  int pad = (int)(e->pad_s * ARC_SAMPLE_RATE);
+  for (int i = 0; i < nu; ++i) {
+    long a = (long)seg[i][0] * FR, b = (long)(seg[i][1] + 1) * FR;
+    /* the whole clip as one utterance decodes all of it; a long one cut into pieces decodes each piece (with the pad) */
+    int whole = o.one_utterance && nu == 1;
+    long lo = whole ? 0 : (a - pad > 0 ? a - pad : 0);
+    long hi = whole ? (long)n : (b + pad < (long)n ? b + pad : (long)n);
+    arc_utt_build* u = &R->u[i];
+    u->f0 = seg[i][0];
+    u->f1 = seg[i][1];
+    u->start = (float)(seg[i][0] / 10.0);
+    u->end = (float)((seg[i][1] + 1) / 10.0);
+    if (arc_decode_segment(e, pcm + lo, (int)(hi - lo), seg[i][0] / 10.0, beams, o.bias_names,
+                       o.words || o.names || o.numbers, lo / (double)ARC_SAMPLE_RATE, u)) {
+      arc_free(seg);
+      arc_result_free(arc_result_finish(R, 0, 0));
+      return NULL;
+    }
+    arc_hist_add(e, seg[i][0] / 10.0, (seg[i][1] + 1) / 10.0, u->text);
+  }
+  arc_free(seg);
+  if ((o.trunk || o.events || o.names || o.numbers) && arc_engine_run(e, pcm, n, &o, R)) {
+    arc_result_free(arc_result_finish(R, 0, 0));
+    return NULL;
+  }
+  return arc_result_finish(R, (float)((double)n / ARC_SAMPLE_RATE), (float)(arc_time_ms() - t0));
+}
+
+/* ------------------------------------------------------------------ verification (arc_score) */
+
+/* one text's token sequence: plain (tag < 0) or with the brace span inside tag ... END */
+static int score_seq(arc_engine* e, const char* text, int tag, int* out, int cap) {
+  const char* a = strchr(text, '{');
+  const char* b = a ? strchr(a, '}') : NULL;
+  if (!a || !b) {
+    if (tag >= 0) return -2;   /* no span to tag */
+    return arc_tok_encode(e->tok, text, out, cap);
+  }
+  int n = 0, k;
+  char* pre = arc_malloc((size_t)(a - text) + 1);
+  char* mid = arc_malloc((size_t)(b - a));
+  if (!pre || !mid) {
+    arc_free(pre);
+    arc_free(mid);
+    return -1;
+  }
+  memcpy(pre, text, (size_t)(a - text));
+  pre[a - text] = 0;
+  memcpy(mid, a + 1, (size_t)(b - a - 1));
+  mid[b - a - 1] = 0;
+  /* no trailing spaces either: "play " would end in a lone "▁" token */
+  for (char* q = pre + strlen(pre); q > pre && q[-1] == ' ';) *--q = 0;
+  for (char* q = mid + strlen(mid); q > mid && q[-1] == ' ';) *--q = 0;
+  /* each piece encoded on its own, as the decoder writes them around a tag (arc_audio tokenizes the same way) */
+  const char* pieces[3] = {pre, mid, b + 1};
+  for (int p = 0; p < 3; ++p) {
+    if (p == 1 && tag >= 0 && n < cap) out[n++] = tag;
+    const char* t = pieces[p];
+    while (*t == ' ') ++t;
+    if (*t) {
+      k = arc_tok_encode(e->tok, t, out + n, cap - n);
+      if (k < 0 || n + k > cap) {
+        n = -1;
+        break;
+      }
+      n += k;
+    }
+    if (p == 1 && tag >= 0 && n >= 0 && n < cap) out[n++] = ARC_TAG_END;
+  }
+  arc_free(pre);
+  arc_free(mid);
+  return n;
+}
+
+int arc_score(arc_engine* e, const float* pcm, size_t n, const char* const* texts, int n_texts, int flags, float* logp,
+              int* n_tokens) {
+  g_err[0] = 0;
+  if (e && !e->tok) {
+    arc_seterr("arc_score: the engine was created without the decoder (ARC_NO_DECODER)");
+    return -1;
+  }
+  if (!e || !pcm || n_texts < 0 || (n_texts && (!texts || !logp))) {
+    arc_seterr("arc_score: bad arguments");
+    return -1;
+  }
+  if (!n_texts) return 0;
+  /* the whole clip as one utterance, padded as decode_segment pads it */
+  int nw = n < 3200 ? 3200 : (int)n;
+  float* w = arc_calloc(sizeof(float) * (size_t)nw);
+  if (!w) return -1;
+  memcpy(w, pcm, sizeof(float) * n);
+  int nn = nw / 80 * 80;
+  uint64_t key = samples_key(w, nn);
+  if (!e->enc_H || e->enc_key != key) {
+    int T;
+    float* H = arc_moon_encode(e->moon, w, nn, &T);
+    if (!H) {
+      arc_free(w);
+      return -1;
+    }
+    arc_free(e->enc_H);
+    e->enc_H = H;
+    e->enc_T = T;
+    e->enc_key = key;
+  }
+  arc_free(w);
+  int P[128];
+  arc_ctx c = {e->ctx_dom, NULL, NULL, 0, NULL};
+  int np = e->ctx_dom ? arc_ctx_prompt(e->tok, &c, "prev", 96, P) : 0;
+  /* the variants scored per text: plain; plain + both name tags; or the person tag alone (a cheap first pass: the
+   * decoder writes most names, titles included, inside ENTITY_PERSON) */
+  const int all3[3] = {-1, ARC_TAG_PERSON, ARC_TAG_WORK}, person[1] = {ARC_TAG_PERSON}, plain[1] = {-1};
+  const int* tags = (flags & ARC_SCORE_TAGS) ? all3 : (flags & ARC_SCORE_PERSON) ? person : plain;
+  const int nv = (flags & ARC_SCORE_TAGS) ? 3 : 1;
+  enum { CAP = 256 };
+  int* ids = arc_malloc(sizeof(int) * CAP * (size_t)n_texts * nv);
+  const int** seqs = arc_malloc(sizeof(int*) * (size_t)n_texts * nv);
+  int* lens = arc_malloc(sizeof(int) * (size_t)n_texts * nv);
+  int* owner = arc_malloc(sizeof(int) * (size_t)n_texts * nv);
+  double* sc = arc_malloc(sizeof(double) * (size_t)n_texts * nv);
+  int ns = 0, rc = ids && seqs && lens && owner && sc ? 0 : -1;
+  for (int i = 0; !rc && i < n_texts; ++i) {
+    if (n_tokens) n_tokens[i] = 0;
+    for (int v = 0; v < nv; ++v) {
+      int* o = ids + (size_t)ns * CAP;
+      int k = score_seq(e, texts[i] ? texts[i] : "", tags[v], o, CAP);
+      if (k == -2 && nv == 1) k = score_seq(e, texts[i] ? texts[i] : "", -1, o, CAP);   /* no span: plain */
+      if (k == -2) continue;
+      if (k < 0) {
+        arc_seterr("arc_score: a text is too long");
+        rc = -1;
+        break;
+      }
+      seqs[ns] = o;
+      lens[ns] = k;
+      owner[ns++] = i;
+    }
+  }
+  if (!rc) rc = arc_moon_score(e->moon, e->enc_H, e->enc_T, P, np, seqs, lens, ns, sc);
+  if (!rc) {
+    for (int i = 0; i < n_texts; ++i) logp[i] = -INFINITY;
+    for (int j = 0; j < ns; ++j) {
+      int i = owner[j];
+      if ((float)sc[j] > logp[i]) {
+        logp[i] = (float)sc[j];
+        if (n_tokens) n_tokens[i] = lens[j] + 1;
+      }
+    }
+  }
+  arc_free(ids);
+  arc_free(seqs);
+  arc_free(lens);
+  arc_free(owner);
+  arc_free(sc);
+  return rc;
+}
