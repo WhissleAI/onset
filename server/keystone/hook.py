@@ -392,6 +392,10 @@ def _value_cell(ks, q):
     return ks.cells.by_doc.get(("value:" + k) if k else ("q:" + " ".join(sorted(set(toks(q.text))))))
 
 
+# values that are computed, not looked up (an age changes every year): never written back as a stored answer
+DERIVED = {"age_of"}
+
+
 def note_answer(f, query: str, answer: str, verify: str | None = None):
     """The answer model's answer becomes the question's value-cell payload (the answer span, not the source's key
     sentences); its typed edge value follows. When server/verify.py found the answer in >= 1 cited source
@@ -399,8 +403,17 @@ def note_answer(f, query: str, answer: str, verify: str | None = None):
     if not config.INDEX or f is None or not answer:
         return
     try:
+        from .. import answer as _answer
+        if _answer.backend() == "local":
+            # the on-device 0.5B writer is not a fact source: it miscounted Modi's age as 52, verify passed it
+            # (the source names him), and Keystone then served "52" as verified to every later "how old is he".
+            # Its answers never become stored values; Wikidata facts (ingest) still do.
+            STATS["skipped_local"] = STATS.get("skipped_local", 0) + 1
+            return
         ks = store()
         q = q_of(f, query)
+        if q.key is not None and q.key.relation in DERIVED:
+            return                               # an age is computed from the birth date, never stored
         i = _value_cell(ks, q)
         if i is None or i not in ks.cells.cells:
             return

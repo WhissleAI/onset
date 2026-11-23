@@ -114,6 +114,7 @@ class Speculator:
         self.vecs: dict[str, np.ndarray] = {}
         self.embedding: dict[str, asyncio.Future] = {}   # doc id -> in-flight embedding (shared by concurrent fires)
         self.carried_ids: set[str] = set()
+        self.use_carried = True              # _rank_for: False for a question that isn't a follow-up
         self.gen = 0                                     # finalize generation: a newer finalize supersedes older ones
         self.drafts: list[Draft] = []
         self.web_used = 0
@@ -404,16 +405,32 @@ class Speculator:
             rest = [rest[j] for j in np.argsort(-s, kind="stable")]
         return {i: (cand[i], self.vecs[i]) for i in (first + rest)[:k]}
 
+    def _own_results(self) -> bool:
+        """Did THIS question's own searches land anything? The previous question's carried documents (seed) don't
+        count: they are there for follow-ups, and an unrelated next question whose lookups came back empty must still
+        search, not answer from the last question's sources."""
+        own = set()
+        for x in self.fires:
+            if x.state in ("done", "fired"):
+                own |= {d.id for d in x.docs}
+        return any(i in own or i not in self.carried_ids for i in self.pool if i in self.vecs)
+
     def rank(self, qvec: np.ndarray, k: int = 5, fresh_only: bool = True):
         """Top-k pool docs by cosine. Docs that only came from stale searches (a misheard or corrected-away query) are
         left out when enough fresh ones exist."""
         ids = [i for i in self.pool if i in self.vecs]
+        own = set()
+        for x in self.fires:
+            if x.state in ("done", "fired"):
+                own |= {d.id for d in x.docs}
+        if not self.use_carried:
+            # not a follow-up: the previous question's sources are no answer to this one (asked "who is the
+            # president of India" after two Modi turns, Modi's page out-ranked Wikidata's Droupadi Murmu)
+            ids = [i for i in ids if i not in self.carried_ids or i in own]
         if fresh_only:
-            fresh = set()
-            for x in self.fires:
-                if x.state in ("done", "fired"):
-                    fresh |= {d.id for d in x.docs}
-            fresh |= self.carried_ids
+            fresh = set(own)
+            if self.use_carried:
+                fresh |= self.carried_ids
             keep = [i for i in ids if i in fresh]
             if len(keep) >= 3:
                 ids = keep
@@ -457,6 +474,8 @@ class Speculator:
 
     def _rank_for(self, f: Frame, qvec: np.ndarray, k: int = 5):
         """The final / draft ranking: the fused local ranker for local-routed questions, else pool cosine."""
+        # the previous question's sources rank only for a follow-up (a carried referent: "how old is he")
+        self.use_carried = bool(f.carried or getattr(f, "mem_ref", None))
         if f.route == "local" and config.RERANK_LOCAL and len(lanes.index()):
             return self.rank_local(f.resolved_text, qvec, k)
         if self.persona is not None and self.persona.vec is not None:
@@ -475,12 +494,12 @@ class Speculator:
         if not plain:
             return plain
         ids = [i for i in self.pool if i in self.vecs]
-        fresh = set(self.carried_ids)
+        fresh = set(self.carried_ids) if self.use_carried else set()
         for x in self.fires:
             if x.state in ("done", "fired"):
                 fresh |= {d.id for d in x.docs}
         keep = [i for i in ids if i in fresh]
-        ids = keep if len(keep) >= 3 else ids
+        ids = keep if len(keep) >= 3 else [i for i in ids if self.use_carried or i not in self.carried_ids or i in fresh]
         # carried docs (earlier turns' sources) get no bias: they ARE the history, and would win by construction
         # only a disambiguation: the plain top is clearly ANOTHER sense (Cheetah = animal while you ask about cars)
         top = plain[0][0]
@@ -1331,7 +1350,7 @@ class Speculator:
                         await asyncio.gather(*waits, return_exceptions=True)
                 else:
                     m["path"] = "draft-reuse"
-                if reuse_draft is None and not self.rank(qvec, 1) and live():
+                if reuse_draft is None and not self._own_results() and live():
                     # nothing to answer from yet (a slow search past PENDING_CAP_S): an answer with no sources is
                     # worse than a late one, so wait for whatever is still on the wire
                     # (stale searches too: an ASR revision marks a search stale while it is still on the wire)
@@ -1339,7 +1358,7 @@ class Speculator:
                     if pending:
                         m["waited_empty"] = True
                         await asyncio.wait(pending, timeout=config.PENDING_EMPTY_S)
-                    if (not self.rank(qvec, 1) and live() and f.route in ("web", "both")
+                    if (not self._own_results() and live() and f.route in ("web", "both")
                             and not any(x.lane == "final-web" for x in self.fires)
                             and (fplan is None or "web" in fplan)):
                         # every search so far came back empty: search the final question (over the budget if it

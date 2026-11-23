@@ -264,6 +264,65 @@ def model_opts(model: str) -> dict:
     return {"output_config": {"effort": "low"}}
 
 
+_FACT_TEMPLATES = {
+    "head_state": "The head of state of {item} is {v}.", "head_gov": "The head of government of {item} is {v}.",
+    "capital": "The capital of {item} is {v}.", "ceo": "The CEO of {item} is {v}.",
+    "population": "{item} has a population of {v}.", "currency": "The currency of {item} is the {v}.",
+    "language": "The official language of {item} is {v}.", "born_place": "{item} was born in {v}.",
+    "born_date": "{item} was born on {v}.", "died_date": "{item} died on {v}.", "spouse": "{item} is married to {v}.",
+    "founder": "{item} was founded by {v}.", "author": "{item} was written by {v}.",
+    "director": "{item} was directed by {v}.", "hq": "{item} is headquartered in {v}.",
+    "inception": "{item} was founded in {v}.", "height": "{item} is {v} tall.", "area": "{item} covers {v}.",
+}
+
+
+def asks_prop(question: str) -> str:
+    """The Wikidata property the question asks for ("" if none), with a carried referent spelled in
+    ("how old is he (Narendra Modi)" -> "how old is narendra modi")."""
+    from . import knowledge
+    q = (question or "").strip().rstrip("?.! ")
+    m = re.match(r"^(.*?)\s*\(([^()]+)\)$", q)
+    if m:
+        q = re.sub(r"\b(he|she|it|they|him|her|them)\b", m.group(2), m.group(1), count=1, flags=re.I)
+    f = knowledge.parse_fact(q)
+    return f.prop if f else ""
+
+
+def fact_sentence(question: str, item: str, prop: str, vals: list, today=None) -> str:
+    """One plain sentence from a Wikidata fact. "how old is ..." with a full birth date: the age, computed."""
+    import datetime as _dt
+    v = ", ".join(vals[:3]) if len(vals) > 1 else vals[0]
+    if prop == "born_date" and re.search(r"\bhow old\b", question.lower()):
+        try:
+            born = _dt.datetime.strptime(vals[0], "%B %d, %Y").date()
+        except ValueError:
+            return ""                                  # only a year or month: let the writer hedge from the sources
+        t = today or _dt.date.today()
+        age = t.year - born.year - ((t.month, t.day) < (born.month, born.day))
+        return f"{item} is {age} (born {vals[0]})."
+    v = re.sub(r"\s*\([^()]*\)", "", v).strip()      # "Canberra (capital city of Australia)" -> "Canberra"
+    if prop in ("head_state", "head_gov"):
+        role = re.search(r"\b(prime minister|premier|chancellor|president|king|queen|monarch|leader)\b", question.lower())
+        if role:                                       # say it the way it was asked: "the prime minister of India"
+            return f"The {role.group(1)} of {item} is {v}."
+    tpl = _FACT_TEMPLATES.get(prop)
+    return tpl.format(item=item, v=v) if tpl else ""
+
+
+_REFERS = re.compile(r"\b(he|she|it|its|it's|they|them|their|theirs|his|her|hers|him|there|that|this|those|these|"
+                     r"then|same|one|ones|else|also|too|more|other|another|instead)\b|^\s*(and|what about|how about)\b", re.I)
+
+
+def local_context(question: str, context: str) -> str:
+    """The previous turn, for the local model only when the question points back at it ("how old is he", "and
+    there?"). A 0.5B model given the last turn tends to answer the last question again (asked "five good books to
+    read" after "who is the prime minister of India", it answered about Modi), so a self-contained question gets none.
+    Claude gets the context always: it uses it only when needed."""
+    if not context or not question:
+        return ""
+    return context if _REFERS.search(question) or len(question.split()) <= 3 else ""
+
+
 def build_prompt(question: str, docs, context: str = "", hint: str = "") -> str:
     lines = []
     for i, d in enumerate(docs, 1):
@@ -463,7 +522,7 @@ class Stream:
     async def _run(self):
         """Hedged request: if no token within HEDGE_MS, or the first request ends without producing one (an error such
         as a 529), send a duplicate and keep whichever answers first (cuts the API's time-to-first-token tail)."""
-        if self._card_answer():
+        if self._card_answer() or self._fact_answer():
             return
         b = backend()
         if b == "extractive":
@@ -550,7 +609,7 @@ class Stream:
         token within ANSWER_DEADLINE_MS, or a load / generation error: the extractive sentence instead. Cancel (or a
         cancelled task) stops the generation within one token."""
         from . import answer_lm
-        prompt = build_prompt(self.question, self.docs, self.context, self.hint)
+        prompt = build_prompt(self.question, self.docs, local_context(self.question, self.context), self.hint)
         g = answer_lm.Generation(SYSTEM_LOCAL, prompt, config.ANSWER_LM_MAX_TOKENS, asyncio.get_running_loop())
         part = {"req": 0, "local": True, "g": g, "s": None, "chars": 0, "cancelled": False,
                 "prompt_chars": len(SYSTEM_LOCAL) + len(prompt)}
@@ -585,6 +644,13 @@ class Stream:
                     _ok()
                 self.tokens.append(x)
                 self._notify()
+            if not re.sub(r"\[\d+\]|\W", "", self.text()):
+                # the small model wrote only a citation ("[2]"): add the top source's best sentence after it
+                ext = extractive(self.question, self.docs)
+                if ext:
+                    self.fallback, self.fallback_reason = "extractive", "local answer model wrote no words"
+                    self.tokens.append(" " + ext)
+                    self._notify()
             cite = _cite(self.text(), self.docs)
             if cite:
                 self.tokens.append(cite)
@@ -604,6 +670,33 @@ class Stream:
                 self._finish(err)
         finally:
             self._finish()
+
+    def _fact_answer(self) -> bool:
+        """Wikidata fact path (local backend): when the top source is a settled Wikidata fact, say it from the fact
+        itself, cited, with no model call. The 0.5B writer overrules a fact with its own dated prior (asked "who is
+        the president of India" with the single source "head of state: Droupadi Murmu", it said "Narendra Modi") and
+        can't do date arithmetic ("how old is he" -> 52, 71, 72 for a man born in 1950). Claude still writes."""
+        if backend() != "local" or not self.docs:
+            return False
+        want = asks_prop(self.question)
+        if not want:
+            return False
+        for n, d in enumerate(self.docs[:5], 1):   # the fact this question asks for, wherever it ranked
+            meta = getattr(d, "meta", None) or {}
+            fact = meta.get("fact") or {}
+            vals, item, prop = fact.get("values") or [], fact.get("item") or "", fact.get("prop") or ""
+            if meta.get("strong") and vals and item and prop == want:
+                break
+        else:
+            return False                       # only the fact this question asks for (not a carried one)
+        text = fact_sentence(self.question, item, prop, vals)
+        if not text:
+            return False
+        self.by = "fact"
+        self.t_first = time.perf_counter()
+        self.tokens.append(f"{text} [{n}]")
+        self._finish()
+        return True
 
     def _card_answer(self) -> bool:
         """Card path (ROUTER): a live-data card among the sources that fits this question IS the answer: its one-line

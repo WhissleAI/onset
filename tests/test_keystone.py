@@ -187,6 +187,8 @@ def index_on(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "ROUTER", True)
     monkeypatch.setattr(config, "ROUTER_LEADS", False)
     monkeypatch.setattr(config, "KEYSTONE_DIR", tmp_path)
+    from server import answer
+    monkeypatch.setattr(answer, "backend", lambda: "claude")     # write-back stores the cloud writer's answers only
     hook.reset(Keystone(Flags(hash=False)))
     yield
     hook.reset()
@@ -399,3 +401,16 @@ def test_side_talk_is_never_written(index_on):
     f.directed = 0.1                                          # Arc: not addressed to the assistant
     hook.ingest(f, "q", [Doc("n", "Nvidia", "Nvidia was founded in 1993.")], {"n": vec(8)}, {"tier": "web"})
     assert len(hook.store().cells) == 0
+
+
+def test_local_writer_answers_are_never_stored(index_on, monkeypatch):
+    """0.2.0 live: the on-device writer said Modi was 52, verify passed it, and Keystone served "52" as verified."""
+    from server import answer
+    monkeypatch.setattr(answer, "backend", lambda: "local")
+    f = F("how old is narendra modi", slots=[("person", "narendra modi")])
+    hook.ingest(f, f.query(), [lanes.Doc(id="w", title="Narendra Modi", text="Modi was born in 1950.", url="",
+                                         source="web")], {})
+    before = dict(hook.STATS)
+    hook.note_answer(f, f.query(), "Narendra Modi is 52 years old.", "supported")
+    assert hook.STATS.get("skipped_local", 0) == before.get("skipped_local", 0) + 1
+    assert "DERIVED" in dir(hook) and "age_of" in hook.DERIVED

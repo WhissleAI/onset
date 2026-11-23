@@ -37,7 +37,7 @@ RELATIONS = {
     "symbol_of": ("thing", "stable"), "manufacturer_of": ("org", "stable"), "date_of": ("date", "stable"),
     "definition_of": ("definition", "stable"), "length_of": ("measure", "stable"), "area_of": ("measure", "stable"),
     "inventor_of": ("person", "stable"), "river_of": ("place", "stable"), "located_in": ("place", "stable"),
-    "ceo_of": ("person", "slow"), "population_of": ("count", "slow"), "head_state_of": ("person", "slow"),
+    "ceo_of": ("person", "slow"), "population_of": ("count", "slow"), "head_state_of": ("person", "slow"), "head_gov_of": ("person", "slow"),
     "spouse_of": ("person", "slow"), "age_of": ("count", "slow"), "net_worth_of": ("money", "slow"),
     "weather_in": ("forecast", "live"), "climate_of": ("thing", "stable"), "price_of": ("money", "live"), "score_of": ("score", "live"),
     "news_about": ("news", "live"), "schedule_of": ("date", "live"), "hours_of": ("time", "live"),
@@ -48,7 +48,7 @@ FROM_PROP = {"founder": "founded_by", "inception": "inception", "capital": "capi
              "author": "author_of", "director": "director_of", "discoverer": "discoverer_of",
              "language": "language_of", "currency": "currency_of", "country": "country_of", "hq": "hq_of",
              "symbol": "symbol_of", "manufacturer": "manufacturer_of", "ceo": "ceo_of",
-             "population": "population_of", "river": "river_of", "head_state": "head_state_of", "area": "area_of",
+             "population": "population_of", "river": "river_of", "head_state": "head_state_of", "head_gov": "head_gov_of", "area": "area_of",
              "spouse": "spouse_of"}
 TTL_S = {"stable": 90 * 86400.0, "slow": 30 * 86400.0, "live": 600.0}
 
@@ -80,7 +80,8 @@ _CUES = [
     (r"\b(?:discover(?:ed|er|y)?)\b", {"date": "date_of"}, "discoverer_of"),
     (r"\b(?:creat(?:ed|or)|design(?:ed|er)|develop(?:ed|er))\b", {"date": "inception"}, "creator_of"),
     (r"\b(?:ceo|chief executive|runs)\b", {}, "ceo_of"),
-    (r"\b(?:president|prime minister|leader|king|queen|head of state)\b", {"date": None}, "head_state_of"),
+    (r"\b(?:prime minister|premier|chancellor|leader|head of government)\b", {"date": None}, "head_gov_of"),
+    (r"\b(?:president|king|queen|monarch|head of state)\b", {"date": None}, "head_state_of"),
     (r"\bpopulation\b|\bhow many people (?:live|are there)\b", {}, "population_of"),
     (r"\b(?:languages?|spoken|speak)\b", {}, "language_of"),
     (r"\bcurrency\b|\bmoney do they use\b", {}, "currency_of"),
@@ -286,7 +287,7 @@ _HOP = re.compile(r"\b(?:the )?(founder|author|writer|director|ceo|creator|inven
                   r"died|from|based|headquartered|built|written|made|start|started|now|today|live|lives))?(?:\s+(?:when|if)\b.*)?$")
 _HOP_REL = {"founder": "founded_by", "author": "author_of", "writer": "author_of", "director": "director_of",
             "ceo": "ceo_of", "creator": "creator_of", "inventor": "inventor_of", "painter": "creator_of",
-            "capital": "capital_of", "president": "head_state_of", "leader": "head_state_of", "wife": "spouse_of",
+            "capital": "capital_of", "president": "head_state_of", "leader": "head_gov_of", "wife": "spouse_of",
             "husband": "spouse_of", "spouse": "spouse_of", "manufacturer": "manufacturer_of", "maker": "manufacturer_of"}
 
 

@@ -498,11 +498,11 @@ NUMBER_TYPES = {"date", "time", "time_of_day", "duration", "money", "percent", "
 _PROP_PHRASE = {"founder": "founded by", "creator": "created by", "author": "written by", "director": "directed by",
                 "discoverer": "invented by", "manufacturer": "made by", "ceo": "CEO", "spouse": "spouse",
                 "born_place": "born in", "hq": "headquarters", "capital": "capital", "country": "country",
-                "river": "river", "head_state": "led by", "language": "language", "currency": "currency",
+                "river": "river", "head_state": "head of state", "head_gov": "led by", "language": "language", "currency": "currency",
                 "inception": "founded", "born_date": "born", "died_date": "died", "height": "height",
                 "population": "population", "area": "area", "symbol": "symbol"}
 _PROP_KIND = {"founder": "person", "creator": "person", "author": "person", "director": "person",
-              "discoverer": "person", "ceo": "person", "spouse": "person", "head_state": "person",
+              "discoverer": "person", "ceo": "person", "spouse": "person", "head_state": "person", "head_gov": "person",
               "manufacturer": "org", "born_place": "place", "hq": "place", "capital": "place", "country": "place",
               "river": "place"}
 

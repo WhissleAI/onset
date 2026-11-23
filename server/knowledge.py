@@ -48,19 +48,22 @@ PROPS = {
     "ceo": (["P169"], "item", "chief executive officer"),
     "population": (["P1082"], "quantity", "population"),
     "river": (["P206"], "item", "located next to body of water"),
-    "head_state": (["P35", "P6"], "item", "head of state / government"),
+    "head_state": (["P35"], "item", "head of state"),
+    # head of government is its own fact: "prime minister of India" is Modi (P6); P35 is the president (Murmu). One
+    # merged "head of state / government" property answered the prime-minister question with the president.
+    "head_gov": (["P6"], "item", "head of government"),
     "area": (["P2046"], "quantity", "area"),
     "spouse": (["P26"], "item", "spouse"),
 }
 # properties whose value changes over time: medium confidence (web fallback when the lookup is weak)
-CHANGING = {"ceo", "population", "head_state", "spouse"}
+CHANGING = {"ceo", "population", "head_state", "head_gov", "spouse"}
 # one holder at a time (a CEO, a head of state, a spouse): the current statement must be unambiguous and settled.
 # Two current values with no preferred one, or a current value that started < config.WD_RECENT_DAYS ago -> unsure,
 # the router falls through to the next lane (the web, whose pages carry the change in context). The case that found
 # it: on 2026-11-12 Wikidata ended Jensen Huang's CEO statement and made Colette Kress (CFO, named interim CEO) the
 # preferred one, so "who is the CEO of Nvidia" answered a bare "Colette Kress". Wikipedia covered the resignation two
 # days later; a two-day-old single statement is the kind of value Wikidata editors still revise.
-SINGLE_HOLDER = {"ceo", "head_state", "spouse"}
+SINGLE_HOLDER = {"ceo", "head_state", "head_gov", "spouse"}
 
 
 _S = r"(?P<s>[a-z0-9][a-z0-9 .'&-]*?)"
@@ -77,6 +80,8 @@ PATTERNS = [
     (rf"\bwhat is the (?:height|elevation) of {_S}$", "height"),
     (rf"\b(?:when|what year) was {_S} born$", "born_date"),
     (rf"^{_SC},? (?:when|what year) was (?:he|she) born$", "born_date"),
+    (rf"\bhow old is {_S}$", "born_date"),                    # the age is computed from it (answer._fact_answer)
+    (rf"^{_SC},? how old is (?:he|she)$", "born_date"),
     (rf"\bwhere was {_S} born$", "born_place"),
     (rf"^{_SC},? where was (?:he|she) born$", "born_place"),
     (rf"\b(?:when|what year) did {_S} die$", "died_date"),
@@ -103,7 +108,8 @@ PATTERNS = [
     (rf"\bwhat is the population (?:of|in) {_S}$", "population"),
     (rf"\bhow many people live in {_S}$", "population"),
     (rf"\bwhat river (?:runs|flows|goes) through {_S}$", "river"),
-    (rf"\bwho is the (?:current )?(?:president|prime minister|leader) of {_S}$", "head_state"),
+    (rf"\bwho is the (?:current )?(?:president|king|queen|monarch|head of state) of {_S}$", "head_state"),
+    (rf"\bwho is the (?:current )?(?:prime minister|premier|chancellor|leader|head of government) of {_S}$", "head_gov"),
     (rf"\bwho is {_S} married to$", "spouse"),
 ]
 PATTERNS = [(re.compile(p), k) for p, k in PATTERNS]
@@ -166,9 +172,9 @@ def parse_fact(text: str) -> FactQ | None:
         subj, hint = _clean_subject(m.group("s"))
         if not subj or subj in _PRON or subj in _TYPE_HINT or len(subj.split()) > 6:
             continue
-        if _NOT_PROP.search(subj) and prop not in ("ceo", "head_state"):
+        if _NOT_PROP.search(subj) and prop not in ("ceo", "head_state", "head_gov"):
             return None
-        if prop == "head_state" and re.search(r"\b(first|second|third|last)\b", t):
+        if prop in ("head_state", "head_gov") and re.search(r"\b(first|second|third|last)\b", t):
             return None
         return FactQ(prop, subj, hint)
     return None
@@ -342,7 +348,7 @@ def _holder_unsure(prop: str, vals: list, starts: dict, today: dt.date | None = 
     """SINGLE_HOLDER properties: why the current value isn't safe to say, or "" (see SINGLE_HOLDER)."""
     if prop not in SINGLE_HOLDER:
         return ""
-    if len(vals) > 1 and prop != "head_state":       # (head_state: P35 / P6 are tried one property at a time)
+    if len(vals) > 1:
         return f"{len(vals)} current {prop} values, none preferred"
     for v in vals:
         age = _days_since(starts.get(v, ""), today)
