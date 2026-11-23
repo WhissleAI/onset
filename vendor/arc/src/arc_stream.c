@@ -543,7 +543,11 @@ static int full_partial(arc_stream* s) {
   }
   arc_utt_build u;
   memset(&u, 0, sizeof u);
-  if (arc_decode_states(e, H, T, n_smp, f0 / 10.0, s->c.bias_names, &u)) {
+  float lm_w = e->procs.lm_weight;
+  if (s->words & 4) e->procs.lm_weight = 0.0f;   /* Onset patch: partials without the n-gram LM (finals keep it) */
+  int derr = arc_decode_states(e, H, T, n_smp, f0 / 10.0, s->c.bias_names, &u);
+  e->procs.lm_weight = lm_w;
+  if (derr) {
     arc_free(Hown);
     return -1;
   }
@@ -763,7 +767,7 @@ fail:
 
 int arc_stream_set_words(arc_stream* s, int on) {
   if (!s) return -1;
-  s->words = on & 3;
+  s->words = on & 7;
   return 0;
 }
 
