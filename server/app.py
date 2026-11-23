@@ -128,7 +128,7 @@ async def health(probe: int = 0):
     if probe:
         w, a = await asyncio.gather(lanes.probe_web(), answer.probe())
         probes = {"probe": {"web_ms": w.get("probe_ms"), "answer_ms": a.get("probe_ms")}}
-    return {"ok": True, **status_payload(), "answer_model": config.ANSWER_MODEL, "local_docs": len(lanes.index()),
+    return {"ok": True, **status_payload(), "answer_model": answer.model_name(), "local_docs": len(lanes.index()),
             "user_recordings": len(userindex.ready_dirs()),
             **probes}
 

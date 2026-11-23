@@ -104,7 +104,7 @@ struct SettingsView: View {
                            onRemove: { Keys.set(k, nil); refresh(); note = "Removed. Save to restart the server." })
                         .padding(.bottom, 4)
                 }
-                Text("Web search: Tavily with a Tavily key, else Telem with a Telem key, else Wikipedia (free). Keys are stored only in your login Keychain and passed to the local server as environment variables. Never written to disk or logs.")
+                Text("Web search: Tavily with a Tavily key, else Telem with a Telem key, else DuckDuckGo (free). Answers are written on this Mac (\(ServicePlan.answerModel)): no key. Keys are stored only in your login Keychain and passed to the local server as environment variables. Never written to disk or logs.")
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Section(header: Text("Ear").font(.headline).padding(.top, 8)) {

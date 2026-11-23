@@ -167,7 +167,8 @@ for f in arc-v1/LICENSE:ArcV1-LICENSE.txt arc-v1/NOTICE:ArcV1-NOTICE.txt \
          arc-v1/moonshine-streaming-tiny/LICENSE:Moonshine-LICENSE.txt \
          arc-v1/moonshine-streaming-tiny/ORIGIN.md:Moonshine-ORIGIN.md \
          embeddinggemma-2-onnx/LICENSE:EmbeddingGemma2-ONNX-LICENSE.txt \
-         embeddinggemma-2-onnx/NOTICE:EmbeddingGemma2-ONNX-NOTICE.txt; do
+         embeddinggemma-2-onnx/NOTICE:EmbeddingGemma2-ONNX-NOTICE.txt \
+         answer-lm/LICENSE:Qwen2.5-0.5B-Instruct-LICENSE.txt; do
   src="$MD/${f%%:*}"; if [ -f "$src" ]; then cp "$src" "$L/${f##*:}"; fi
 done
 SP="$(ls -d "$PY"/lib/python3.*/site-packages)"

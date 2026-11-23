@@ -72,7 +72,7 @@ DOCS = [lanes.Doc(id="1", title="Nvidia", text="Nvidia was founded by Jensen Hua
 
 
 @pytest.fixture
-def no_card(monkeypatch):
+def no_card(monkeypatch, claude_backend):
     monkeypatch.setattr(config, "ANSWER_FALLBACK", False)
     monkeypatch.setattr(router, "pick_card", lambda q, d: None)
     answer.reset_status()
@@ -129,7 +129,7 @@ def test_hedge_loser_counts_as_waste(monkeypatch, no_card):
     assert t["waste_in"] == 500 and t["llm_requests"] == 2
 
 
-def test_card_answer_uses_zero_tokens(monkeypatch):
+def test_card_answer_uses_zero_tokens(monkeypatch, claude_backend):
     card = {"spoken": "It is 21 degrees in Paris.", "kind": "weather"}
     monkeypatch.setattr(router, "pick_card", lambda q, d: (0, card))
     monkeypatch.setattr(config, "ROUTER", True)
@@ -177,7 +177,7 @@ def test_connection_failure_is_not_billed(monkeypatch, no_card):
 
 
 # ----------------------------------------------------------------------------- $ arithmetic
-def test_cost_arithmetic(monkeypatch):
+def test_cost_arithmetic(monkeypatch, claude_backend):
     monkeypatch.setattr(config, "ANSWER_MODEL", "claude-haiku-5-5")
     p = meter.prices()
     assert p["verified"] and (p["in_usd_mtok"], p["out_usd_mtok"]) == (0.10, 0.50) and p["credit_usd"] == 0.008
@@ -192,7 +192,7 @@ def test_cost_arithmetic(monkeypatch):
     assert meter.cost(0, {})["usd"] == 0
 
 
-def test_unlisted_model_price_is_unverified(monkeypatch):
+def test_unlisted_model_price_is_unverified(monkeypatch, claude_backend):
     monkeypatch.setattr(config, "ANSWER_MODEL", "claude-unknown-9")
     c = meter.cost(1, {"ans_in": 1000, "ans_out": 10})
     assert c["usd_llm"] is None and c["usd"] == pytest.approx(0.008) and not c["price_verified"]
@@ -217,7 +217,7 @@ METER_KEYS = ("ans_in", "ans_out", "waste_in", "waste_out", "llm_requests", "tok
 
 
 @pytest.fixture
-def metered(monkeypatch):
+def metered(monkeypatch, claude_backend):
     from server import speculator
     monkeypatch.setattr(answer, "Stream", MeteredStream)
     monkeypatch.setattr(speculator.answer, "Stream", MeteredStream)

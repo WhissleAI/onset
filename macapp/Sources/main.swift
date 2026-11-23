@@ -439,7 +439,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         let credits = NSAttributedString(string: """
             Voice search that searches while you speak.
             Runs on this Mac: Arc v1 ear + Arc Tagger (Whissle, CC BY-NC 4.0), EmbeddingGemma 2 (Google, Apache 2.0), \
-            search director. Cloud (with your keys): Deepgram Flux (ear), Tavily or Telem (web), Claude (answers).
+            Qwen2.5-0.5B-Instruct answers (Qwen, Apache 2.0), search director. Web: DuckDuckGo (free), or with your \
+            keys Tavily or Telem. Cloud ear with a key: Deepgram Flux.
             Licences: \(AppInfo.name).app/Contents/Resources/Licenses
             """, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .applicationName: AppInfo.name])

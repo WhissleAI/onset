@@ -18,6 +18,10 @@
    ],
    "note": "Google, Apache 2.0 (model card)."
   },
+  "answer-lm": {
+   "files": "all",
+   "note": "Qwen2.5-0.5B-Instruct (Alibaba Cloud / Qwen team), Apache 2.0: LICENSE ships in the model folder and Resources/Licenses. Writes the on-device answer; no key needed."
+  },
   "index-data": {
    "include": [
     "knowledge/"

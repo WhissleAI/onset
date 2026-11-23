@@ -23,10 +23,6 @@ struct KeyInfo {
                 powers: "A web search router across providers. Used when there is no Tavily key, and as a backup when Tavily fails.",
                 without: "Tavily alone, or DuckDuckGo (free) when neither key is set.",
                 getURL: "https://app.telem.ai", optional: true),
-        KeyInfo(env: "ANTHROPIC_API_KEY", title: "Anthropic (optional)",
-                powers: "Claude writes a short answer from the sources it found.",
-                without: "The answer is the best sentence from the top source, shown with its link.",
-                getURL: "https://console.anthropic.com/settings/keys", optional: true),
     ]
     static func of(_ env: String) -> KeyInfo { all.first { $0.env == env }! }
 }
@@ -36,6 +32,9 @@ struct ServicePlan {
     let ear: String
     let web: String
     let answers: String
+
+    /// The answer writer: a small model on this Mac (server/answer_lm.py, models/manifest.json "answer-lm"). No key.
+    static let answerModel = "Qwen2.5 0.5B"
 
     static func webBackend(tavily: Bool, telem: Bool) -> String { tavily ? "tavily" : (telem ? "telem" : "duckduckgo") }
 
@@ -50,7 +49,7 @@ struct ServicePlan {
         }
         return ServicePlan(ear: flux ? "Deepgram Flux" : "Arc, on this Mac",
                            web: web,
-                           answers: has("ANTHROPIC_API_KEY") ? "Claude" : "Best source sentence")
+                           answers: "On-device (\(ServicePlan.answerModel))")
     }
 }
 
@@ -61,10 +60,6 @@ enum KeyCheck {
     static func run(_ env: String, key: String, done: @escaping (Result) -> Void) {
         var req: URLRequest
         switch env {
-        case "ANTHROPIC_API_KEY":       // list models: free
-            req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/models?limit=1")!)
-            req.setValue(key, forHTTPHeaderField: "x-api-key")
-            req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         case "TAVILY_API_KEY":          // account usage: free, no search credit
             req = URLRequest(url: URL(string: "https://api.tavily.com/usage")!)
             req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
@@ -166,7 +161,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Welcome to \(AppInfo.name)").font(.system(size: 22, weight: .semibold))
-                Text("Ask out loud or type, and \(AppInfo.name) searches while you're still asking. It works right away with no keys: Arc listens on this Mac and answers come from Wikipedia. Add your own keys to make each part better.")
+                Text("Ask out loud or type, and \(AppInfo.name) searches while you're still asking. It works right away with no keys: Arc listens on this Mac, DuckDuckGo searches the web, and a small model on this Mac writes the answer. Add your own keys to make each part better.")
                     .foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             ScrollView {

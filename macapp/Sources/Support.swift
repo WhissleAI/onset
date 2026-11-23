@@ -85,9 +85,8 @@ func appLog(_ msg: String) {
 /// API keys live in the login Keychain (generic passwords, service = bundle id). Values are never logged or written
 /// to disk by the app; they reach the server only as environment variables of its process.
 enum Keys {
-    static let all = ["DEEPGRAM_API_KEY", "TAVILY_API_KEY", "TELEM_API_KEY", "ANTHROPIC_API_KEY"]
-    static let labels = ["ANTHROPIC_API_KEY": "Anthropic (answers)",
-                         "TAVILY_API_KEY": "Tavily (web search)",
+    static let all = ["DEEPGRAM_API_KEY", "TAVILY_API_KEY", "TELEM_API_KEY"]
+    static let labels = ["TAVILY_API_KEY": "Tavily (web search)",
                          "TELEM_API_KEY": "Telem (web search router)",
                          "DEEPGRAM_API_KEY": "Deepgram (cloud ear: Flux)"]
 

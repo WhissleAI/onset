@@ -396,5 +396,7 @@ def install(monkeypatch_setattr, world_ref: dict):
     monkeypatch_setattr(lanes, "local_audio", local_audio)
     monkeypatch_setattr(answer, "build_prompt", build_prompt)
     monkeypatch_setattr(answer, "client", lambda: client)
+    # the simulator models the API answer path (its timing profiles are Claude's), whatever the app's default backend
+    monkeypatch_setattr(answer, "backend", lambda: "claude")
     monkeypatch_setattr(session, "Tagger", CachedTagger)
     return client

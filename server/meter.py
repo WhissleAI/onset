@@ -9,13 +9,19 @@ from . import config
 
 
 def prices() -> dict:
-    """USD per million tokens for the configured answer model, and whether that price is verified (listed)."""
-    listed = config.METER_MODEL_PRICES.get(config.ANSWER_MODEL)
+    """USD per million tokens for the configured answer model, and whether that price is verified (listed). The
+    on-device model (and the extractive sentence) cost nothing per token: $0, verified."""
+    from . import answer
+    model = answer.model_name()
+    if answer.backend() != "claude":
+        listed = (0.0, 0.0)
+    else:
+        listed = config.METER_MODEL_PRICES.get(config.ANSWER_MODEL)
     pin, pout = listed if listed else (None, None)
     over = config.METER_ANSWER_IN_USD_MTOK is not None and config.METER_ANSWER_OUT_USD_MTOK is not None
     if over:
         pin, pout = float(config.METER_ANSWER_IN_USD_MTOK), float(config.METER_ANSWER_OUT_USD_MTOK)
-    return {"model": config.ANSWER_MODEL, "in_usd_mtok": pin, "out_usd_mtok": pout,
+    return {"model": model, "in_usd_mtok": pin, "out_usd_mtok": pout,
             "verified": bool(listed) and not over, "configured": over,
             "cache_read_mult": config.COST_CACHE_READ_MULT, "cache_write_mult": config.COST_CACHE_WRITE_MULT,
             "prompt_cache": config.COST_CACHE,

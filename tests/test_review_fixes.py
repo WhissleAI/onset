@@ -97,7 +97,7 @@ async def _hedge_case(monkeypatch, specs, hedge_ms):
     return st, fc, n["wait"], took, unretrieved, others
 
 
-def test_hedge_no_busy_spin_fast_fail_hedges_and_cleans_up(monkeypatch):
+def test_hedge_no_busy_spin_fast_fail_hedges_and_cleans_up(monkeypatch, claude_backend):
     async def go():
         out = {}
         # hedge wins; the primary returns at its first token (a loser) -> must not spin until the winner finishes
@@ -123,7 +123,7 @@ def test_hedge_no_busy_spin_fast_fail_hedges_and_cleans_up(monkeypatch):
 
 
 # ============================================================================ 2. cancel before the task starts
-def test_stream_cancelled_before_start_ends_and_follow_returns(monkeypatch):
+def test_stream_cancelled_before_start_ends_and_follow_returns(monkeypatch, claude_backend):
     class C:
         @property
         def messages(self):

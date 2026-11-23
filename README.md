@@ -20,15 +20,15 @@ mic ─▶ Arc (streaming ASR + events) ─▶ Arc Tagger (10M, 0.7 ms/word) ─
 | **Arc Tagger v0.3** (Whissle, 10M, native C int8) | partial sentence → intent, typed slots, dialogue act, `command_complete` | understands the query in ~1 ms/word instead of an LLM router's ~500 ms; updates as words revise |
 | **Speculator** (`server/speculator.py`) | when to search, what to search, cancel stale, draft early, verify reuse | the search intelligence |
 | **EmbeddingGemma 2** (Google, 740M, text+audio+image) | reranks the pool; local moments index; embeds the *spoken audio* of the question | one space for audio and text: retrieval can start before the words settle |
-| **Claude Haiku 5.5** | streaming 1–2 sentence answer with citations | thinking off, effort low: ~600 ms to first token |
+| **Qwen2.5-0.5B-Instruct** (Apache 2.0, on-device) | streaming one-sentence answer with a citation, written on this Mac | no key, no network: 4-bit ONNX (327 MB), ~0.5 s to first token with 5 short web sources on an M3 Pro; `ANSWER_BACKEND=claude` + `ANTHROPIC_API_KEY` switches back to Claude |
 
 ## Download for Mac
 **[Download Onset for Mac](https://github.com/WhissleAI/headstart/releases/latest)** (Apple Silicon, macOS 13 or later,
 about 6 GB free disk). Signed and notarized by Whissle LLC. Open the DMG, drag Onset to Applications, open it.
 
-It works without any keys: Arc listens on your Mac and answers come from Wikipedia. On first launch a short setup
-explains each optional key (Deepgram for the cloud ear, Tavily or Telem for the live web, Anthropic for written
-answers), with a **Test** button for each. Keys are stored only in your Mac's Keychain; questions, memory and history
+It works without any keys: Arc listens on your Mac, DuckDuckGo searches the web, and a small model on your Mac
+(Qwen2.5-0.5B-Instruct) writes the answer. On first launch a short setup explains each optional key (Deepgram for the
+cloud ear, Tavily or Telem for the live web), with a **Test** button for each. Keys are stored only in your Mac's Keychain; questions, memory and history
 stay on your Mac. You can speak (hold Space) or type. Release steps: [MACAPP.md](MACAPP.md#release).
 
 ## Index your own recordings
@@ -48,7 +48,7 @@ indexing pauses while you ask a question. Remove a recording and its moments lea
   entity before querying.
 - **Stale**: a search whose words the speaker revised away is cancelled in flight; its results stay in the pool (the
   reranker decides) but don't feed drafts while fresh results exist. Revived if the ASR flips back.
-- **Drafts**: as soon as every lane of the current meaning has returned, Haiku drafts the answer in the background.
+- **Drafts**: as soon as every lane of the current meaning has returned, the answer model drafts the answer in the background.
   At the endpoint a draft is reused if its meaning matches exactly, or if the final question only *added* words that
   the draft's own answer already contains ("how tall is the Eiffel" → "…Eiffel Tower"). Otherwise: answer from the
   in-flight/landed search for the final query, or (only if nothing new was said) commit from the pool.
@@ -65,7 +65,11 @@ indexing pauses while you ask a question. Remove a recording and its moments lea
 python3 scripts/fetch_models.py status                      # models (models/manifest.json) in ~/Library/Application Support/<APP_NAME>/models
 scripts/build_macapp.sh                                     # native macOS app → dist/<APP_NAME>.app (MACAPP.md)
 ```
-Keys in `.env` (git-ignored): `ANTHROPIC_API_KEY`; `TAVILY_API_KEY` switches the web lane from Wikipedia to Tavily.
+Answers: `ANSWER_BACKEND=local` (default: Qwen2.5-0.5B-Instruct in `MODELS_DIR/answer-lm`, fetched by
+`scripts/fetch_models.py fetch answer-lm`; `server/answer_lm.py`), `extractive` (best source sentence, no model) or
+`claude` (only with `ANTHROPIC_API_KEY`; `ANSWER_MODEL` picks the model). A missing or failing local model falls back
+to the extractive sentence, flagged in the UI.
+Keys in `.env` (git-ignored): `TAVILY_API_KEY` switches the web lane from DuckDuckGo to Tavily.
 Ear: `EAR=deepgram` + `DEEPGRAM_API_KEY` streams the same audio to Deepgram nova-3 (interim results, 300 ms endpointing)
 for the words; without a key, or if the socket fails/drops, the run falls back to Arc (the open utterance is re-fed).
 `/api/health` and the `ready` event report `ear` (active) and `ear_requested`.
