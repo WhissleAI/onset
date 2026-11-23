@@ -37,7 +37,10 @@ ONNX_RUNTIME = os.environ.get("ONNX_RUNTIME", "0") == "1"
 EMBED_ONNX_DIR = _mp.resolve("embeddinggemma-2-onnx", "EMBED_ONNX_DIR")
 ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "claude-haiku-5-5")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
-WEB_BACKEND = os.environ.get("WEB_BACKEND", "tavily" if TAVILY_API_KEY else "wikipedia")
+# No paid key: DuckDuckGo (free, keyless; server/ddg.py), with Wikipedia behind it. WEB_BACKEND=wikipedia skips DDG.
+WEB_BACKEND = os.environ.get("WEB_BACKEND", "tavily" if TAVILY_API_KEY else "duckduckgo")
+# A final question whose paid backend(s) failed tries DuckDuckGo before Wikipedia (free; the user is waiting).
+WEB_DDG_FAILOVER = os.environ.get("WEB_DDG_FAILOVER", "1") == "1"
 INDEX_DIR = _mp.resolve("index-data", "INDEX_DIR", legacy=ROOT / "index/data")
 AUDIO_DIR = _mp.resolve("demo-audio", "AUDIO_DIR", legacy=ROOT / "eval/audio")   # replay questions (eval/audio/*.wav)
 

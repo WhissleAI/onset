@@ -1,7 +1,7 @@
 """Retrieval lanes. Each returns a list of Doc; all are async and cancellable.
 
-web   : Tavily when TAVILY_API_KEY is set (depth/topic/freshness per question, credit ledger + cache), else Wikipedia
-        (keyless, real network latency).
+web   : Tavily when TAVILY_API_KEY is set (depth/topic/freshness per question, credit ledger + cache), else DuckDuckGo
+        (free, keyless: server/ddg.py), with Wikipedia (keyless) behind either.
 local : EmbeddingGemma 2 index over a local corpus (text, and audio moments), queried by text or by an audio vector.
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ class Doc:
     text: str
     url: str = ""
     lane: str = ""
-    source: str = ""          # tavily | wikipedia | local
+    source: str = ""          # tavily | telem | duckduckgo | wikipedia | local
     t: float | None = None    # local moment start (s), if any
     score: float = 0.0        # lane score
     meta: dict = field(default_factory=dict)
@@ -104,6 +104,14 @@ async def _wiki_search(query: str, k: int) -> list[Doc]:
         out.append(Doc(id=p.get("fullurl") or f"wiki:{p.get('pageid')}", title=p.get("title", ""), text=text,
                        url=p.get("fullurl", ""), source="wikipedia"))
     return out
+
+
+async def duckduckgo(query: str, k: int | None = None) -> list[Doc]:
+    """DuckDuckGo results as Docs (title, URL, snippet). Free and keyless; see server/ddg.py for its limits."""
+    from . import ddg
+    rows = await ddg.search(query, client(), k=k or ddg.MAX_RESULTS, timeout=config.WEB_LIVE_TIMEOUT_S)
+    return [Doc(id=r["url"], title=r["title"], text=r["snippet"] or r["title"], url=r["url"], source="duckduckgo",
+                score=1.0 - i * 0.05) for i, r in enumerate(rows)]
 
 
 def relaxed(query: str) -> str:
@@ -683,6 +691,21 @@ async def _live(query: str, topic: str, intent: str, text: str, final: bool, led
             meter["fallback"] = f"{type(e).__name__}: {e}"[:120]
             if not final:
                 raise
+    if config.WEB_BACKEND == "duckduckgo" or (final and config.WEB_DDG_FAILOVER and telem_chain()):
+        from . import ddg
+        try:
+            docs = await asyncio.wait_for(duckduckgo(query), timeout=config.WEB_LIVE_TIMEOUT_S + 0.5)
+            if docs:
+                meter.setdefault("credits", 0.0)
+                meter["backend"] = "duckduckgo"
+                if telem_chain():
+                    meter["failover"] = "duckduckgo"
+                res = WebResult(docs)
+                res.backend = "duckduckgo"
+                return res
+            meter["fallback"] = "duckduckgo: no results"
+        except (ddg.DDGError, httpx.HTTPError, asyncio.TimeoutError) as e:
+            meter["fallback"] = f"{type(e).__name__}: {e}"[:120]
     meter.setdefault("credits", 0.0)
     meter["backend"] = "wikipedia"
     try:
@@ -773,6 +796,9 @@ async def probe_web(timeout: float = 4.0) -> dict:
         elif config.WEB_BACKEND == "telem":
             from . import telem
             r = await telem.probe(timeout)
+        elif config.WEB_BACKEND == "duckduckgo":
+            from . import ddg
+            r = await asyncio.wait_for(client().get("https://html.duckduckgo.com/html/", headers=ddg.UA), timeout)
         else:
             r = await asyncio.wait_for(client().get(
                 "https://en.wikipedia.org/w/api.php", params={"action": "query", "format": "json"}), timeout)

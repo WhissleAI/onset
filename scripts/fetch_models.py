@@ -34,6 +34,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 import urllib.request
 from pathlib import Path
@@ -98,7 +99,7 @@ def state(m: dict, dest: Path, deep: bool = False) -> dict:
     total = sum(f["size"] for f in m["files"])
     return {"model": m["dir"], "name": m["name"], "required": m.get("required", True), "path": str(d),
             "linked": d.is_symlink(), "ok": not bad, "missing": bad, "bytes": total,
-            "source": m["source"]["type"], "downloadable": m["source"]["type"] in ("hf", "url")}
+            "source": m["source"]["type"], "downloadable": m["source"]["type"] in DOWNLOADABLE}
 
 
 def cmd_status(man, dest, a) -> int:
@@ -114,6 +115,9 @@ def cmd_status(man, dest, a) -> int:
                   f"{len(r['missing'])} file(s) missing{how}" if not r["ok"] else
                   f"  [{st}] {r['model']:<18} {r['bytes'] / 1e6:8.1f} MB  {'(link)' if r['linked'] else ''}")
     return 0 if all(r["ok"] or not r["required"] for r in rows) else 2
+
+
+DOWNLOADABLE = ("hf", "url", "archive")
 
 
 def url_for(m: dict, f: dict) -> str:
@@ -151,6 +155,35 @@ def download(url: str, out: Path, f: dict, progress) -> None:
     os.replace(part, out)
 
 
+def unpack(m: dict, archive: Path, d: Path) -> None:
+    """Unpack a model archive into d: only the manifest's paths are written (anything else in the archive is ignored, so
+    no member can land outside d), each through a .part file, and each sha256-checked before it is moved into place."""
+    want = {f["path"]: f for f in m["files"]}
+    seen = set()
+    with tarfile.open(archive, "r:") as t:
+        for ti in t:
+            f = want.get(ti.name)
+            if f is None or not ti.isfile():
+                continue
+            out = d / f["path"]
+            out.parent.mkdir(parents=True, exist_ok=True)
+            part = out.with_name(out.name + ".part")
+            h = hashlib.sha256()
+            src = t.extractfile(ti)
+            with open(part, "wb") as w:
+                for b in iter(lambda: src.read(CHUNK), b""):
+                    h.update(b)
+                    w.write(b)
+            if h.hexdigest() != f["sha256"] or part.stat().st_size != f["size"]:
+                part.unlink()
+                raise IOError(f"{m['dir']}/{f['path']}: checksum mismatch after unpacking")
+            os.replace(part, out)
+            seen.add(f["path"])
+    missing = sorted(set(want) - seen)
+    if missing:
+        raise IOError(f"{m['dir']}: archive lacks {', '.join(missing[:4])}")
+
+
 def cmd_fetch(man, dest, a) -> int:
     todo, rc = [], 0
     for m in models(man, a.names):
@@ -158,7 +191,7 @@ def cmd_fetch(man, dest, a) -> int:
         if st["ok"]:
             emit("ok", model=m["dir"], message=f"{m['dir']}: present")
             continue
-        if m["source"]["type"] not in ("hf", "url"):
+        if m["source"]["type"] not in DOWNLOADABLE:
             emit("needs_import", model=m["dir"], name=m["name"], required=m.get("required", True),
                  message=f"{m['dir']}: no public source; import a copy: fetch_models.py import {m['dir']}=PATH")
             rc = 2 if m.get("required", True) else rc
@@ -168,7 +201,11 @@ def cmd_fetch(man, dest, a) -> int:
             emit("error", model=m["dir"], message=f"{d} is a link to an incomplete copy; remove the link to download")
             rc = 2
             continue
-        todo += [(m, f) for f in m["files"] if not file_ok(d / f["path"], f, deep=False)]
+        if m["source"]["type"] == "archive":     # one archive per model: fetched whole, then unpacked
+            todo.append((m, {"path": Path(m["source"]["url"].split("?")[0]).name or m["dir"] + ".tar",
+                             "size": m["source"]["size"], "sha256": m["source"]["sha256"], "archive": True}))
+        else:
+            todo += [(m, f) for f in m["files"] if not file_ok(d / f["path"], f, deep=False)]
     total = sum(f["size"] for _, f in todo)
     done = 0
     last = [0.0]
@@ -184,9 +221,20 @@ def cmd_fetch(man, dest, a) -> int:
 
     for m, f in todo:
         out = dest / m["dir"] / f["path"]
+        if f.get("archive"):
+            out = dest / ".downloads" / f"{m['dir']}.tar"
         for attempt in range(3):
             try:
-                download(url_for(m, f), out, f, lambda n, m=m, f=f: progress(n, m, f))
+                if f.get("archive"):
+                    if not out.is_file() or out.stat().st_size != f["size"]:
+                        download(m["source"]["url"], out, f, lambda n, m=m, f=f: progress(n, m, f))
+                    else:
+                        progress(f["size"], m, f)
+                    emit("unpack", model=m["dir"], message=f"{m['dir']}: unpacking and checking {len(m['files'])} files")
+                    unpack(m, out, dest / m["dir"])
+                    out.unlink()
+                else:
+                    download(url_for(m, f), out, f, lambda n, m=m, f=f: progress(n, m, f))
                 break
             except Exception as e:  # noqa: BLE001
                 if attempt == 2:

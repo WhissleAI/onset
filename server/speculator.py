@@ -273,7 +273,9 @@ class Speculator:
         hints = dict(f.web_hints())
         topic = "news" if f.intent in NEWS_INTENTS else "general"
         ent = f.entity_query() if q == f.query() else ""
-        if config.WEB_BACKEND in ("tavily", "telem"):
+        if config.WEB_BACKEND == "duckduckgo":
+            q = narrow.shape_query(f, q)               # the Arc read-out shapes the query; DDG takes no domain filters
+        elif config.WEB_BACKEND in ("tavily", "telem"):
             # Arc read-out narrowing (server/narrow.py): query shaped from the slots, sources for the question's family
             q = narrow.shape_query(f, q)
             if config.WEB_BACKEND == "telem":

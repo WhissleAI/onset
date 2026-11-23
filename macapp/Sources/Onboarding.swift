@@ -15,14 +15,14 @@ struct KeyInfo {
                 powers: "Hears you in the cloud with Deepgram Flux: the quickest turn-taking.",
                 without: "Arc listens on this Mac instead. Private, a little slower.",
                 getURL: "https://console.deepgram.com/signup", optional: false),
-        KeyInfo(env: "TAVILY_API_KEY", title: "Tavily",
+        KeyInfo(env: "TAVILY_API_KEY", title: "Tavily (optional)",
                 powers: "Searches the live web: fresh, ranked results for news, sports, prices and more.",
-                without: "Telem searches the web if you add its key. With neither, answers come from Wikipedia.",
-                getURL: "https://app.tavily.com", optional: false),
-        KeyInfo(env: "TELEM_API_KEY", title: "Telem",
+                without: "DuckDuckGo searches the web for free. No key needed.",
+                getURL: "https://app.tavily.com", optional: true),
+        KeyInfo(env: "TELEM_API_KEY", title: "Telem (optional)",
                 powers: "A web search router across providers. Used when there is no Tavily key, and as a backup when Tavily fails.",
-                without: "Tavily alone, or Wikipedia when neither key is set.",
-                getURL: "https://app.telem.ai", optional: false),
+                without: "Tavily alone, or DuckDuckGo (free) when neither key is set.",
+                getURL: "https://app.telem.ai", optional: true),
         KeyInfo(env: "ANTHROPIC_API_KEY", title: "Anthropic (optional)",
                 powers: "Claude writes a short answer from the sources it found.",
                 without: "The answer is the best sentence from the top source, shown with its link.",
@@ -37,7 +37,7 @@ struct ServicePlan {
     let web: String
     let answers: String
 
-    static func webBackend(tavily: Bool, telem: Bool) -> String { tavily ? "tavily" : (telem ? "telem" : "wikipedia") }
+    static func webBackend(tavily: Bool, telem: Bool) -> String { tavily ? "tavily" : (telem ? "telem" : "duckduckgo") }
 
     static func with(_ has: (String) -> Bool) -> ServicePlan {
         let earPref = UserDefaults.standard.string(forKey: "ear") ?? "auto"
@@ -46,7 +46,7 @@ struct ServicePlan {
         switch webBackend(tavily: has("TAVILY_API_KEY"), telem: has("TELEM_API_KEY")) {
         case "tavily": web = has("TELEM_API_KEY") ? "Tavily, with Telem as backup" : "Tavily"
         case "telem": web = "Telem"
-        default: web = "Wikipedia (free)"
+        default: web = "DuckDuckGo (free)"
         }
         return ServicePlan(ear: flux ? "Deepgram Flux" : "Arc, on this Mac",
                            web: web,
