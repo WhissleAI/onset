@@ -1,0 +1,107 @@
+/* Cost-and-speed meter (web/meter.js): a bar pinned to the bottom of the viewport, details open upward. Uses the
+   page's colour tokens (style.css :root, light + dark). */
+body.has-meter { padding-bottom: 64px; }
+body.has-meter .side { max-height: calc(100vh - 134px); }
+
+.meter {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  background: var(--card); border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 16px rgba(16, 24, 40, .07);
+  font-size: 12px; color: var(--ink-2);
+}
+.mt-bar {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 16px;
+  padding: 6px 16px; min-height: 56px; max-width: 1600px; margin: 0 auto;
+}
+.mt-hero { display: flex; flex-direction: column; min-width: 0; }
+.mt-hero b { font-size: 19px; line-height: 1.15; font-weight: 800; color: var(--hs); letter-spacing: -.01em; white-space: nowrap; }
+.mt-hero b.mt-idle { color: var(--ink); font-size: 15px; }
+.mt-hero small { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.mt-q { border-collapse: collapse; font-variant-numeric: tabular-nums; justify-self: center; font-size: 12px; }
+.mt-q th { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3);
+  text-align: right; padding: 0 8px 1px; white-space: nowrap; }
+.mt-q th:first-child { text-align: left; padding-left: 0; text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--ink-2);
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+.mt-q td { padding: 0 8px; text-align: right; white-space: nowrap; color: var(--ink); line-height: 1.45; }
+.mt-q td:first-child { text-align: left; padding-left: 0; color: var(--ink-2); font-weight: 600; }
+.mt-q td .dot, .mt-detail .dot { width: 8px; height: 8px; margin-right: 6px; vertical-align: 0; }
+.mt-q .mt-usd { font-weight: 700; }
+.mt-q .mt-na, .mt-detail .mt-na { color: var(--ink-3); text-align: center; font-style: italic; }
+.mt-dim { color: var(--ink-3); margin: 0 1px; }
+.mt-waste { color: var(--draft); font-weight: 600; }
+.mt-card { color: var(--hs); font-weight: 600; }
+.mt-good { color: var(--hs); font-weight: 700; }
+.mt-bad { color: var(--err); font-weight: 700; }
+
+.mt-sess { display: flex; flex-direction: column; min-width: 0; text-align: right; }
+.mt-sess label { line-height: 1.2; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.mt-sess div { white-space: nowrap; color: var(--ink-2); line-height: 1.4; }
+.mt-sess b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.mt-sep { margin: 0 5px; color: var(--ink-3); }
+
+.mt-bar.mt-empty { grid-template-columns: minmax(0, 1fr) auto; }
+.mt-mode { display: flex; flex-direction: column; align-items: flex-start; }
+.mt-mode label { line-height: 1.2; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.mt-mode span { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card-2); }
+.mt-mode button { border: 0; background: transparent; padding: 3px 9px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.mt-mode button + button { border-left: 1px solid var(--line); }
+.mt-mode button[aria-pressed="true"] { background: var(--hs); color: var(--card); }
+.mt-mode button:hover:not([aria-pressed="true"]) { color: var(--ink); }
+.mt-more { border: 1px solid var(--line); background: var(--card-2); border-radius: 8px; padding: 5px 11px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.mt-more:hover { color: var(--ink); border-color: var(--ink-3); }
+
+.mt-detail { border-top: 1px solid var(--line-2); padding: 8px 16px 10px; max-height: min(46vh, 330px); overflow: auto; max-width: 1600px; margin: 0 auto; }
+.mt-tot { display: flex; flex-wrap: wrap; gap: 4px 22px; margin-bottom: 6px; color: var(--ink-2); }
+.mt-tot b { color: var(--ink); }
+.mt-tbl { overflow-x: auto; }
+.mt-detail table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.mt-detail th { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); text-align: right;
+  padding: 3px 7px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.mt-detail td { padding: 3px 7px; font-size: 11.5px; text-align: right; border-bottom: 1px solid var(--line-2); white-space: nowrap; color: var(--ink); }
+.mt-detail th:nth-child(-n+2), .mt-detail td:nth-child(-n+2) { text-align: left; }
+.mt-detail .mt-qt { max-width: 230px; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+.mt-note { margin: 6px 0 0; font-size: 11px; line-height: 1.5; color: var(--ink-3); }
+
+/* eval A/B summary in the Results section */
+.mt-eval { margin: 4px 0 12px; }
+.mt-eval h3 { margin: 0 0 6px; font-size: 13px; }
+.mt-eval table { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.mt-eval th { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); text-align: right; padding: 3px 10px; border-bottom: 1px solid var(--line); }
+.mt-eval td { padding: 4px 10px; text-align: right; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.mt-eval td:first-child, .mt-eval th:first-child { text-align: left; }
+.mt-eval .dot { width: 8px; height: 8px; margin-right: 6px; }
+
+/* narrower screens: hero + session + button; the per-question row lives in details */
+@media (max-width: 1100px) {
+  .mt-bar { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .mt-q { display: none; }
+}
+@media (max-width: 700px) {
+  body.has-meter { padding-bottom: 60px; }
+  .mt-bar { grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; padding: 6px 16px; }
+  .mt-sess { display: none; }
+  .mt-mode label { display: none; }
+  .mt-hero b { font-size: 16px; white-space: normal; }
+}
+/* 1100-1400 px: the budget toggle shares the bar; tighter cells so the per-question row and the session never overlap */
+@media (max-width: 1400px) and (min-width: 1101px) {
+  .mt-bar { gap: 10px; }
+  .mt-q th, .mt-q td { padding-left: 4px; padding-right: 4px; }
+  .mt-q th:first-child { max-width: 150px; }
+  .mt-mode label { display: none; }
+  .mt-sess { max-width: 230px; }
+  .mt-sess div { overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* polish2: a slim one-line bar (headline + details); the rest opens above it */
+.mt-bar.mt-slim { grid-template-columns: minmax(0, 1fr) auto; min-height: 44px; padding: 5px 16px; }
+.mt-slim .mt-hero { flex-direction: row; align-items: baseline; gap: 12px; }
+.mt-slim .mt-hero b { font-size: 15px; }
+.mt-slim .mt-hero small { font-size: 11.5px; }
+body.has-meter { padding-bottom: 50px; }
+.mt-open-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px;
+  padding: 8px 16px 0; max-width: 1600px; margin: 0 auto; border-top: 1px solid var(--line-2); }
+.mt-open-row .mt-q { display: table; justify-self: auto; }
+.mt-open-row .mt-sess { text-align: left; }
+@media (max-width: 700px) { .mt-slim .mt-hero { flex-direction: column; gap: 0; } .mt-open-row .mt-sess { display: flex; } }

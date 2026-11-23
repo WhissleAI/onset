@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OnSet demo</title>
+<meta name="description" content="Speculative voice search: the answer is ready when you stop talking.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=28">
+<link rel="stylesheet" href="film.css?v=4">
+<link rel="stylesheet" href="meter.css?v=4">
+<link rel="stylesheet" href="graph.css?v=4">
+<link rel="stylesheet" href="graphbig.css?v=1">
+<link rel="stylesheet" href="plan.css?v=2">
+<link rel="stylesheet" href="scorecard.css?v=2">
+<link rel="stylesheet" href="confidence.css?v=1">
+<link rel="stylesheet" href="recordings.css?v=1">
+<link rel="stylesheet" href="demo.css?v=1">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div>
+      <h1>Onset</h1>
+      <p class="tag">Free lookups start while you speak.</p>
+    </div>
+  </div>
+
+  <ol class="pipe" id="pipe" aria-label="How it works">
+    <li data-st="ear"><b>Ear</b><small data-k>Flux + Arc · live words</small></li>
+    <li data-st="tagger"><b>Tagger</b><small data-k>Arc Tagger · 10M</small></li>
+    <li data-st="spec"><b>Speculator</b><small data-k>free lookups mid-sentence</small></li>
+    <li data-st="lanes"><b>Router</b><small data-k>card · facts · saved · web</small></li>
+    <li data-st="answer"><b>Answer</b><small data-k>on-device LM · streams</small></li>
+  </ol>
+
+  <div class="controls">
+    <div class="seg" id="modeSeg" role="radiogroup" aria-label="Mode">
+      <button data-mode="race" class="on" role="radio" aria-checked="true">Race</button>
+      <button data-mode="headstart" role="radio" aria-checked="false">Onset</button>
+      <button data-mode="baseline" role="radio" aria-checked="false">Baseline</button>
+    </div>
+    <div class="seg view-seg" id="viewSeg" role="radiogroup" aria-label="View" title="Answer: the spoken answer races. Sources: the search results race (general web search).">
+      <button data-view="answer" class="on" role="radio" aria-checked="true">Answer</button>
+      <button data-view="results" role="radio" aria-checked="false">Sources</button>
+    </div>
+    <button id="micBtn" class="mic" title="Hold Space to talk, release to send (or click to start/stop)">
+      <span class="mic-ring" id="micRing"></span>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+      <span id="micLabel">Ask</span>
+    </button>
+    <span class="status" id="status" title="connecting"><i></i><b>connecting</b></span>
+    <button class="sc-open" id="scOpen" type="button" aria-haspopup="dialog" aria-controls="scorecard" title="Measured results: the six problems, one number each">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4 20V10h3v10H4Zm6.5 0V4h3v16h-3ZM17 20v-7h3v7h-3Z"/></svg>
+      <span>Results</span>
+    </button>
+    <button class="icon-btn" id="themeBtn" title="Toggle light/dark" aria-label="Toggle theme">
+      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.4 5.4 0 0 1-9.54-4.6A5.4 5.4 0 0 1 12 3Z"/></svg>
+    </button>
+  </div>
+</header>
+<div class="degraded notices" id="degraded" role="status" aria-live="polite" hidden></div>
+
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h2>Replay a question</h2>
+      <span class="hint">1–9 · R</span>
+    </div>
+    <div class="qtabs" id="qtabs" hidden>
+      <button data-set="web" class="on">Facts</button>
+      <button data-set="local">Local</button>
+      <button data-set="conv">Conversation</button>
+      <button data-set="multi" title="multi-part questions (planner)">Multi</button>
+    </div>
+    <ol class="qlist" id="qlist"><li class="empty">Loading questions…</li></ol>
+    <form class="adhoc" id="adhocForm">
+      <input id="adhocFile" placeholder="file.wav in eval/audio" spellcheck="false" autocomplete="off">
+      <button type="submit">Play</button>
+    </form>
+    <audio id="player" preload="auto"></audio>
+  </aside>
+
+  <main class="main">
+    <form class="typebar" id="typeForm" autocomplete="off" role="search" hidden>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M10 4a6 6 0 1 0 3.47 10.9l4.31 4.31 1.42-1.42-4.31-4.31A6 6 0 0 0 10 4Zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"/></svg>
+      <input id="typeBox" type="text" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"
+             writingsuggestions="false" enterkeyhint="search" aria-label="Type a question"
+             placeholder="Or type a question: lookups start as you type">
+      <kbd class="tb-key" title="Press / or ⌘K to type">/</kbd>
+      <button type="submit" class="tb-go">Search</button>
+      <label class="tb-mask" title="Masked words never go into the search, memory or logs, whatever this shows">
+        <input type="checkbox" id="maskToggle" checked> Mask profanity in the transcript
+      </label>
+    </form>
+    <section class="row-top">
+      <div class="card transcript-card">
+        <div class="card-head">
+          <h2>What Arc hears</h2>
+          <span class="ear" id="earState">idle</span>
+        </div>
+        <div class="transcript" id="transcript"><span class="placeholder">Pick a question, type one, or hold <kbd>Space</kbd> and ask; release when you are done.</span></div>
+        <div class="history" id="history" hidden></div>
+      </div>
+      <div class="card frame-card">
+        <div class="card-head">
+          <h2>Query frame <span class="sub">Arc Tagger</span></h2>
+          <span class="badges" id="frameBadges"></span>
+        </div>
+        <div class="frame" id="frame">
+          <div class="kv wide"><label>intent</label><div class="intent" id="fIntent">—</div></div>
+          <div class="kv"><label>slots</label><div class="chips" id="fSlots">—</div></div>
+          <div class="kv"><label>route</label><div id="fRoute">—</div></div>
+          <div class="kv wide"><label>query</label><div class="query" id="fQuery">—</div></div>
+          <div class="kv wide"><label>read-out</label><div class="readout" id="fReadout">—</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="answers" id="answers">
+      <div class="card pane" id="pane-headstart" data-mode="headstart">
+        <div class="pane-head">
+          <h2><i class="dot hs"></i>Onset</h2>
+          <span class="route-chip" data-k="route"></span>
+          <span class="path" data-k="path"></span>
+        </div>
+        <div class="watch">
+          <div class="clock"><div class="big" data-k="big">—</div><div class="watch-sub" data-k="sub">after you stopped talking</div></div>
+          <div class="delta" data-k="delta"></div>
+        </div>
+        <div class="answer" data-k="answer"></div>
+        <div class="lanebox" data-k="lane"></div>
+        <div class="rq" data-k="rq"></div>
+        <div class="res" data-k="res"></div>
+        <div class="stats" data-k="stats"></div>
+        <div class="sources" data-k="sources"></div>
+      </div>
+      <div class="card pane" id="pane-baseline" data-mode="baseline">
+        <div class="pane-head">
+          <h2><i class="dot bl"></i>Baseline <span class="sub">wait, then search</span></h2>
+          <span class="route-chip" data-k="route"></span>
+          <span class="path" data-k="path"></span>
+        </div>
+        <div class="watch">
+          <div class="clock"><div class="big" data-k="big">—</div><div class="watch-sub" data-k="sub">after you stopped talking</div></div>
+          <div class="delta" data-k="delta"></div>
+        </div>
+        <div class="answer" data-k="answer"></div>
+        <div class="lanebox" data-k="lane"></div>
+        <div class="rq" data-k="rq"></div>
+        <div class="res" data-k="res"></div>
+        <div class="stats" data-k="stats"></div>
+        <div class="sources" data-k="sources"></div>
+      </div>
+    </section>
+
+    <section class="card tl-card">
+      <div class="card-head">
+        <h2>Speculation timeline <span class="sub">ms since audio start</span></h2>
+        <div class="legend">
+          <span><i class="lg web"></i>web</span><span><i class="lg t-card"></i>card</span><span><i class="lg t-facts"></i>facts</span><span><i class="lg local"></i>local</span><span><i class="lg audio"></i>audio</span><span><i class="lg draft"></i>draft</span><span><i class="lg ans"></i>answer</span>
+          <span><i class="lg stale"></i>stale</span><span><i class="lg used"></i>fed answer</span><span><i class="lg reused"></i>reused</span>
+        </div>
+      </div>
+      <div class="tl" id="tl">
+        <div class="tl-axis"><div class="tl-label"></div><div class="tl-track" id="tlAxis"></div></div>
+        <div class="tl-body" id="tlBody"></div>
+        <div class="tl-overlay"><div class="tl-label"></div><div class="tl-track" id="tlMarks"></div></div>
+      </div>
+    </section>
+
+
+    <section class="card results" id="results">
+      <div class="card-head">
+        <h2>A/B over the spoken set <span class="sub" id="resSub"></span></h2>
+        <button class="link-btn" id="resReload">refresh</button>
+      </div>
+      <div id="resBody"><p class="muted">No results yet. The eval harness writes <code>runs/ab_latest.json</code>.</p></div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="demo.js?v=1"></script>
+<script src="results.js?v=6"></script>
+<script src="film.js?v=7"></script>
+<script src="hears.js?v=7"></script>
+<script src="meter.js?v=5"></script>
+<script src="graphlayout.js?v=1"></script>
+<script src="graph.js?v=3"></script>
+<script src="graphbig.js?v=1"></script>
+<script src="plan.js?v=2"></script>
+<script src="confidence.js?v=1"></script>
+<script src="app.js?v=108"></script>
+<script src="scorecard.js?v=2"></script>
+<script src="recordings.js?v=1"></script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OnSet</title>
+<meta name="description" content="Voice search that starts before you finish talking. Free for non-commercial use on Mac: on-device models hear and tag your question mid-sentence, search the web for free with DuckDuckGo, and write the answer on your Mac.">
+<meta property="og:title" content="OnSet: voice search that starts before you finish talking">
+<meta property="og:description" content="Free voice search for Mac (non-commercial licence). It searches while you speak and writes the answer on your Mac. No keys needed.">
+<meta property="og:image" content="https://i.ytimg.com/vi/h5BSgq6Rd8k/maxresdefault.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="landing.css?v=1">
+<script>try { const t = localStorage.getItem("hs-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+</head>
+<body>
+<header class="nav">
+  <a class="brand" href="./" aria-label="OnSet home"><span class="logo" aria-hidden="true"><i></i><i></i><i></i></span>OnSet</a>
+  <nav aria-label="Sections">
+    <a href="#video">Video</a><a href="#how">How it works</a><a href="#results">Results</a><a href="#privacy">Privacy</a><a href="https://github.com/WhissleAI/onset/blob/main/docs/Onset_deck.pdf">Slides (PDF)</a><a href="https://github.com/WhissleAI/onset">GitHub</a>
+  </nav>
+  <button class="theme" id="themeBtn" type="button" aria-label="Toggle light or dark theme">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.4 5.4 0 0 1-9.54-4.6A5.4 5.4 0 0 1 12 3Z"/></svg>
+  </button>
+</header>
+
+<main>
+  <section class="hero">
+    <p class="eyebrow">Voice search for macOS</p>
+    <h1>Voice search that starts <em>before</em> you finish talking.</h1>
+    <p class="lede">OnSet hears and understands your question while you are still saying it, searches from the third word, and writes the answer on your Mac. Free web search, no accounts, no keys.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/WhissleAI/onset/releases/latest">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M16.37 12.6c-.02-2.3 1.88-3.4 1.96-3.46-1.07-1.56-2.73-1.78-3.32-1.8-1.41-.14-2.76.83-3.47.83-.72 0-1.82-.81-2.99-.79-1.54.02-2.96.9-3.75 2.27-1.6 2.78-.41 6.89 1.15 9.14.76 1.1 1.67 2.34 2.86 2.3 1.15-.05 1.58-.74 2.97-.74 1.38 0 1.77.74 2.98.72 1.23-.02 2.01-1.12 2.76-2.23.87-1.28 1.23-2.52 1.25-2.58-.03-.01-2.39-.92-2.4-3.66ZM14.1 5.86c.63-.77 1.06-1.83.94-2.89-.91.04-2.01.61-2.67 1.37-.58.67-1.1 1.76-.96 2.8 1.02.08 2.06-.52 2.69-1.28Z"/></svg>
+        Download for Mac</a>
+      <a class="btn" href="demo/">Watch the live demo</a>
+    </div>
+    <p class="fine">Free for non-commercial use · source on GitHub · Apple Silicon, macOS 13+ · models download on first launch · <a href="#keys">keys optional</a></p>
+  </section>
+
+  <section id="video" class="video" aria-label="Video">
+    <div class="video-frame">
+      <iframe src="https://www.youtube-nocookie.com/embed/h5BSgq6Rd8k?rel=0" title="OnSet: voice search that starts before you finish" loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+    </div>
+    <p class="cap">Two minutes: OnSet answering while the question is still being asked. <a href="https://www.youtube.com/watch?v=h5BSgq6Rd8k">Watch on YouTube</a></p>
+  </section>
+
+  <section class="demo-teaser" aria-label="Demo">
+    <a class="shot" href="demo/?play=race">
+      <div class="shot-bar"><i></i><i></i><i></i><span>OnSet · Race vs Baseline</span></div>
+      <div class="shot-body">
+        <div class="said">“okay so my kid asked me this, and I didn't know, <mark>why is the sky blue</mark>”</div>
+        <div class="race">
+          <div class="lane hs"><b>OnSet</b><span class="bar" style="--w:42%"></span><span class="t">search started mid-sentence</span></div>
+          <div class="lane bl"><b>Baseline</b><span class="bar" style="--w:78%"></span><span class="t">waits for silence, then searches</span></div>
+        </div>
+        <div class="play"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>Play 11 recorded runs of the real app</div>
+      </div>
+    </a>
+    <p class="cap">The demo is the real OnSet interface replaying recorded runs (real audio, real events, real timings). Nothing in it is mocked.</p>
+  </section>
+
+  <section id="how" class="sec">
+    <h2>How it works</h2>
+    <p class="sec-lede">Most of a question's meaning arrives before you finish asking it. OnSet starts looking as soon as it does.</p>
+    <ul class="points">
+      <li><b>Hears how you ask.</b> Arc listens on your Mac and knows when you're done, so the answer is ready the moment you stop.</li>
+      <li><b>Searches while you speak.</b> Lookups start a few words in, not after you finish.</li>
+      <li><b>Follows the conversation.</b> Ask “how old is he?” and OnSet knows who you mean.</li>
+      <li><b>Answers on your Mac.</b> A short, cited answer, written on your Mac. No cloud AI needed.</li>
+    </ul>
+  </section>
+
+  <section id="results" class="sec">
+    <h2>Measured, not claimed</h2>
+    <p class="sec-lede">Headline: real Tavily, 100 spoken questions, 2026-11-14. Every number links to the doc and section it was measured in.</p>
+    <div class="stats">
+<div class="stat"><b>486 ms</b><span>sooner answers (paired median)</span><small>Onset faster on 76/100 questions</small><a class="src" href="https://github.com/WhissleAI/onset/blob/main/docs/RETRIEVAL.md">docs/RETRIEVAL.md · 10. On real Tavily</a></div>
+<div class="stat"><b>0.46</b><span>paid searches per question</span><small>vs 0.63 for plain search: 27% fewer (46 vs 63 credits)</small><a class="src" href="https://github.com/WhissleAI/onset/blob/main/docs/RETRIEVAL.md">docs/RETRIEVAL.md · 10. On real Tavily</a></div>
+<div class="stat"><b>80/82</b><span>answers right</span><small>vs 79/82 for plain search, keyword-scored</small><a class="src" href="https://github.com/WhissleAI/onset/blob/main/docs/RETRIEVAL.md">docs/RETRIEVAL.md · 10. On real Tavily</a></div>
+    </div>
+    <h3 class="sub-h">The six problems, one number each</h3>
+    <ol class="problems">
+<li><span class="pn">01</span><div><h3>Too much information</h3><p>Open mic answers what is asked, not every word in the room</p></div><div class="pv"><b>86.8%</b><span>of turns handled right</span><small>49.1% without Arc&#x27;s understanding</small><a class="src" href="https://github.com/WhissleAI/onset/blob/main/docs/ARC_VALUE.md">docs/ARC_VALUE.md · 5. Open mic · text-level, 521 turns</a></div></li>
+<li><span class="pn">02</span><div><h3>Fragmented context</h3><p>A multi-part question is planned, searched part by part, then answered once</p></div><div class="pv"><b>22/26</b><span>multi-part questions fully right</span><small>13/26 without Arc</small><a class="src" href="https://github.com/WhissleAI/onset/blob/main/docs/ARC_VALUE.md">docs/ARC_VALUE.md · 4. Multi-part · Wikipedia lane</a></div></li>
+<li><span class="pn">03</span><div><h3>Expensive at scale</h3><p>Free lanes first (cards, facts, saved answers), one paid search when needed</p></div><div class="pv"><b>0.369</b><span>paid searches per question at scale</span><small>0.464 with a plain cache · 0.64 → 0.36 as it warms</small><a class="src" href="https://github.com/WhissleAI/onset/blob/main/docs/RETRIEVAL.md">docs/RETRIEVAL.md · 4. Workload evaluation · Wikipedia lane</a></div></li>
+<li><span class="pn">04</span><div><h3>Weak personalization</h3><p>Knows who is asking: &quot;how fast is a Jaguar?&quot; after Porsche questions means the car</p></div><div class="pv"><b>8/9</b><span>ambiguous names read as you meant</span><small>6/9 without it · answer style fits 11/12 vs 7/12</small><a class="src" href="https://github.com/WhissleAI/onset/blob/main/docs/PERSONALIZATION.md">docs/PERSONALIZATION.md · 4. Measured · PERSONA flag, small set</a></div></li>
+<li><span class="pn">05</span><div><h3>Limited memory</h3><p>Remembers the conversation: &quot;and how tall is he?&quot; just works</p></div><div class="pv"><b>32/34</b><span>follow-up questions right</span><small>2/34 without Arc&#x27;s memory</small><a class="src" href="https://github.com/WhissleAI/onset/blob/main/docs/ARC_VALUE.md">docs/ARC_VALUE.md · 3. Follow-ups · Wikipedia lane</a></div></li>
+<li><span class="pn">06</span><div><h3>Low performance</h3><p>A router picks the right source: live-data card, facts, saved answer or web</p></div><div class="pv"><b>16/16</b><span>live-data questions right</span><small>5/16 from a web page</small><a class="src" href="https://github.com/WhissleAI/onset/blob/main/docs/ARC_VALUE.md">docs/ARC_VALUE.md · 11. Onset under Parity · Wikipedia lane</a></div></li>
+    </ol>
+  </section>
+
+  <section id="privacy" class="sec two">
+    <div>
+      <h2>Private by default</h2>
+      <p class="sec-lede">Your voice, your questions and your answers stay on your Mac.</p>
+    </div>
+    <dl class="priv">
+      <div><dt>Stays on your Mac</dt><dd>Listening, understanding and writing the answer all happen on your Mac, along with your history and everything OnSet remembers.</dd></div>
+      <div><dt>Leaves only when needed</dt><dd>The search words, when OnSet needs the web. Audio leaves only if you choose a cloud speech service.</dd></div>
+      <div><dt>Never sent</dt><dd>Your past questions or a profile of you. Keys you add stay in the macOS Keychain.</dd></div>
+    </dl>
+  </section>
+
+  <section id="keys" class="sec two">
+    <div>
+      <h2>Get started</h2>
+      <p class="sec-lede">Download, open, ask. The models (about 3 GB) download once on first launch. Keys are optional upgrades.</p>
+      <a class="btn primary" href="https://github.com/WhissleAI/onset/releases/latest">Download for Mac</a>
+    </div>
+    <table class="keys">
+      <thead><tr><th scope="col">Key</th><th scope="col">Used for</th><th scope="col">Without it</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://console.deepgram.com/">Deepgram</a> <span class="opt">optional</span></td><td>Flux cloud ear (fastest turn-taking)</td><td>Arc ear, fully on device</td></tr>
+        <tr><td><a href="https://app.tavily.com/">Tavily</a> <span class="opt">optional</span></td><td>Ranked web search with freshness</td><td>DuckDuckGo, free</td></tr>
+        <tr><td><a href="https://telem.ai/">Telem</a> <span class="opt">optional</span></td><td>Search router and failover</td><td>DuckDuckGo, free</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>OnSet · © 2026 Whissle Inc. · <a href="https://github.com/WhissleAI/onset/blob/main/LICENSE">non-commercial licence</a> · built by <a href="https://whissle.ai">Whissle</a></span>
+  <span><a href="https://github.com/WhissleAI/onset">Source on GitHub</a> · <a href="https://github.com/WhissleAI/onset/blob/main/docs/PITCH.md">Pitch</a> · <a href="https://github.com/WhissleAI/onset/blob/main/docs/Onset_deck.pdf">Slides (PDF)</a> · <a href="https://github.com/WhissleAI/onset/blob/main/docs/RETRIEVAL.md">Retrieval notes</a></span>
+</footer>
+<script>
+  document.getElementById("themeBtn").addEventListener("click", () => {
+    const r = document.documentElement;
+    const cur = r.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    r.dataset.theme = cur === "dark" ? "light" : "dark";
+    try { localStorage.setItem("hs-theme", r.dataset.theme); } catch (e) {}
+  });
+</script>
+</body>
+</html>

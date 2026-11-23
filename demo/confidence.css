@@ -1,0 +1,13 @@
+/* The one trust line under each answer (web/confidence.js): calibrated confidence + source check, plain words. */
+.confb { margin: 0; flex: none; min-width: 0; }
+.confb:empty { display: none; }
+.cb { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; font: 400 12px/18px var(--sans);
+  color: var(--ink-2); cursor: help; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb b { font-weight: 600; color: var(--ink); }
+.cb .cd { overflow: hidden; text-overflow: ellipsis; }
+.cb .cdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.cb.cb-high .cdot { background: var(--hs); }
+.cb.cb-high b { color: var(--hs); }
+.cb.cb-mid .cdot { background: var(--web); }
+.cb.cb-low .cdot { background: var(--draft); }
+.cb.cb-low b { color: var(--draft); }

@@ -1,0 +1,1918 @@
+/* Onset UI: plain JS, no build. Talks to server/app.py over /ws (protocol in its docstring). */
+(() => {
+  "use strict";
+
+  const $ = (s, r = document) => r.querySelector(s);
+  const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } } };
+  // Minimal comparison view by default: question, the two answers with their times, full search results.
+  // Press D to show the details (pipeline strip, replay list, Arc read-out, timeline, stats).
+  document.body.classList.toggle("minimal", store.get("hs_details") !== "1");
+  const MODE_NAME = { headstart: "Onset", baseline: "Baseline" };
+  const fmtS = (ms) => (ms == null || !isFinite(ms) ? "—" : (ms < 0 ? "−" : "") + (Math.abs(ms) / 1000).toFixed(Math.abs(ms) < 9950 ? 2 : 1) + " s");
+  const stripIntent = (s) => String(s || "").replace(/^discourse\.intent\./, "").replace(/^intent\./, "").replace(/_/g, " ");
+
+  // ------------------------------------------------------------------ toast (no alert())
+  let toastTimer = null;
+  function toast(msg, err = false) {
+    const t = $("#toast");
+    t.textContent = msg;
+    t.className = "toast show" + (err ? " err" : "");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (t.className = "toast" + (err ? " err" : "")), err ? 4500 : 2500);
+  }
+  // a plain notice that stays until dismissed (the Mac app calls it after the page had to be reloaded)
+  window.__hsNotice = (msg) => {
+    let n = document.getElementById("pageNotice");
+    if (!n) {
+      n = document.createElement("div");
+      n.id = "pageNotice"; n.className = "page-notice"; n.setAttribute("role", "status");
+      n.innerHTML = '<span></span><button type="button" aria-label="Dismiss">Dismiss</button>';
+      n.querySelector("button").addEventListener("click", () => { n.hidden = true; });
+      document.body.appendChild(n);
+    }
+    n.querySelector("span").textContent = String(msg || "");
+    n.hidden = false;
+  };
+  // the page's own uncaught errors go to the Mac app's log (logs/app.log), at most 20 per page load
+  let errsSent = 0;
+  function reportError(msg) {
+    const nb = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.onset;
+    if (!nb || errsSent >= 20) return;
+    errsSent++;
+    try { nb.postMessage({ t: "log", msg: String(msg).slice(0, 400) }); } catch { /* bridge gone */ }
+  }
+  addEventListener("error", (e) => reportError(`error: ${e.message} at ${String(e.filename || "").split("/").pop()}:${e.lineno}`));
+  addEventListener("unhandledrejection", (e) => reportError(`unhandled rejection: ${e.reason && (e.reason.message || e.reason)}`));
+
+  // ------------------------------------------------------------------ theme
+  const savedTheme = store.get("hs-theme");
+  if (savedTheme) document.documentElement.dataset.theme = savedTheme;
+  $("#themeBtn").addEventListener("click", () => {
+    const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = cur === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    store.set("hs-theme", next);
+  });
+
+  // ------------------------------------------------------------------ mode toggle
+  let modeSel = store.get("hs-mode") || "race";
+  const modesFor = (m) => (m === "race" ? ["headstart", "baseline"] : [m]);
+  function paintSeg() {
+    for (const b of $("#modeSeg").querySelectorAll("button")) {
+      const on = b.dataset.mode === modeSel;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-checked", on ? "true" : "false");
+    }
+  }
+  $("#modeSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-mode]");
+    if (!b) return;
+    modeSel = b.dataset.mode;
+    store.set("hs-mode", modeSel);
+    paintSeg();
+  });
+  paintSeg();
+
+  // ------------------------------------------------------------------ view: Answer | Results
+  // Answer: the spoken answer races (stopwatch = first answer token). Results: general web search, the results list is
+  // the hero and the stopwatch measures when results for the FINAL meaning are first on screen.
+  let viewSel = store.get("hs-view") === "results" ? "results" : "answer";
+  function paintView() {
+    for (const b of $("#viewSeg").querySelectorAll("button")) {
+      const on = b.dataset.view === viewSel;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-checked", on ? "true" : "false");
+    }
+    document.body.classList.toggle("view-results", viewSel === "results");
+    document.body.classList.toggle("view-answer", viewSel !== "results");
+  }
+  $("#viewSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-view]");
+    if (!b) return;
+    viewSel = b.dataset.view;
+    store.set("hs-view", viewSel);
+    paintView();
+    if (run) {
+      deltaSig = null;
+      for (const m of ["headstart", "baseline"]) { renderAnswer(m); renderResults(m); }
+      loop();
+    }
+  });
+  paintView();
+
+  // a typed question's stopwatch starts at Enter (the endpoint), a spoken one's when you stop talking
+  const stoppedTxt = () => (run && run.kind === "typed" ? "after you pressed Enter" : "after you stopped talking");
+
+  // ------------------------------------------------------------------ run / question state
+  let run = null;       // {modes, kind, running, clientT0, base, q}
+  function newQuestion(axStart = 0) {
+    return {
+      axStart, axEnd: 3000,
+      words: [], spans: [], frame: null, frameMode: null,
+      fires: new Map(), order: [],
+      speechEnd: null, se: {}, epBy: {}, epQuery: {}, old: [], superseded: {}, endpointMs: {}, sourcesMs: {}, sources: {}, answer: {}, firstMs: {}, metric: {}, error: {},
+      wordsDirty: true, finalWords: 0,
+      qids: {}, heard: {},     // per mode: the server's question id of this turn; open-mic "heard" (not answered)
+    };
+  }
+  function startRun(kind, modes) {
+    if (kind !== "typed" && typeof typed !== "undefined") typed.open = false;   // a mic press / replay ends a typed question
+    run = { rid: ridSeq, modes, kind, running: true, clientT0: performance.now(), base: null, q: newQuestion(), prevQ: null, history: [] };
+    paintHistory();
+    resetView();
+    pipeReset();
+    loop();
+    if (window.HSFilm) window.HSFilm.start(kind, modes);
+    if (window.HSHears) window.HSHears.start();
+    if (window.HSMeter) window.HSMeter.start(run);
+    if (window.HSGraph) window.HSGraph.start(kind, modes);
+  }
+  const primary = () => (run ? run.modes[0] : "headstart");
+  function serverNow() {
+    if (!run) return 0;
+    return performance.now() - (run.base ?? run.clientT0);
+  }
+  function syncClock(ms) {
+    if (!run || typeof ms !== "number") return;
+    const cand = performance.now() - ms;
+    run.base = run.base == null ? cand : Math.min(run.base, cand);
+  }
+
+  // ------------------------------------------------------------------ websocket
+  let ws = null, wsOpen = false, warm = false;
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+    ws.binaryType = "arraybuffer";
+    ws.onopen = () => {
+      wsOpen = true; paintStatus(); reconnectBanner(false);
+      if (window.HSGraph) { try { window.HSGraph.connected(send); } catch (err) { console.error("graph", err); } }
+    };
+    ws.onclose = () => {
+      wsOpen = false; paintStatus(); reconnectBanner(true);
+      if (mic.on) stopMic(false, "socket closed");
+      if (run) { run.running = false; }
+      setTimeout(connect, 1500);
+    };
+    ws.onerror = () => { /* onclose follows */ };
+    ws.onmessage = (m) => {
+      let e;
+      try { e = JSON.parse(m.data); } catch { return; }
+      try { onEvent(e); } catch (err) { console.error("event handler failed", e, err); }
+    };
+  }
+  // "as of" of a cached search result: HH:MM today, else "Nov 12 14:05" (the cache persists across app launches)
+  function cacheStamp(asOf) {
+    const s = String(asOf || ""), day = s.slice(0, 10), hm = s.slice(11, 16);
+    const today = new Date(), pad = (n) => String(n).padStart(2, "0");
+    if (day === `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`) return hm;
+    const d = new Date(day + "T00:00:00");
+    return isNaN(d) ? s.replace("T", " ").slice(0, 16) : `${d.toLocaleString("en", { month: "short" })} ${d.getDate()} ${hm}`;
+  }
+
+  // a dropped connection is visible (the status dot alone is easy to miss): banner until the socket is back
+  let rcTimer = null;
+  function reconnectBanner(on) {
+    let b = document.getElementById("reconnect");
+    if (on) {
+      if (rcTimer) return;
+      rcTimer = setTimeout(() => {          // brief blips (< 0.6 s) don't flash a banner
+        if (!b) {
+          b = document.createElement("div");
+          b.id = "reconnect"; b.className = "reconnect"; b.setAttribute("role", "status");
+          b.textContent = "Reconnecting to the local server…";
+          document.body.appendChild(b);
+        }
+        b.hidden = false;
+      }, 600);
+    } else {
+      clearTimeout(rcTimer); rcTimer = null;
+      if (b) b.hidden = true;
+    }
+  }
+  let ridSeq = 0;
+  function send(obj) {
+    if (!ws || ws.readyState !== 1) { toast("Not connected to the server yet", true); return false; }
+    // cost mode (web/meter.js toggle: speed | parity) rides on every run start; the server applies it per session
+    if (obj && (obj.t === "start" || obj.t === "replay") && window.HSMeter && window.HSMeter.costMode) {
+      const c = window.HSMeter.costMode();
+      if (c) obj = { ...obj, cost: c };
+    }
+    // every run gets the page's own id; the server echoes it on that run's events, so a late event of an earlier
+    // run (its run_done arrives after the next push-to-talk press started) never ends or repaints the new run
+    if (obj && (obj.t === "start" || obj.t === "replay")) obj = { ...obj, rid: ++ridSeq };
+    ws.send(typeof obj === "string" || obj instanceof ArrayBuffer ? obj : JSON.stringify(obj));
+    return true;
+  }
+
+  // ------------------------------------------------------------------ status / health
+  let health = null;
+  function paintStatus() {
+    const s = $("#status");
+    let cls = "down", txt = "offline";
+    if (wsOpen && !warm) { cls = "cold"; txt = "warming models…"; }
+    else if (wsOpen) {
+      cls = "warm";
+      txt = "ready";
+    }
+    const deg = (health && health.degraded) || {};
+    if (wsOpen && warm && Object.keys(deg).length) { cls = "degraded"; txt = "ready · limited"; }
+    s.className = "status " + cls;
+    // the details stay one hover away: which ear, web lane and answer model this server runs
+    s.title = txt + (health && wsOpen ? ` · ear: ${health.ear || "?"} · web: ${health.web_backend || "?"} · answers: ${String(health.answer_model || "?").replace(/^(claude-|local:)/, "")}` : "");
+    s.querySelector("b").textContent = txt;
+    paintDegraded(deg);
+    paintEarLabel();
+  }
+  // the pipeline strip names the ear this server runs (Flux + Arc metadata, or Arc alone)
+  function paintEarLabel() {
+    if (!health || !health.ear) return;
+    const lab = health.ear === "flux" ? "Flux + Arc · live words" : health.ear === "arc" ? "Arc · live words" : `${health.ear} + Arc · live words`;
+    const li = document.querySelector('#pipe li[data-st="ear"]');
+    if (!li || PIPE_IDLE.ear === lab) return;
+    const sm = li.querySelector("small");
+    if (!li.classList.contains("on") && (PIPE_IDLE.ear == null || sm.textContent === PIPE_IDLE.ear)) sm.textContent = lab;
+    PIPE_IDLE.ear = lab;
+  }
+  // Notices (server/notices.py): one plain line per thing that is actually wrong, each with what to do; hidden when all
+  // is well. In the Mac app "Open Settings" opens its native Settings window (window.webkit.messageHandlers.onset);
+  // on the web demo the line says where to set it instead. Anything served from a fallback stays labelled.
+  const nativeBridge = () => (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.onset) || null;
+  function noticesOf(deg) {
+    if (health && Array.isArray(health.notices)) return health.notices;
+    const out = [];                                            // an older server: only the degraded dict
+    if (deg.answer) out.push({ id: "answer-down", text: "Answer service unreachable · showing the best source sentence" });
+    if (deg.web) out.push({ id: "web-down", text: "Live web unavailable · using saved results" });
+    return out;
+  }
+  function paintDegraded(deg) {
+    const b = $("#degraded");
+    if (!b) return;
+    const list = wsOpen && warm ? noticesOf(deg) : [];
+    const sig = JSON.stringify(list.map((n) => n.id + n.text)) + !!nativeBridge();
+    if (b._sig === sig) return;
+    b._sig = sig;
+    b.hidden = !list.length;
+    b.innerHTML = list.map((n) => {
+      let act = "";
+      if (n.action === "settings" && nativeBridge()) act = `<button type="button" class="nt-act" data-act="settings">${esc(n.action_label || "Open Settings")}</button>`;
+      else if (n.hint) act = `<span class="nt-hint">${esc(n.hint)}</span>`;
+      return `<span class="nt" data-id="${esc(n.id || "")}"><i aria-hidden="true"></i><b>${esc(n.text)}</b>${act ? " · " + act : ""}</span>`;
+    }).join("");
+  }
+  $("#degraded").addEventListener("click", (e) => {
+    const a = e.target.closest("[data-act]");
+    if (!a) return;
+    const nb = nativeBridge();
+    if (a.dataset.act === "settings" && nb) { try { nb.postMessage({ t: "settings" }); } catch { toast("Open Settings from the app menu (⌘,)", true); } }
+  });
+  async function pollHealth() {
+    try {
+      const r = await fetch("/api/health", { cache: "no-store" });
+      health = await r.json();
+      warm = !!health.warm;
+    } catch { warm = false; }
+    paintStatus();
+    setTimeout(pollHealth, !warm ? 2000 : (health && health.degraded && Object.keys(health.degraded).length ? 5000 : 15000));
+  }
+
+  // ------------------------------------------------------------------ events
+  function onEvent(e) {
+    if (e.rid != null && (!run || e.rid !== run.rid)) return;    // an earlier run's late event (see send)
+    if (window.HSFilm) { try { window.HSFilm.event(e); } catch (err) { console.error("film", err); } }
+    if (window.HSHears && run) { try { window.HSHears.event(e); } catch (err) { console.error("hears", err); } }
+    if (window.HSMeter && run) { try { window.HSMeter.event(e, run); } catch (err) { console.error("meter", err); } }
+    if (window.HSGraph) { try { window.HSGraph.event(e); } catch (err) { console.error("graph", err); } }
+    if (window.HSPlan && run) { try { window.HSPlan.event(e); } catch (err) { console.error("plan", err); } }
+    if (window.HSConf && run) { try { window.HSConf.event(e); } catch (err) { console.error("conf", err); } }
+    if (e.mode === "sys") {
+      if (e.t === "ready") {
+        if (e.warm !== undefined) warm = !!e.warm;
+        $("#typeForm").hidden = e.typed_input === false;
+        if (e.degraded) health = { ...(health || {}), web: e.web, answer: e.answer, degraded: e.degraded, web_backend: e.web_backend,
+          ...(e.notices ? { notices: e.notices } : {}), ...(e.ear ? { ear: e.ear } : {}) };
+        paintStatus();
+      }
+      else if (e.t === "error") toast(e.error || "server error", true);
+      else if (e.t === "run_done" && run) { run.running = false; finishRun(); settlePipe(run.q); }
+      return;
+    }
+    if (!run) return;
+    if (typeof e.ms === "number") syncClock(e.ms);
+    if (e.mode === "ear") return onEar(e);
+    const mode = e.mode;
+    let q = run.q;
+    // the previous question's answer can still be streaming when the next question starts (conversations, mic):
+    // its late events update that turn's history entry, not the new panes
+    const pq = run.prevQ;
+    // with question ids (e.q): an event of the previous question is late by definition, whatever its type
+    if (e.q != null && pq && pq.qids[mode] === e.q && q.qids[mode] !== e.q) {
+      if (e.t === "answer") pq.answer[mode] = (pq.answer[mode] || "") + (e.delta || "");
+      else if (e.t === "metric") { pq.metric[mode] = e; meterMetric(pq, mode, e); recordTurn(pq, mode); }
+      else if (e.t === "endpoint") pq.endpointMs[mode] = e.ms;
+      else if (e.t === "heard") { pq.heard[mode] = e; recordTurn(pq, mode); }
+      return;
+    }
+    if (pq && q.endpointMs[mode] == null && pq.endpointMs[mode] != null && !pq.metric[mode] &&
+        (["sources", "answer", "answer_error", "metric", "used"].includes(e.t) || (e.t === "spec" && String(e.lane).startsWith("final")))) {
+      if (e.t === "answer") pq.answer[mode] = (pq.answer[mode] || "") + (e.delta || "");
+      else if (e.t === "metric") { pq.metric[mode] = e; meterMetric(pq, mode, e); recordTurn(pq, mode); }
+      return;
+    }
+    switch (e.t) {
+      case "words": {
+        if (!acceptWords(q, mode, e)) return;
+        // a new question in the same run (live mic): start a fresh view once the previous one has answered
+        // (words that start after the last answered speech end; not the same utterance continuing)
+        const t0w = e.words && e.words.length ? (e.words[0].t0 ?? 0) * 1000 : null;
+        // the server's question id says so directly (also for an open-mic statement that got no endpoint); an older
+        // server: words that start after the answered question's speech end
+        const newQ = e.q != null ? q.qids[mode] != null && e.q > q.qids[mode]
+          : q.speechEnd != null && t0w != null && t0w > q.speechEnd + 50 && Object.keys(q.endpointMs).length;
+        if (newQ) {
+          run.prevQ = q;
+          run.q = q = newQuestion(Math.max(0, (t0w ?? 0) - 400));
+          q.wordsMode = mode; q.wordsSig = (e.words || []).map((w) => w.w).join(" ");
+          resetView(true);
+          paintHistory();
+        }
+        if (e.q != null) q.qids[mode] = e.q;
+        if (e.final) q.finalWords++;
+        q.prevWords = q.words;
+        q.words = e.words || [];
+        pipe("ear", "“" + q.words.slice(-4).map((w) => w.w).join(" ") + "”");
+        q.revFrom = e.from;
+        renderWords(q);
+        break;
+      }
+      case "heard": {
+        // open mic: a statement, not a request: no search, no answer (labelled in the panes and the history)
+        q.heard[mode] = e;
+        if (e.speech_end_ms != null) q.speechEnd = Math.max(q.speechEnd ?? 0, e.speech_end_ms);
+        renderAnswer(mode);
+        if (mode === primary()) pipe("answer", "heard · not a question (open mic)");
+        recordTurn(q, mode);
+        break;
+      }
+      case "frame":
+        if (mode !== q.wordsMode) return;
+        q.frame = e;
+        q.spans = e.spans || [];
+        if (e.corrected && Array.isArray(e.slots)) {
+          // a corrected-away entity ("Canada, actually make that Turkey") stays in spans but not in slots
+          const keep = new Set(e.slots.map((x) => String(x[1]).toLowerCase()));
+          q.spans = q.spans.filter((sp) => !/^entity|^number/.test(sp.type) || keep.has(String(sp.text).toLowerCase().replace(/[^\w' -]/g, "").trim()));
+        }
+        renderSpans(q);
+        renderFrame(e, !!e.final);
+        if (e.heard && e.heard.length) pipe("tagger", `heard “${e.heard[0].said}” → ${e.heard[0].as}`);
+        else if (e.carried) pipe("tagger", `memory: ${pronounIn(q.words) || "it"} → ${titleCase(e.carried)}`);
+        else pipe("tagger", (e.intent ? stripIntent(e.intent) : "frame") + (e.slots && e.slots.length ? ` · ${e.slots.map((x) => x[1]).join(", ")}` : e.query ? ` · ${e.query}` : ""));
+        break;
+      case "endpoint":
+        q.endpointMs[mode] = e.ms;
+        if (e.speech_end_ms != null) { q.se[mode] = e.speech_end_ms; q.speechEnd = Math.max(q.speechEnd ?? 0, e.speech_end_ms); }
+        q.epBy[mode] = e.by || null;
+        if (e.frame) { renderFrame(e.frame, true); q.epQuery[mode] = e.frame.query || ""; }   // the latest endpoint's frame wins
+        paneState(mode);
+        renderResults(mode);
+        break;
+      case "spec": {
+        const key = mode + ":" + e.id;
+        let f = q.fires.get(key);
+        if (!f) {
+          f = { key, id: e.id, mode, lane: e.lane, query: e.query, state: "fired", t0: e.ms, t1: null };
+          q.fires.set(key, f);
+          q.order.push(key);
+        }
+        if (e.ids) f.ids = e.ids;
+        if (e.part) f.part = e.part;                  // planner: the sub-question this search is for
+        if (e.tier) f.tier = e.tier;
+        if (e.reason) f.reason = e.reason;            // router: which tier served this web-lane call (card | facts | web | wait)
+        liveRoute(q, mode, e);
+        if ((e.state === "done" || e.state === "stale" || e.revived) && e.took != null) { const d = HSResults.specDocs(e); if (d) f.docs = d; }
+        pipeSpec(q, e);
+        if (e.state === "fired") { f.t0 = e.ms; renderResults(mode); break; }
+        if (e.state === "stale") {
+          // stale searches now finish and report (took/docs); an older server cancels them (cancelled: true)
+          if (f.state === "fired" && (e.took != null || e.cancelled)) f.t1 = e.ms;
+          if (f.staleAt == null) f.staleAt = e.ms;
+          f.state = "stale";
+        } else if (e.state === "reused") {
+          f.state = "reused"; f.t1 = e.ms;
+        } else {
+          if (f.state !== "stale") f.state = e.state;
+          if (f.t1 == null) f.t1 = e.ms;
+        }
+        if (e.took != null) f.took = e.took;
+        if (e.n != null) f.n = e.n;
+        if (e.top) f.top = e.top;
+        if (e.error) f.error = e.error;
+        renderResults(mode);
+        break;
+      }
+      case "sources":
+        q.sourcesMs[mode] = e.ms;
+        q.sources[mode] = e.docs || [];
+        renderSources(mode);
+        renderLane(mode);
+        renderResults(mode);
+        break;
+      case "used": {
+        const ids = new Set(e.fires || []);
+        for (const f of q.fires.values()) if (f.mode === mode) f.used = ids.has(f.id);
+        break;
+      }
+      case "answer":
+        if (q.firstMs[mode] == null) q.firstMs[mode] = e.ms;
+        q.answer[mode] = (q.answer[mode] || "") + (e.delta || "");
+        q.lastAnsMs = e.ms;
+        renderAnswer(mode);
+        if (q.firstMs[mode] === e.ms) renderResults(mode);
+        if (Object.keys(q.metric).length) settlePipe(q); else pipe("answer", `${MODE_NAME[mode]} streaming…`);
+        break;
+      case "answer_error":
+        q.error[mode] = e.error || "answer failed";
+        renderAnswer(mode);
+        break;
+      case "extended": {
+        // the speaker kept going after an early (semantic) endpoint, or corrected the question ("Boston, sorry, I mean
+        // Denver", even when the ear split it into two turns): that answer is superseded, one new answer follows
+        q.old.push({ mode, ep: q.endpointMs[mode], by: q.epBy[mode], t0: q.sourcesMs[mode] ?? q.endpointMs[mode],
+          t1: q.metric[mode] && q.se[mode] != null ? q.se[mode] + q.metric[mode].done_ms : e.ms, first: q.firstMs[mode],
+          answer: q.answer[mode] || "", ready: q.metric[mode]?.ready_ms, path: q.metric[mode]?.path, correction: !!e.correction });
+        const hq = run.history.find((x) => x.q === q);
+        if (hq) { hq.question = ""; delete hq.answers[mode]; }       // the turn is re-recorded with the corrected question
+        q.superseded[mode] = q.old.at(-1);
+        for (const k of ["endpointMs", "sourcesMs", "sources", "answer", "firstMs", "metric", "error", "se", "epBy", "epQuery"]) delete q[k][mode];
+        deltaSig = null;
+        pk(mode, "res")._sig = null;
+        q.speechEnd = Math.max(0, ...Object.values(q.se));
+        if (!Object.keys(q.se).length) q.speechEnd = null;
+        q.lastAnsMs = null;
+        for (const k of ["answer", "stats", "sources", "path", "delta", "lane"]) pk(mode, k).innerHTML = "";
+        renderAnswer(mode);
+        toast(e.correction ? `${MODE_NAME[mode]}: you corrected yourself, re-answering the corrected question`
+          : `${MODE_NAME[mode]}: you kept talking, re-answering the longer question`);
+        break;
+      }
+      case "metric":
+        q.metric[mode] = e;
+        meterMetric(q, mode, e);
+        if (q.se[mode] == null && q.endpointMs[mode] != null) { q.se[mode] = q.endpointMs[mode] - (e.endpoint_lag_ms || 0); q.speechEnd = Math.max(q.speechEnd ?? 0, q.se[mode]); }
+        // drafts still open at the endpoint were never used
+        for (const f of q.fires.values()) {
+          if (f.mode === mode && f.lane === "draft" && f.state === "fired") { f.state = "unused"; f.t1 = q.endpointMs[mode] ?? serverNow(); }
+        }
+        renderAnswer(mode);
+        renderMetric(mode);
+        renderResults(mode);
+        recordTurn(q, mode);
+        settlePipe(q);
+        if (mode === "headstart" || !run.modes.includes("headstart")) pipe("answer", `ready ${fmtS(readyAdj(q, mode))} after you stopped`);
+        break;
+    }
+  }
+
+  function onEar(e) {
+    const s = $("#earState");
+    if (e.kind === "partial") { s.textContent = "hearing…"; s.className = "ear live"; pipe("ear", "“" + String(e.text || "").split(/\s+/).slice(-4).join(" ") + "”"); }
+    else if (e.kind === "final") {
+      s.textContent = `utterance closed${e.reason ? " · " + e.reason : ""}`; s.className = "ear";
+      pipe("ear", "endpoint" + (e.reason ? " · " + e.reason : ""));
+      // sessions send a final words event at their endpoint; if none comes (an earlier semantic endpoint already
+      // answered this utterance), fall back to the ear's own text
+      const q = run.q, before = q.finalWords;
+      setTimeout(() => {
+        if (run.q !== q || q.finalWords !== before) return;
+        const toks = String(e.text || "").split(/\s+/).map((w) => w.replace(/[.?!,]+$/, "")).filter(Boolean);
+        if (toks.length && toks.join(" ") !== q.words.map((w) => w.w).join(" ")) {
+          q.words = toks.map((w, i) => ({ w, t0: q.words[i]?.t0 ?? null, t1: q.words[i]?.t1 ?? null }));
+          q.spans = [];                // tagger spans index the session's words, not this re-tokenized text
+          renderWords(q);
+        }
+      }, 400);
+    }
+    else if (e.kind === "arc_command_complete") { s.textContent = `Arc: question complete (p ${(+e.p || 0).toFixed(2)})`; s.className = "ear"; }
+  }
+
+  // ------------------------------------------------------------------ "how it works" strip
+  const pipeTimers = {};
+  function pipe(stage, sub) {
+    const li = document.querySelector(`#pipe li[data-st="${stage}"]`);
+    if (!li) return;
+    li.classList.add("on");
+    if (sub != null) li.querySelector("small").textContent = sub;
+    li.classList.remove("hit");
+    void li.offsetWidth;
+    li.classList.add("hit");
+    clearTimeout(pipeTimers[stage]);
+    pipeTimers[stage] = setTimeout(() => li.classList.remove("hit"), 700);
+  }
+  const PIPE_IDLE = {};
+  function pipeReset() {
+    document.querySelectorAll("#pipe li").forEach((li) => {
+      const st = li.dataset.st;
+      if (!(st in PIPE_IDLE)) PIPE_IDLE[st] = li.querySelector("small").textContent;
+      li.classList.remove("on", "hit");
+      li.querySelector("small").textContent = PIPE_IDLE[st];
+    });
+  }
+  // once answers are in, replace transient states ("drafting…", "streaming…") with what actually happened
+  function settlePipe(q) {
+    if (!run) return;
+    const done = run.modes.filter((m) => q.metric[m]);
+    if (!done.length) return;
+    const SHORT = { headstart: "Onset", baseline: "Baseline" };
+    setPipe("answer", run.modes.map((m) => q.metric[m] ? `${SHORT[m]} ${fmtS(readyAdj(q, m))}` : `${SHORT[m]} streaming…`).join(" · "));
+    const hm = q.metric.headstart;
+    if (hm) {
+      const bits = [`${hm.spec_fires ?? 0} early searches`];
+      if (hm.stale) bits.push(`${hm.stale} stale`);
+      if (hm.drafts) bits.push(hm.draft_reused ? "draft reused" : `${hm.drafts} draft${hm.drafts > 1 ? "s" : ""} unused`);
+      setPipe("spec", bits.join(" · "));
+    } else if (!run.modes.includes("headstart")) setPipe("spec", "off (baseline only)");
+  }
+  function setPipe(stage, sub) {
+    const li = document.querySelector(`#pipe li[data-st="${stage}"]`);
+    if (li) li.querySelector("small").textContent = sub;
+  }
+
+  function pipeSpec(q, e) {
+    const fires = Array.from(q.fires.values());
+    if (e.lane === "draft") {
+      if (q.metric.headstart) return;
+      if (e.state === "fired") pipe("spec", "drafting an answer early");
+      else if (e.state === "reused") pipe("spec", "draft reused at endpoint");
+      return;
+    }
+    const spec = fires.filter((f) => !f.lane.startsWith("final") && f.lane !== "draft");
+    if (!e.lane.startsWith("final") && !q.metric.headstart) {
+      const stale = spec.filter((f) => f.state === "stale" || f.state === "cancelled").length;
+      const mem = q.frame && q.frame.carried ? `memory: ${titleCase(q.frame.carried)} · ` : "";
+      pipe("spec", `${mem}${spec.length} early search${spec.length === 1 ? "" : "es"}${stale ? ` · ${stale} stale` : ""}`);
+    }
+    const cnt = {};
+    for (const f of fires) if (f.lane !== "draft") {
+      const t = f.tier === "card" || f.tier === "facts" || f.tier === "index" ? f.tier : "";   // router: free tiers named as such
+      const l = t || f.lane.replace("final-", ""); cnt[l] = (cnt[l] || 0) + 1;
+    }
+    pipe("lanes", Object.entries(cnt).map(([l, n]) => `${l} ${n}`).join(" · "));
+  }
+
+  // both sessions emit the same words; follow whichever is still listening (Onset stops after an early endpoint)
+  function acceptWords(q, mode, e) {
+    const sig = (e.words || []).map((w) => w.w).join(" ");
+    if (mode !== primary() && q.wordsMode === primary() && q.endpointMs[primary()] == null) return false;
+    if (sig === q.wordsSig && q.wordsMode && mode !== q.wordsMode) return false;
+    q.wordsSig = sig;
+    q.wordsMode = mode;
+    return true;
+  }
+
+  // cost meter (web/meter.js): every per-question metric, with the question it belongs to (pairs the two modes)
+  function meterMetric(qq, mode, e) {
+    if (window.HSMeter && run) { try { window.HSMeter.metric(qq, mode, e, run); } catch (err) { console.error("meter", err); } }
+  }
+
+  // ------------------------------------------------------------------ conversation history (previous turns)
+  function recordTurn(q, mode) {
+    if (!run) return;
+    let h = run.history.find((x) => x.q === q);
+    if (!h) { h = { q, question: "", answers: {} }; run.history.push(h); }
+    const m = q.metric[mode] || {};
+    h.question = h.question || m.question || q.words.map((w) => w.w).join(" ");
+    h.answers[mode] = q.answer[mode] || m.answer || "";
+    if (q.heard[mode]) h.heard = true;
+    h.carried = h.carried || (q.frame && q.frame.carried) || "";
+    paintHistory();
+  }
+  function shortAnswer(t) {
+    t = String(t || "").replace(/\s*\[\d+(?:\s*[,–-]\s*\d+)*\]/g, "").trim();
+    const first = (t.match(/^.*?[.!?](\s|$)/) || [t])[0].trim();
+    return first.length > 90 ? first.slice(0, 88) + "…" : first;
+  }
+  function paintHistory() {
+    const box = $("#history");
+    const prev = run ? run.history.filter((h) => h.q !== run.q).slice(-3) : [];
+    box.hidden = !prev.length;
+    box.innerHTML = prev.length ? `<span class="hl-lab">Earlier in this conversation</span>` + prev.map((h) => {
+      const a = h.answers.headstart || h.answers.baseline || "";
+      return `<span class="turn"><span class="tq">${esc(h.question)}</span><span class="ta">→ ${esc(h.heard && !a ? "heard · not a question" : shortAnswer(a) || "…")}</span></span>`;
+    }).join("") : "";
+  }
+
+  function finishRun() {
+    $("#earState").textContent = "done";
+    $("#earState").className = "ear";
+    if (mic.on) stopMic(false, "run done");
+    for (const m of run.modes) paneState(m);
+  }
+
+  // ------------------------------------------------------------------ transcript
+  function resetView(keepEar) {
+    const tr = $("#transcript");
+    tr.innerHTML = "";
+    tr.dataset.empty = "1";
+    if (!keepEar) { $("#earState").textContent = run && run.kind === "mic" ? "listening" : run && run.kind === "typed" ? "reading as you type" : "starting…"; $("#earState").className = "ear live"; }
+    renderFrame(null);
+    if (window.HSPlan) window.HSPlan.reset();
+    if (window.HSConf) window.HSConf.reset();
+    for (const m of ["headstart", "baseline"]) {
+      const p = $("#pane-" + m);
+      p.classList.toggle("off", !!run && !run.modes.includes(m));
+      p.classList.remove("winner");
+      for (const k of ["answer", "stats", "sources", "path", "delta"]) { const n = p.querySelector(`[data-k="${k}"]`); n.innerHTML = ""; n.className = n.className.replace(/ ?(p-\S+|slow|err)/g, ""); }
+      const rc = p.querySelector('[data-k="route"]');
+      if (rc) { rc.textContent = ""; rc.className = "route-chip"; rc.removeAttribute("title"); }
+      p.querySelector('[data-k="delta"]').className = "delta";
+      for (const k of ["rq", "res"]) { const n = p.querySelector(`[data-k="${k}"]`); n.innerHTML = ""; n._sig = null; n._h = null; }
+      p.querySelector('[data-k="big"]').textContent = "—";
+      p.querySelector('[data-k="big"]').className = "big";
+      p.querySelector('[data-k="sub"]').textContent = run && !run.modes.includes(m) ? "not in this run" : stoppedTxt();
+    }
+    $("#tlBody").innerHTML = "";
+    tlNodes.clear();
+    deltaSig = null;
+    if (run) for (const m of ["headstart", "baseline"]) renderResults(m);
+  }
+
+  function renderWords(q) {
+    if (window.HSHears) return;            // the annotated transcript (web/hears.js) renders the words
+    const tr = $("#transcript");
+    if (tr.dataset.empty) { tr.innerHTML = ""; delete tr.dataset.empty; }
+    const nodes = tr.children;
+    q.words.forEach((wd, i) => {
+      const txt = wd.w;
+      let n = nodes[i];
+      if (!n) {
+        n = el("span", "w new");
+        n.appendChild(el("span", "tx", txt));
+        tr.appendChild(n);
+        tr.appendChild(document.createTextNode(" "));
+        // keep word nodes at even indices: use a wrapper approach instead
+      } else if (n.querySelector(".tx").textContent !== txt) {
+        const old = n.querySelector(".tx").textContent;
+        n.querySelector(".tx").textContent = txt;
+        n.classList.remove("revised", "new");
+        void n.offsetWidth;          // restart the animation
+        n.classList.add("revised");
+        n.querySelector(".was")?.remove();
+        const was = el("span", "was", old);
+        n.appendChild(was);
+        setTimeout(() => was.remove(), 1700);
+      }
+    });
+    tr.classList.toggle("long", q.words.map((w) => w.w).join(" ").length > 42);
+    // words removed by a revision
+    while (wordNodes(tr).length > q.words.length) wordNodes(tr).at(-1).remove();
+    renderSpans(q);
+  }
+  function wordNodes(tr) { return Array.from(tr.querySelectorAll(":scope > .w")); }
+
+  function renderSpans(q) {
+    if (window.HSHears) return;
+    const nodes = wordNodes($("#transcript"));
+    nodes.forEach((n) => { n.classList.remove("slot-entity", "slot-number"); n.querySelector(".lab")?.remove(); });
+    for (const s of q.spans || []) {
+      const fam = s.type.startsWith("number") ? "number" : s.type.startsWith("entity") ? "entity" : null;
+      if (!fam || s.type === "entity.numeral") continue;
+      for (let i = s.start; i < s.end && i < nodes.length; i++) {
+        nodes[i].classList.add("slot-" + fam);
+        if (i === s.start) nodes[i].appendChild(el("span", "lab", slotLabel(s.type.split(".").pop())));
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ frame card
+  const PRONOUNS = ["it", "its", "it's", "he", "she", "his", "her", "him", "they", "them", "their", "there", "that", "this"];
+  const pronounIn = (words) => { for (const w of words || []) { const t = String(w.w || w).toLowerCase().replace(/[^a-z']/g, ""); if (PRONOUNS.includes(t)) return t; } return null; };
+  const titleCase = (s) => String(s || "").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const SLOT_SHORT = { organization: "org", organisation: "org", location: "place", place: "place", city: "place", country: "place",
+    person: "person", date: "date", time: "time", cardinal: "num", ordinal: "ord", number: "num", numeral: "num", money: "money",
+    percent: "pct", quantity: "qty", year: "year", event: "event", product: "product", work_of_art: "work" };
+  const slotLabel = (t) => SLOT_SHORT[String(t).toLowerCase()] || String(t).replace(/_/g, " ").slice(0, 8);
+
+  function renderFrame(f, final = false) {
+    const badges = $("#frameBadges");
+    badges.innerHTML = "";
+    if (!f) {
+      $("#fIntent").textContent = "—"; $("#fSlots").textContent = "—"; $("#fRoute").textContent = "—"; $("#fQuery").textContent = "—";
+      renderReadout(null);
+      return;
+    }
+    // remember the last non-empty intent/slots of this utterance: a final frame can come back empty, and showing the
+    // live "listening…" placeholder on a FINAL card reads as a bug
+    const qq = run && run.q;
+    if (qq && f.intent) qq.lastIntent = { intent: f.intent, p: f.p };
+    if (qq && f.slots && f.slots.length) qq.lastSlots = f.slots;
+    const isFinal = final || !!f.final;
+    const p = Math.max(0, Math.min(1, +f.p || 0));
+    const intentHtml = (it, pp, extra) => `<span class="nm" title="${esc(it)}">${esc(stripIntent(it))}</span><span class="pbar" title="p ${(+pp || 0).toFixed(2)}"><i style="width:${Math.round(Math.max(0, Math.min(1, +pp || 0)) * 100)}%"></i></span>${extra || ""}`;
+    if (f.intent) $("#fIntent").innerHTML = intentHtml(f.intent, p);
+    else if (isFinal && qq && qq.lastIntent) $("#fIntent").innerHTML = `<span class="from-partial">${intentHtml(qq.lastIntent.intent, qq.lastIntent.p, '<span class="fp">from partial</span>')}</span>`;
+    else $("#fIntent").innerHTML = `<span class="muted">${isFinal ? "no intent tagged" : "listening for intent…"}</span>`;
+    const chips = (list) => list.map(([t, v]) => `<span class="chip ${/^(cardinal|ordinal|money|percent|date|time|quantity|numeral|year|number)/.test(t) ? "number" : ""}" title="${esc(t)}: ${esc(v)}"><small>${esc(slotLabel(t))}</small>${esc(v)}</span>`).join("");
+    const slots = f.slots || [];
+    if (slots.length) $("#fSlots").innerHTML = chips(slots);
+    else if (isFinal && !f.corrected && qq && qq.lastSlots) $("#fSlots").innerHTML = `<span class="from-partial">${chips(qq.lastSlots)}<span class="fp">from partial</span></span>`;
+    else $("#fSlots").innerHTML = `<span class="muted">${isFinal ? (f.corrected ? "no slots (corrected away)" : "no slots") : "none yet"}</span>`;
+    const r = f.route || "web";
+    $("#fRoute").innerHTML = `<span class="route"><span class="web ${r === "web" || r === "both" ? "on" : ""}">web</span><span class="local ${r === "local" || r === "both" ? "on" : ""}">local</span></span>`;
+    $("#fQuery").textContent = f.query || "—";
+    if (f.carried) {
+      const m = el("span", "badge mem");
+      m.innerHTML = `<i>memory</i> ${esc(pronounIn(run && run.q ? run.q.words : []) || "it")} → ${esc(titleCase(f.carried))}`;
+      m.title = "Resolved from the previous turn of this conversation";
+      badges.appendChild(m);
+    }
+    if (f.corrected) badges.appendChild(el("span", "badge corr", "corrected"));
+    // retrieval in the loop (server/heard.py): a misheard name re-resolved against what the session already found
+    for (const h of f.heard || []) {
+      const b = el("span", "badge heardfix", "");
+      b.innerHTML = `<i>heard</i> “${esc(h.said)}” → ${esc(h.as)}`;
+      b.title = `Re-resolved from ${({ leads: "the local Wikipedia index", spec: "this question's search results", memory: "conversation memory", answer: "the answer", facts: "Wikidata labels" })[h.src] || h.src} · match ${h.score}`;
+      badges.appendChild(b);
+    }
+    if (f.command_complete && !f.carried) badges.appendChild(el("span", "badge cc", "complete"));
+    if (final) badges.appendChild(el("span", "badge cc", "final"));
+    renderReadout(f);
+  }
+
+  // ------------------------------------------------------------------ Arc read-out row (tagger-depth)
+  // The rest of what Arc Tagger reports at every word, beyond intent + slots: dialogue act, device-directed, the
+  // freshness the search will use and why, personal data kept out of the web query, a prompt-injection flag.
+  function renderReadout(f) {
+    const box = $("#fReadout");
+    if (!box) return;
+    const r = (f && f.readout) || null;
+    if (!r) { box.innerHTML = `<span class="muted">—</span>`; return; }
+    const tag = (cls, label, title) => `<span class="ro ${cls}" title="${esc(title || label)}">${esc(label)}</span>`;
+    const out = [];
+    if (r.acts && r.acts.length) out.push(tag("act", "act · " + r.acts.map((a) => a.replace(/_/g, " ")).join(", "), "dialogue act"));
+    if (r.directed != null) out.push(r.directed >= 0.9 ? tag("dir", "to assistant", `device-directed p ${r.directed}`)
+                                                        : tag("warn", "not device-directed", `device-directed p ${r.directed}`));
+    if (r.fresh) out.push(tag("fresh", r.fresh + (r.when_text ? ` (“${r.when_text}”)` : ""), "Tavily topic / freshness chosen from the read-out"));
+    if (r.num_types && r.num_types.length) out.push(tag("num", r.num_types.join(" · "), "typed numbers"));
+    if (r.redacted && r.redacted.length) out.push(tag("priv", "private data redacted · " + r.redacted.join(", "), "kept out of the web query"));
+    if (r.jailbreak) out.push(tag("warn", "prompt-injection flagged", "safety.jailbreak.attempt: no speculative search"));
+    box.innerHTML = out.length ? out.join("") : `<span class="muted">—</span>`;
+  }
+
+  // ------------------------------------------------------------------ answer panes
+  const pane = (m) => $("#pane-" + m);
+  const pk = (m, k) => pane(m).querySelector(`[data-k="${k}"]`);
+
+  function renderAnswer(mode) {
+    const q = run.q;
+    const box = pk(mode, "answer");
+    const txt = q.answer[mode] || "";
+    if (q.error[mode] && !txt) { box.className = "answer err"; box.textContent = "Answer failed: " + q.error[mode]; return; }
+    if (q.heard[mode] && !txt) { box.className = "answer"; box.innerHTML = `<span class="heard-note">heard · not a question</span>`; return; }
+    box.className = "answer";
+    const fb = q.metric[mode] && q.metric[mode].answer_fallback;
+    const n = (q.sources[mode] || []).length;
+    // citations: clean superscript numbers ("…in 1993¹˒²"); a group [1, 2] is one superscript, comma-separated
+    let html = esc(txt).replace(/\s*\[(\d+(?:\s*[,–-]\s*\d+)*)\]/g, (_, grp) =>
+      `<sup class="cites">` + grp.split(/\s*[,–-]\s*/).map((d) => `<a class="cite" data-n="${d}" ${+d > n ? 'title="not in the source list"' : `title="source ${d}"`}>${d}</a>`).join('<span class="cs">,</span>') + `</sup>`);
+    if (!q.metric[mode] && !q.error[mode]) html += txt ? '<span class="caret"></span>' : (q.endpointMs[mode] != null ? '<span class="wait">searching…</span>' : "");
+    renderLane(mode);
+    if (fb) html = `<span class="badge fb" title="the answer model was unreachable: this is the best-matching sentence of the top source">${esc(fb)} · not generated</span> ` + html;
+    const old = q.superseded[mode];
+    if (old && old.answer) html = `<div class="old"><span class="badge corr">superseded</span> ${old.correction ? "answered" : "answered early"} (${fmtS(old.ready)}), then you ${old.correction ? "corrected yourself" : "kept talking"}: <s>${esc(old.answer.slice(0, 140))}${old.answer.length > 140 ? "…" : ""}</s></div>` + html;
+    box.innerHTML = html;
+    fitAnswer(box);
+  }
+  // A clamped answer ends on a whole line: the box's height is a whole number of lines (CSS), and when the text runs
+  // past it the last line fades out under a "more" button (click anywhere on the answer opens it in place).
+  function fitAnswer(box) {
+    if (!box) return;
+    cancelAnimationFrame(box._fitRaf);
+    box._fitRaf = requestAnimationFrame(() => {
+      const open = box.classList.contains("open");
+      const over = !open && box.scrollHeight > box.clientHeight + 2;
+      box.classList.toggle("clamped", over);
+      let b = box.querySelector(":scope > .more");
+      if (over && !b) {
+        b = document.createElement("button");
+        b.type = "button"; b.className = "more"; b.textContent = "more";
+        b.setAttribute("aria-label", "Show the whole answer");
+        box.appendChild(b);
+      } else if (!over && b && !open) b.remove();
+      if (open && b) b.textContent = "less";
+    });
+  }
+  // ------------------------------------------------------------------ router: which lane answered (+ the card)
+  // Tiers (server/router.py): card = live data from a free API (or computed locally), facts = local knowledge
+  // (Wikidata / local Wikipedia leads / Wiktionary), web = the paid search. Honesty: every card names its source and
+  // the time its data is "as of"; nothing computed or cached is presented as a live search.
+  const LANE_NAME = { card: "live data", facts: "local facts", web: "web", index: "local index hit · 0 paid" };
+
+  // ------------------------------------------------------------------ route chip: which way this question went
+  // card = live-data card (free API) · facts = Wikidata / local facts · saved = a saved answer or search (Keystone,
+  // search cache, recorded results) · web = a paid web search · wait = paid search held until the meaning is final ·
+  // local = your local documents · memory = answered from the conversation. Live while you speak (the latest web-lane
+  // search), final once the answer's sources are known.
+  const ROUTE_TIP = {
+    card: "Live-data card from a free API · no paid search",
+    facts: "Facts lookup (Wikidata / local facts) · no paid search",
+    saved: "A saved answer or search (Keystone, search cache) · no paid search",
+    web: "Paid web search",
+    wait: "Holding the paid search until you finish the question",
+    local: "Your local documents · no paid search",
+    memory: "Answered from the conversation · no search",
+  };
+  function routeOfTier(tier, m) {
+    if (tier === "index") return "saved";
+    if (tier === "card" || tier === "facts" || tier === "wait") return tier;
+    if (m && (m.semcache || m.cached || m.replayed)) return "saved";
+    return tier === "web" ? "web" : null;
+  }
+  function liveRoute(q, mode, e) {
+    if (!/web$/.test(String(e.lane || "")) || !["done", "skipped"].includes(e.state)) return;
+    const r = routeOfTier(e.tier || (e.state === "done" ? "web" : null), e);
+    if (!r) return;
+    q.route = q.route || {};
+    if (q.route[mode] && !q.route[mode].live) return;        // the answer's route is final
+    q.route[mode] = { r, live: true };
+    if (run && q === run.q) paintRoute(mode);
+  }
+  function finalRoute(mode) {
+    const m = run.q.metric[mode];
+    if (!m) return null;
+    if (m.answer_by === "memory") return "memory";
+    if (m.answer_by === "card") return "card";
+    const L = laneOf(mode);
+    if (!L) return null;
+    if (L.tier === "local") return "local";
+    if (L.tier === "web") return L.d.cached ? "saved" : (paidOfMetric(m) ? "web" : "saved");
+    return routeOfTier(L.tier, null) || L.tier;
+  }
+  const paidOfMetric = (m) => m.paid_calls ?? m.web_paid ?? m.web_calls ?? 0;
+  function paintRoute(mode) {
+    const box = pk(mode, "route");
+    if (!box) return;
+    const R = run && run.q.route && run.q.route[mode];
+    if (!R) { box.textContent = ""; box.className = "route-chip"; box.removeAttribute("title"); return; }
+    box.textContent = R.r;
+    box.className = `route-chip rt-${R.r}${R.live ? " live" : ""}`;
+    box.title = (R.live ? "So far: " : "Route: ") + (ROUTE_TIP[R.r] || R.r);
+  }
+  function laneOf(mode) {
+    const q = run.q, docs = q.sources[mode] || [], m = q.metric[mode];
+    if (!docs.length) return null;
+    const txt = q.answer[mode] || "";
+    const cited = (txt.match(/\[(\d+)/) || [])[1];
+    const card = docs.find((d) => d.card) || null;
+    const byCard = m ? m.answer_by === "card" : (card && txt.startsWith(card.card.spoken.slice(0, 12)));
+    const d = byCard ? card : (cited && docs[+cited - 1]) || docs[0];
+    const tier = d.tier || (d.source === "local" ? "local" : "web");
+    return { tier, d, byCard, card: byCard ? card.card : null };
+  }
+  function fmtAsOf(s) {
+    if (!s) return "";
+    const m = String(s).match(/^(\d{4}-\d\d-\d\d)(?:T(\d\d:\d\d))?/);
+    if (!m) return String(s).slice(0, 40);
+    const today = new Date().toISOString().slice(0, 10);
+    return m[2] ? (m[1] === today ? m[2] : `${m[1]} ${m[2]}`) : m[1];
+  }
+  function renderLane(mode) {
+    const box = pk(mode, "lane");
+    if (!box) return;
+    const L = laneOf(mode);
+    if (!L || L.tier === "local") { box.innerHTML = ""; return; }
+    const src = L.card ? L.card.source : (L.tier === "index" ? (L.d.snapshot || "").replace(/^from your /, "") : (L.d.source || ""));
+    // the lane + source live in the pane header's route chip (its tooltip names the source); no second chip here
+    const rc = pk(mode, "route");
+    if (rc && rc.textContent) rc.title = (rc.title || "").replace(/ · source: .*$/, "") + ` · source: ${(L.tier === "index" && /^verified by Onset users/.test(L.d.snapshot || "") ? "shared index hit · 0 paid" : (LANE_NAME[L.tier] || L.tier))} · ${src.replace(/ \(local.*\)$/, "")}`;
+    if (!L.card) { box.innerHTML = ""; return; }
+    const c = L.card, asof = fmtAsOf(c.as_of);
+    let body = "";
+    if (c.vertical === "weather" && c.data && c.data.days) {
+      const imp = c.data.imperial, t = (x) => x == null ? "?" : imp ? Math.round(x * 9 / 5 + 32) + "°" : Math.round(x) + "°";
+      body = `<div class="lc-days">` + c.data.days.map((d) => `<div class="lc-day"><b>${esc(d.label)}</b><span>${esc(d.cond)}</span><span class="lc-t">${t(d.hi)} / ${t(d.lo)}</span>${d.pop != null ? `<span class="lc-p">${d.pop}% rain</span>` : (d.precip_mm ? `<span class="lc-p">${d.precip_mm} mm</span>` : "")}</div>`).join("") + `</div>`;
+    } else if (c.vertical === "fx" && c.data) {
+      body = `<div class="lc-big">${esc(String(c.spoken).split(/ \(|, at /)[0])}</div><div class="lc-sub">${esc(c.detail || "")}</div>`;
+    } else {
+      body = `<div class="lc-big">${esc(c.spoken)}</div>${c.detail ? `<div class="lc-sub">${esc(c.detail)}</div>` : ""}`;
+    }
+    box.innerHTML = `<div class="lane-card"><div class="lc-h">${esc(c.title)}</div>${body}<div class="lc-src">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.source)}</a>` : esc(c.source)}${asof ? ` · as of ${esc(asof)}` : ""}${c.live === false ? " · computed locally" : ""}</div></div>`;
+  }
+
+  function renderSources(mode) {
+    const box = pk(mode, "sources");
+    const docs = run.q.sources[mode] || [];
+    box.innerHTML = "";
+    docs.forEach((d, i) => {
+      const a = el(d.url ? "a" : "div", "src");
+      if (d.url) { a.href = d.url; a.target = "_blank"; a.rel = "noopener"; }
+      a.dataset.n = String(i + 1);
+      a.title = (d.title || "") + (d.text ? "\n\n" + d.text : "");
+      const lane = String(d.lane || "").replace("final-", "");
+      // d.as_of: served from the search cache (server/searchcache.py), fetched live at that time; else the recorded cache
+      // router cards / facts carry their own "as of" (d.card.as_of, d.snapshot): never a "cached" badge on them
+      const cachedDoc = d.cached && !d.card && !d.tier;
+      const asOf = cachedDoc && d.as_of ? cacheStamp(d.as_of) : "";
+      const meta = [cachedDoc ? `${d.source} · CACHED${asOf ? " as of " + d.as_of.replace("T", " ") : ""}` : d.source, d.score != null ? `cos ${(+d.score).toFixed(2)}` : null].filter(Boolean).join(" · ");
+      const ts = d.t != null ? `<span class="ts" title="moment starts at ${Math.round(d.t)} s">▶ ${mmss(d.t)}</span>` : "";
+      const title = d.t != null ? String(d.title || "").replace(/\s*·\s*(\d+:)?\d+:\d+$/, "") : d.title;
+      a.title = (title || "") + (meta ? `\n${lane} · ${meta}` : "") + (d.text ? "\n\n" + d.text : "");
+      a.innerHTML = `<div class="st"><span class="sn">[${i + 1}]</span>${lane ? `<span class="ln ${esc(lane)}">${esc(lane.slice(0, 3))}</span>` : ""}${ts}${cachedDoc ? (asOf ? `<span class="ln cached" title="search result from the cache, fetched ${esc(String(d.as_of).replace("T", " "))} (not live)">cache ${esc(asOf)}</span>` : '<span class="ln cached" title="replayed from the recorded web cache">cache</span>') : ""}<span class="tt">${esc(title || "(untitled)")}</span></div>` + (d.chips ? HSResults.chipsHtml(d, 3) : "");
+      box.appendChild(a);
+    });
+  }
+
+  const mmss = (t) => HSResults.mmss(t);
+
+  function paneState(mode) {
+    const q = run.q;
+    const big = pk(mode, "big");
+    if (q.metric[mode]) return;
+    if (q.speechEnd == null && q.endpointMs[mode] == null) { big.textContent = run.running ? "…" : "—"; big.className = "big"; }
+  }
+
+  function renderMetric(mode) {
+    const q = run.q, m = q.metric[mode];
+    q.route = q.route || {};
+    const fr = finalRoute(mode);
+    if (fr) q.route[mode] = { r: fr, live: false };
+    paintRoute(mode);
+    const path = pk(mode, "path");
+    path.textContent = m.path || "";
+    path.className = "path" + (m.path ? " p-" + m.path : "");
+    const st = [];
+    if (mode === "headstart") {
+      st.push(`fires <b>${m.spec_fires ?? 0}</b>`, `fed <b>${m.spec_used ?? 0}</b>`, `stale <b>${m.stale ?? 0}</b>`,
+        `drafts <b>${m.drafts ?? 0}</b>${m.draft_reused ? "↺" : ""}`);
+    }
+    // router on (m.web_paid set): web-lane calls split into paid searches vs free card / fact lookups
+    const paid = m.paid_calls ?? m.web_paid;
+    const calls = m.web_paid != null ? `paid <b>${paid ?? 0}</b> · free <b>${m.free_calls ?? 0}</b>` : `web <b>${m.web_calls ?? 0}</b>`;
+    st.push(calls + (m.credits ? ` · <b>${m.credits}</b> cr` : ""), `sources <b>${fmtS(m.sources_ms)}</b>`);
+    if (mode !== "headstart") st.push(`done <b>${fmtS(m.done_ms)}</b>`);
+    if (m.search_cached) st.unshift(`<span class="flag" title="web results served from the search cache, not fetched live">cached search ×${m.search_cached}${m.search_cached_as_of ? " · as of " + esc(cacheStamp(m.search_cached_as_of)) : ""}</span>`);
+    if (m.web_paid == null && mode === "headstart" && m.paid_calls != null) st.push(`paid <b>${m.paid_calls}</b>`);
+    if (m.answer_by === "card") st.unshift(`<span class="flag ok" title="the live-data card answered: no model call">card answer</span>`);
+    if (m.web_replayed) st.unshift(`<span class="flag" title="web results replayed from the recorded cache, not fetched live">cached web ×${m.web_replayed}</span>`);
+    if (m.telem_engines && m.telem_engines.length) {
+      // Telem (server/telem.py): which search engines answered, how fast; the console ids are in the tooltip
+      const eng = m.telem_engines.map((e) => `${esc(e.provider)}${e.ok ? (e.ms != null ? " " + fmtS(e.ms) : "") : " failed"}`).join(", ");
+      const tr = m.telem_trace || {};
+      const tip = `Searched through Telem${m.telem_routing ? " (engines chosen by Telem: " + m.telem_routing.join(", ") + ")" : ""}. ` +
+        `Telem console session ${tr.session_id || "—"}; calls ${(tr.interaction_ids || []).join(", ") || "—"}`;
+      st.push(`<span title="${esc(tip)}">engines <b>${eng}</b>${m.telem_usd != null ? ` · $${(+m.telem_usd).toFixed(3)} est.` : ""}</span>`);
+    }
+    if (m.answer_fallback) st.unshift(`<span class="flag" title="${esc(m.answer_fallback_reason || "")}">${esc(m.answer_fallback)} answer · model offline</span>`);
+    const box = pk(mode, "stats");
+    box.innerHTML = st.map((s) => `<span>${s}</span>`).join("");
+    box.title = `spec fires ${m.spec_fires ?? 0} · fed the answer ${m.spec_used ?? 0} · stale/cancelled ${m.stale ?? 0} · drafts ${m.drafts ?? 0}${m.draft_reused ? " (one reused)" : ""} · web calls ${m.web_calls ?? 0} · sources ${fmtS(m.sources_ms)} · done ${fmtS(m.done_ms)} · endpoint lag ${m.endpoint_lag_ms ?? "—"} ms (all after you stopped talking)`;
+    renderLane(mode);
+    if (m.error && !q.answer[mode]) { q.error[mode] = m.error; renderAnswer(mode); }
+  }
+
+  // ready time measured from when the speaker really stopped (the latest last-word end any mode saw). Each session's
+  // own ready_ms counts from ITS endpoint frame's last word, and an early semantic endpoint can see an earlier one.
+  function readyAdj(q, m) {
+    const met = q.metric[m];
+    if (!met) return null;
+    const se = q.se[m] ?? q.speechEnd;
+    return se + met.ready_ms - (q.speechEnd ?? se);
+  }
+
+  // results view: when were results for the FINAL meaning first on screen? The earliest landed search (not stale) whose
+  // query is the endpoint frame's query, or the final ranked list. For Onset this is often before the endpoint.
+  function resultsAt(q, m) {
+    const fq = q.epQuery[m];
+    if (fq == null) return null;
+    let best = q.sourcesMs[m] ?? Infinity;
+    for (const f of q.fires.values()) {
+      if (f.mode !== m || f.lane === "draft" || f.t1 == null || !(f.docs && f.docs.length)) continue;
+      if (f.state === "stale" || f.state === "cancelled" || f.state === "error") continue;
+      if (f.query === fq) best = Math.min(best, f.t1);
+    }
+    return isFinite(best) ? best : null;
+  }
+  // the stopwatch's final value for the current view (null while still running)
+  function finalVal(q, m) {
+    if (viewSel === "results") { const at = resultsAt(q, m); return at == null || q.speechEnd == null ? null : at - q.speechEnd; }
+    return q.metric[m] ? readyAdj(q, m) : null;
+  }
+
+  // every frame: stopwatches (running from "you stopped talking", frozen at the view's finish line) and the delta
+  let deltaSig = null;
+  function tickWatches() {
+    if (!run) return;
+    const q = run.q, res = viewSel === "results";
+    for (const m of run.modes) {
+      const big = pk(m, "big"), sub = pk(m, "sub");
+      const v = finalVal(q, m);
+      let txt, cls, st;
+      if (q.heard[m] && v == null) {
+        txt = "heard"; cls = "big heard"; st = "not a question · no search";
+      } else if (v != null) {
+        txt = fmtS(v); cls = "big final";
+        st = v < 0 ? (res ? "results ready before you finished" : run.kind === "typed" ? "before you pressed Enter" : "before you stopped talking") : (res ? "first results after you stopped" : stoppedTxt());
+      } else if (q.se[m] != null && q.speechEnd != null) {
+        const end = !res && q.firstMs[m] != null ? q.firstMs[m] : serverNow();
+        txt = run.running || (!res && q.firstMs[m] != null) ? fmtS(end - q.speechEnd) : "—";
+        cls = "big running";
+        st = res ? "first results after you stopped" : stoppedTxt();
+      } else { txt = run.running ? "…" : "—"; cls = "big"; st = res ? "first results after you stopped" : stoppedTxt(); }
+      if (big.textContent !== txt) big.textContent = txt;
+      if (big.className !== cls) big.className = cls;
+      if (sub.textContent !== st && !sub.textContent.startsWith("not in")) sub.textContent = st;
+    }
+    renderDelta(q);
+  }
+  function renderDelta(q) {
+    const a = run.modes.includes("headstart") ? finalVal(q, "headstart") : null, b = run.modes.includes("baseline") ? finalVal(q, "baseline") : null;
+    const sig = `${viewSel}|${a}|${b}`;
+    if (sig === deltaSig) return;
+    deltaSig = sig;
+    // the delta changes the panes' layout: let the results lists re-fit after this frame
+    requestAnimationFrame(() => { for (const m of ["headstart", "baseline"]) renderResults(m); });
+    const dh = pk("headstart", "delta"), db = pk("baseline", "delta");
+    pane("headstart").classList.remove("winner"); pane("baseline").classList.remove("winner");
+    dh.title = db.title = "";
+    if (a == null || b == null) { dh.innerHTML = db.innerHTML = ""; dh.className = db.className = "delta"; return; }
+    const d = b - a, ad = Math.abs(d);
+    if (ad < 100) {
+      dh.innerHTML = db.innerHTML = `<span class="dl">dead heat (${Math.round(ad)} ms)</span>`;
+      dh.className = db.className = "delta slow";
+      return;
+    }
+    const [win, lose] = d >= 0 ? [dh, db] : [db, dh];
+    const lo = Math.min(a, b), hi = Math.max(a, b), ratio = hi / Math.max(1, lo);
+    const what = viewSel === "results" ? "results sooner" : "faster";
+    win.innerHTML = `<span class="dv">${fmtS(ad)}</span><span class="dl">${what}</span>`;
+    win.title = `${fmtS(lo)} vs ${fmtS(hi)}` + (lo > 100 && isFinite(ratio) ? ` (${ratio.toFixed(1)}×)` : "");
+    win.className = "delta hero";
+    lose.innerHTML = `<span class="dl">${fmtS(ad)} behind</span>`;
+    lose.className = "delta slow";
+    pane(d >= 0 ? "headstart" : "baseline").classList.add("winner");
+  }
+
+  // live results list per pane (shared logic with film mode: web/results.js)
+  function renderResults(mode) {
+    if (!run) return;
+    const q = run.q, res = viewSel === "results";
+    const rq = pk(mode, "rq"), box = pk(mode, "res");
+    if (!run.modes.includes(mode)) { rq.innerHTML = ""; box.innerHTML = ""; return; }
+    const v = HSResults.view({ fires: Array.from(q.fires.values()).filter((f) => f.mode === mode), sourcesMs: q.sourcesMs[mode],
+      sources: q.sources[mode], query: q.epQuery[mode] || (q.frame && q.frame.query) || "" });
+    const head = HSResults.head(v, { mode, answered: !!q.answer[mode] && !res, endpointed: q.endpointMs[mode] != null });
+    if (rq._h !== head) { rq.innerHTML = head; rq._h = head; }
+    rq.className = "rq k-" + v.kind;
+    box.className = "res k-" + v.kind;
+    const minimal = document.body.classList.contains("minimal");
+    HSResults.flip(box, v.docs, minimal
+      ? { cls: "rr", px: 14, numbered: v.kind === "final", dates: true, links: true,
+          snipLines: 3, snipChars: 420, titleMax: 220, max: 5, noFit: true }
+      : { cls: "rr", px: res ? 12.5 : 12, numbered: v.kind === "final", dates: true, links: true,
+          snipLines: res ? 2 : 1, snipChars: 230, titleMax: 90, max: 10 });
+  }
+
+  // cite hover / click -> source card
+  $("#answers").addEventListener("mouseover", (e) => {
+    const c = e.target.closest(".cite");
+    const p = e.target.closest(".pane");
+    if (!p) return;
+    p.querySelectorAll(".src.hl, .rr.hl").forEach((n) => n.classList.remove("hl"));
+    if (c) p.querySelector(`.res.k-final .rr[data-n="${c.dataset.n}"]`)?.classList.add("hl");
+  });
+  $("#answers").addEventListener("click", (e) => {
+    const c = e.target.closest(".cite");
+    if (!c) return;
+    const a = c.closest(".pane").querySelector(`.res.k-final .rr[data-n="${c.dataset.n}"] a`);
+    if (a && a.href) window.open(a.href, "_blank", "noopener");
+  });
+
+  // ------------------------------------------------------------------ timeline
+  const tlNodes = new Map();      // key -> row element
+  let tlFrame = 0;
+  const NICE = [100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000];
+
+  function tlRows(q) {
+    const rows = [];
+    const now = run.running ? serverNow() : null;
+    rows.push({ key: "speech", kind: "speech" });
+    for (const mode of run.modes) {
+      const startIdx = rows.length;
+      for (const key of q.order) {
+        const f = q.fires.get(key);
+        if (f.mode !== mode) continue;
+        rows.push({ key, kind: "fire", f, t0: f.t0, t1: f.t1 ?? now ?? f.t0 });
+      }
+      q.old.forEach((o, i) => {
+        if (o.mode === mode && o.t0 != null) rows.push({ key: `old:${mode}:${i}`, kind: "answer", mode, t0: o.t0, t1: Math.max(o.t1 ?? o.t0, o.t0), first: o.first, superseded: true, correction: o.correction });
+      });
+      if (q.sourcesMs[mode] != null) {
+        const m = q.metric[mode];
+        const end = m && q.se[mode] != null ? q.se[mode] + m.done_ms : (q.lastAnsMs ?? now ?? q.sourcesMs[mode]);
+        rows.push({ key: "ans:" + mode, kind: "answer", mode, t0: q.sourcesMs[mode], t1: Math.max(end, q.sourcesMs[mode]),
+          first: q.firstMs[mode], live: !m });
+      } else if (q.endpointMs[mode] != null) {
+        rows.push({ key: "ans:" + mode, kind: "answer", mode, t0: q.endpointMs[mode], t1: now ?? q.endpointMs[mode], waiting: true, live: true });
+      }
+      if (rows[startIdx]) rows[startIdx].first = true;
+      for (let i = startIdx; i < rows.length; i++) rows[i].mode = rows[i].mode || mode;
+    }
+    return rows;
+  }
+
+  function renderTimeline() {
+    if (!run) return;
+    const q = run.q;
+    const rows = tlRows(q);
+    // axis range (grows monotonically during a run so bars don't jitter)
+    let need = q.axStart + 2500;
+    const lastWord = q.words.at(-1);
+    if (lastWord && lastWord.t1 != null) need = Math.max(need, lastWord.t1 * 1000);
+    for (const r of rows) if (r.t1 != null) need = Math.max(need, r.t1);
+    if (q.speechEnd != null) need = Math.max(need, q.speechEnd);
+    for (const m of run.modes) if (q.metric[m] && q.se[m] != null) need = Math.max(need, q.se[m] + q.metric[m].done_ms);
+    if (run.running) need = Math.max(need, serverNow());
+    const target = q.axStart + (need - q.axStart) * 1.16 + 200;
+    q.axEnd = run.running ? Math.max(q.axEnd, target) : target;
+    const a0 = q.axStart, span = Math.max(500, q.axEnd - a0);
+    const X = (ms) => ((ms - a0) / span) * 100;
+
+    // ticks
+    const axis = $("#tlAxis");
+    const w = axis.clientWidth || 800;
+    const step = NICE.find((s) => (span / s) * 64 <= w) || 10000;
+    let tickHtml = "";
+    const SPK = "you stopped talking";
+    let spkA = null, spkB = null;
+    if (q.speechEnd != null) {
+      const sp = (X(q.speechEnd) / 100) * w, sw = SPK.length * 6.3 + 14;
+      [spkA, spkB] = X(q.speechEnd) > 78 ? [sp - sw, sp] : [sp, sp + sw];
+    }
+    for (let t = Math.ceil(a0 / step) * step; t <= a0 + span; t += step) {
+      const lab = t >= 1000 ? (t / 1000).toFixed(step % 1000 ? (step % 500 ? 2 : 1) : 0) + " s" : t + " ms";
+      const tp = (X(t) / 100) * w, la = tp + 2, lb = tp + 6 + lab.length * 6.6;
+      const hid = spkA != null && lb > spkA - 2 && la < spkB + 2;
+      tickHtml += `<div class="tick" style="left:${X(t)}%"><span${hid ? ' class="hid"' : ""}>${lab}</span></div>`;
+    }
+    if (axis._h !== tickHtml) { axis.innerHTML = tickHtml; axis._h = tickHtml; }
+
+    // rows
+    const body = $("#tlBody");
+    const want = rows.map((r) => r.key);
+    for (const [k, n] of tlNodes) if (!want.includes(k)) { n.remove(); tlNodes.delete(k); }
+    rows.forEach((r) => {
+      let n = tlNodes.get(r.key);
+      if (!n) { n = makeRow(r); tlNodes.set(r.key, n); }
+      updateRow(n, r, X, q);
+    });
+    // bar labels: a label that would overlap the one in the row above is hidden (its text stays in the row tooltip)
+    if (!run.running || (tlFrame = (tlFrame + 1) % 6) === 0) {
+      let prev = null;
+      for (const k of want) {
+        const n = tlNodes.get(k);
+        const bt = n && n.querySelector(".bt");
+        if (!bt) continue;
+        bt.classList.remove("hid");
+        if (!bt.textContent) continue;
+        const r = bt.getBoundingClientRect();
+        if (prev && r.top < prev.bottom - 1 && r.left < prev.right + 4 && r.right > prev.left - 4) { bt.classList.add("hid"); continue; }
+        prev = r;
+      }
+    }
+    const cur = Array.from(body.children);
+    if (cur.length !== rows.length || cur.some((c, i) => c !== tlNodes.get(want[i]))) {
+      want.forEach((k) => body.appendChild(tlNodes.get(k)));
+    }
+
+    // markers
+    const marks = [];
+    if (run.running) marks.push({ cls: "now", at: serverNow() });
+    if (q.speechEnd != null) marks.push({ cls: "spk", at: q.speechEnd, label: "you stopped talking", top: true });
+    // endpoint markers: one dashed line each, one shared label when they're close (saves a label lane)
+    const eps = [];
+    for (const m of run.modes) {
+      const at = q.endpointMs[m];
+      if (at == null) continue;
+      const lab = q.epBy[m] === "semantic" ? "semantic" : "Arc";
+      if (!eps.some((x) => x.lab === lab && Math.abs(x.at - at) < 60)) eps.push({ at, lab });
+    }
+    eps.sort((a, b) => a.at - b.at);
+    const close = eps.length > 1 && eps.at(-1).at - eps[0].at < 400;
+    eps.forEach((x, i) => marks.push({ cls: "ep dash", at: x.at,
+      label: close ? (i === 0 ? eps.map((y) => y.lab).join(" + ") + " endpoint" : null) : x.lab + " endpoint" }));
+    for (const o of q.old) if (o.ep != null) marks.push({ cls: "ep dash", at: o.ep, label: o.by === "semantic" ? "semantic endpoint (early)" : "endpoint (early)" });
+    for (const m of run.modes) {
+      const met = q.metric[m];
+      let at = null;
+      const se = q.se[m];
+      if (met && se != null) at = se + met.ready_ms;
+      else if (q.firstMs[m] != null) at = q.firstMs[m];
+      if (at != null) marks.push({ cls: m === "headstart" ? "hs" : "bl", at, label: `${MODE_NAME[m]} ready ${at - (q.speechEnd ?? at) >= 0 ? "+" : ""}${fmtS(at - (q.speechEnd ?? at))}`, mode: m });
+    }
+    const mk = $("#tlMarks");
+    const tw = mk.clientWidth || 800;
+    // de-collide bottom labels
+    const bottoms = marks.filter((m) => m.label && !m.top).sort((a, b) => a.at - b.at);
+    // place each label right or left of its marker, on the lowest level where it doesn't overlap another label
+    const occ = [];                  // per level: [[a, b], ...] occupied px intervals
+    const fits = (lv, a, b) => !(occ[lv] || []).some(([x, y]) => a < y + 6 && b > x - 6);
+    for (const m of bottoms) {
+      const px = (X(m.at) / 100) * tw;
+      const w = m.label.length * 6 + 14;
+      const opts = [[px, px + w, false], [px - w, px, true]].filter(([a, b]) => a >= -4 && b <= tw + 4);
+      if (!opts.length) opts.push(px > tw / 2 ? [px - w, px, true] : [px, px + w, false]);
+      let lv = 0, pick = null;
+      for (; lv < 6 && !pick; lv++) pick = opts.find(([a, b]) => fits(lv, a, b));
+      lv--;
+      pick = pick || opts[0];
+      (occ[lv] = occ[lv] || []).push([pick[0], pick[1]]);
+      m.level = lv;
+      m.flip = pick[2];
+    }
+    const ends = occ;
+    const band = 12 + Math.max(1, ends.length) * 16;
+    const tlEl = $("#tl");
+    if (tlEl._band !== band) { tlEl.style.paddingBottom = band + "px"; tlEl._band = band; }
+    let html = "";
+    for (const m of marks) {
+      const left = X(m.at);
+      if (left < -1 || left > 101) continue;
+      const right = (m.top ? left > 78 : m.flip) ? " right" : "";
+      const lab = m.label ? `<span style="${m.top ? "" : `top:auto;bottom:${8 + (m.level || 0) * 16}px`}">${esc(m.label)}</span>` : "";
+      html += `<div class="mark ${m.cls}${right}" style="left:${left}%">${lab}</div>`;
+    }
+    // "stopped -> ready" gap lines along the bottom
+    run.modes.forEach((m, i) => {
+      const se = q.speechEnd;
+      if (q.se[m] == null || se == null) return;
+      const met = q.metric[m];
+      const end = met ? q.se[m] + met.ready_ms : (q.firstMs[m] ?? (run.running ? serverNow() : null));
+      if (end == null) return;
+      html += `<div class="gap ${m === "headstart" ? "hs" : "bl"}" style="left:${X(se)}%;width:${Math.max(0, X(end) - X(se))}%;bottom:${1 + i * 3}px"></div>`;
+    });
+    if (mk._h !== html) { mk.innerHTML = html; mk._h = html; }
+  }
+
+  function makeRow(r) {
+    if (r.kind === "sec") {
+      const n = el("div", "tl-sec " + (r.mode === "headstart" ? "hs" : "bl"));
+      n.innerHTML = `<div class="tl-label"><i class="dot ${r.mode === "headstart" ? "hs" : "bl"}"></i>${MODE_NAME[r.mode]}</div><div class="tl-track"></div>`;
+      return n;
+    }
+    const n = el("div", "tl-row" + (r.kind === "speech" ? " speech" : ""));
+    const lab = el("div", "tl-label");
+    const track = el("div", "tl-track");
+    n.append(lab, track);
+    if (r.kind === "speech") { lab.textContent = "speech"; }
+    else {
+      const bar = el("div", "bar");
+      bar.appendChild(el("span", "bt"));
+      track.appendChild(bar);
+    }
+    return n;
+  }
+
+  function updateRow(n, r, X, q) {
+    if (r.kind === "sec") return;
+    if (r.kind === "speech") {
+      const track = n.lastChild;
+      const tw = track.clientWidth || 600;
+      const sig = q.words.map((w) => w.w + w.t0 + w.t1).join("|") + "@" + q.axStart + ":" + Math.round(q.axEnd) + ":" + tw;
+      if (track._sig === sig) return;
+      track._sig = sig;
+      // words are placed at their spoken times but never overlap: each chip starts at least 3 px after the previous
+      // one ends, is clipped to the next word's start, and drops its text when too narrow to read
+      const ws = q.words.filter((w) => w.t0 != null);
+      const px = (ms) => (X(ms) / 100) * tw;
+      let prevEnd = -1e9, html = "";
+      ws.forEach((w, i) => {
+        const a = Math.max(px(w.t0 * 1000), prevEnd + 3);
+        const nextA = i + 1 < ws.length ? px(ws[i + 1].t0 * 1000) : Infinity;
+        let b = Math.max(px((w.t1 ?? w.t0 + 0.2) * 1000), a + 4);
+        b = Math.min(b, Math.max(a + 4, nextA - 3));
+        const wd = b - a;
+        html += `<div class="sw${wd < 16 ? " tiny" : ""}" style="left:${a.toFixed(1)}px;width:${wd.toFixed(1)}px" title="${esc(w.w)}">${wd < 16 ? "" : esc(w.w)}</div>`;
+        prevEnd = b;
+      });
+      track.innerHTML = html;
+      return;
+    }
+    const lab = n.firstChild, bar = n.lastChild.firstChild, bt = bar.firstChild;
+    let laneCls, labelLane, labelQ, state, info = "";
+    if (r.kind === "answer") {
+      const base = r.mode === "baseline";
+      laneCls = "ans" + (base ? " final" : "");
+      labelLane = "answer";
+      labelQ = r.waiting ? (base ? "searching…" : "ranking…") : (r.live ? "streaming" : "answer");
+      state = r.live ? "live" : "done";
+      if (!r.waiting && r.first != null) info = `first token +${Math.round(r.first - r.t0)} ms`;
+      if (r.superseded) { state = "stale"; labelQ = "early answer, superseded"; info = r.correction ? "speaker corrected it" : "speaker kept talking"; }
+    } else {
+      const f = r.f;
+      const isFinal = f.lane.startsWith("final-");
+      // router tiers: a web-lane call served by a live-data card / local facts is labelled as such (free), not "web"
+      const tier = (f.tier === "card" || f.tier === "facts" || f.tier === "index") ? f.tier : "";
+      laneCls = (tier ? "t-" + tier : f.lane.replace("final-", "")) + (isFinal ? " final" : "");
+      labelLane = tier || f.lane.replace("final-", "");
+      labelQ = f.query;
+      const pn = f.part && window.HSPlan ? window.HSPlan.partNo(f.mode, f.part) : "";
+      if (pn) labelQ = pn + " · " + f.query;
+      state = f.state === "fired" ? "live" : f.state;
+      if (f.state === "fired") info = `${Math.round((r.t1 ?? f.t0) - f.t0)} ms…`;
+      else if (f.state === "reused") info = "reused at endpoint";
+      else if (f.state === "unused") info = "not needed";
+      else if (f.state === "stale") info = f.staleAt != null && f.t1 != null && f.staleAt > f.t1 + 5 ? `stale @${f.staleAt}` : "cancelled: meaning changed";
+      else if (f.state === "cancelled") info = "cancelled";
+      else if (f.state === "error") info = "error";
+      else if (f.state === "skipped") info = "router: " + (f.reason || "key word not said yet") + " (free)";
+      else if (f.took != null) info = `${f.took} ms · ${f.n ?? 0} docs`;
+      if (f.used) info += " · fed answer";
+      lab.title = [f.query, f.top && f.top.length ? "top: " + f.top.join(" | ") : "", f.error || ""].filter(Boolean).join("\n");
+    }
+    const labHtml = `<span class="lane ${laneCls}">${esc(labelLane)}</span><span class="q">${esc(labelQ)}</span>`;
+    if (lab._h !== labHtml) { lab.innerHTML = labHtml; lab._h = labHtml; }
+    n.className = `tl-row st-${state} m-${r.mode}${r.first ? " first" : ""}`;
+    const cls = `bar ${laneCls} ${state}${r.f && r.f.used ? " used" : ""}`;
+    if (bar.className !== cls) bar.className = cls;
+    const left = X(r.t0), width = Math.max(0.35, X(r.t1) - X(r.t0));
+    bar.style.left = left + "%";
+    bar.style.width = width + "%";
+    if (bt.textContent !== info) bt.textContent = info;
+    const flip = left + width > 80;
+    if (bt._flip !== flip) { bt.style.left = flip ? "auto" : ""; bt.style.right = flip ? "calc(100% + 6px)" : ""; bt._flip = flip; }
+    // first-token tick on answer rows
+    let tm = bar.querySelector(".tickmark");
+    if (r.kind === "answer" && r.first != null && r.t1 > r.t0) {
+      if (!tm) { tm = el("i", "tickmark"); bar.appendChild(tm); }
+      tm.style.left = ((r.first - r.t0) / (r.t1 - r.t0)) * 100 + "%";
+    } else if (tm) tm.remove();
+  }
+
+  // ------------------------------------------------------------------ animation loop
+  let looping = false;
+  function loop() {
+    if (looping) return;
+    looping = true;
+    let tail = 0;
+    const step = () => {
+      renderTimeline();
+      tickWatches();
+      if (run && run.running) tail = 0; else tail++;
+      if (tail < 30) requestAnimationFrame(step); else looping = false;
+    };
+    requestAnimationFrame(step);
+  }
+  // details on / off and the Answer | Results view change the clamp: re-fit the answers
+  new MutationObserver(() => { for (const m of ["headstart", "baseline"]) fitAnswer(pk(m, "answer")); })
+    .observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  addEventListener("resize", () => { if (run) { loop(); for (const m of ["headstart", "baseline"]) { renderResults(m); fitAnswer(pk(m, "answer")); } } });
+
+  // ------------------------------------------------------------------ replay
+  let questions = [], lastReplay = null;
+  const player = $("#player");
+  // /api/questions only serves eval/questions.jsonl; the local-moments set (index/questions_local.jsonl) is mirrored
+  // here and shown when its audio exists.
+  const LOCAL_QS = [
+    ["local_01.wav", "When did the announcer call Hunter's three in the game?"],
+    ["local_02.wav", "What did the judge say about the objection in the hearing?"],
+    ["local_03.wav", "In the call, where did they agree to meet halfway on the discount?"],
+    ["local_04.wav", "What did the commentator say about Lonzo Ball in the game?"],
+    ["local_05.wav", "In the hearing, where was the gun found?"],
+    ["local_06.wav", "What did the judge ask about the officers waiting fifteen seconds?"],
+    ["local_07.wav", "In the meeting, what did the teacher say Samuel won?"],
+    ["local_08.wav", "What did the commentator say about who won the debate?"],
+    ["local_09.wav", "In the recording, what did Chris Christie say about debate prep with Trump?"],
+    ["local_10.wav", "In the clip, when did they say team USA won bronze?"],
+    ["local_11.wav", "What did the judge say about where in the chair the gun was?"],
+    ["local_12.wav", "In the call, what discount did they offer first?"],
+    ["local_13.wav", "In the meeting, what did the teacher say about Aaron's workbook?"],
+    ["local_14.wav", "What did the announcer say about Kel'el Ware's triple?"],
+    ["local_15.wav", "In the hearing, what did the judge tell the defendant about getting an attorney?"],
+    ["local_16.wav", "In the clip, who did France beat in overtime?"],
+    ["local_17.wav", "In the commentary, what was England's score when they talked about declaring?"],
+    ["local_18.wav", "In the video, what did the commentator say was his favourite goal?"],
+    ["local_19.wav", "In the hearing, how many cues are taught in the training?"],
+    ["local_20.wav", "In the broadcast, how many points is Jarrett Allen averaging?"],
+  ].map(([file, text]) => ({ file, text, kind: "local" }));
+  const qsets = { web: [], local: [], conv: [], multi: [] };
+  let qset = store.get("hs-qset") || "web";
+  async function loadQuestions() {
+    let all = [];
+    try { all = await (await fetch("/api/questions", { cache: "no-store" })).json(); } catch { all = []; }
+    if (!Array.isArray(all)) all = [];
+    qsets.web = all.filter((q) => q.kind !== "local" && !q.parts);
+    qsets.multi = all.filter((q) => Array.isArray(q.parts));          // planner set (eval/multipart)
+    qsets.local = all.filter((q) => q.kind === "local");
+    if (!qsets.local.length) {
+      try {
+        const r = await fetch("/audio/" + LOCAL_QS[0].file, { headers: { Range: "bytes=0-1" }, cache: "no-store" });
+        if (r.ok) qsets.local = LOCAL_QS;
+      } catch { /* no local set */ }
+    }
+    try {
+      const c = await (await fetch("/api/conversations", { cache: "no-store" })).json();
+      qsets.conv = Array.isArray(c) ? c.filter((r) => Array.isArray(r.files) && r.files.length) : [];
+    } catch { qsets.conv = []; }
+    for (const b of $("#qtabs").querySelectorAll("button")) b.hidden = !(qsets[b.dataset.set] || []).length;
+    $("#qtabs").hidden = !qsets.local.length && !qsets.conv.length && !qsets.multi.length;
+    if (!(qsets[qset] || []).length) qset = "web";
+    paintQuestions();
+  }
+  $("#qtabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-set]");
+    if (!b) return;
+    qset = b.dataset.set;
+    store.set("hs-qset", qset);
+    paintQuestions();
+  });
+  function paintQuestions() {
+    const list = $("#qlist");
+    questions = qsets[qset] || [];
+    for (const b of $("#qtabs").querySelectorAll("button")) b.classList.toggle("on", b.dataset.set === qset);
+    list.innerHTML = "";
+    if (!questions.length) {
+      list.innerHTML = '<li class="empty">No spoken questions yet. The eval set (<code>eval/questions.jsonl</code>) will appear here; or type a file name below.</li>';
+      return;
+    }
+    questions.forEach((q, i) => {
+      const li = el("li");
+      const b = el("button");
+      b.dataset.i = String(i);
+      const isConv = Array.isArray(q.files);
+      const meta = isConv ? `${q.files.length} turns · one run` : [q.category || q.kind || q.type, q.route, q.dur_s ? `${(+q.dur_s).toFixed(1)} s` : null].filter(Boolean).join(" · ");
+      const text = isConv ? (q.turns || q.files).map((t) => esc(t)).join('<span class="turn-sep">then</span>') : esc(q.text || q.question || q.file);
+      b.innerHTML = `<span class="n">${i < 9 ? i + 1 : "·"}</span><span class="qt">${text}${meta ? `<span class="qm">${esc(meta)}</span>` : ""}</span>`;
+      const key = isConv ? q.id || q.files.join("+") : q.file;
+      b.dataset.file = key;
+      if (lastReplay && lastReplay.key === key) b.classList.add("on");
+      b.addEventListener("click", () => playItem(q, b));
+      li.appendChild(b);
+      list.appendChild(li);
+    });
+  }
+
+  function playItem(item, btn) {
+    if (Array.isArray(item.files)) replayConversation(item, btn);
+    else replay(item.file, btn);
+  }
+
+  // A conversation is several wavs in ONE run (the server keeps memory within a run). The server's replay takes one
+  // file, so the browser streams the PCM itself, exactly like the mic: start, real-time 100 ms Float32 frames, stop.
+  let streamToken = 0;
+  async function decode16k(file) {
+    const buf = await (await fetch("/audio/" + encodeURIComponent(file), { cache: "force-cache" })).arrayBuffer();
+    const ctx = new OfflineAudioContext(1, 16000, 16000);
+    const ab = await ctx.decodeAudioData(buf);             // resampled to 16 kHz by the context
+    if (ab.numberOfChannels === 1) return ab.getChannelData(0);
+    const out = new Float32Array(ab.length);
+    for (let c = 0; c < ab.numberOfChannels; c++) { const d = ab.getChannelData(c); for (let i = 0; i < d.length; i++) out[i] += d[i] / ab.numberOfChannels; }
+    return out;
+  }
+  async function replayConversation(conv, btn, gapS = 2.5) {
+    if (mic.on) stopMic(true, "replay");
+    const my = ++streamToken;
+    const modes = modesFor(modeSel);
+    document.querySelectorAll(".qlist button.on").forEach((n) => n.classList.remove("on"));
+    if (btn) btn.classList.add("on");
+    lastReplay = { item: conv, btn, key: conv.id || conv.files.join("+") };
+    try { player.pause(); } catch { /* ignore */ }
+    let pcm;
+    try { pcm = await Promise.all(conv.files.map(decode16k)); } catch (err) { toast("Could not load conversation audio: " + err.message, true); return; }
+    if (my !== streamToken) return;
+    if (!send({ t: "start", modes, fresh: true })) return;     // a new conversation (the user's own facts stay)
+    startRun("conversation", modes);
+    run.history = [];
+    paintHistory();
+    const F = 1600, t0 = performance.now();
+    let sent = 0;                                             // samples sent so far
+    const pace = async (n) => {                               // wait until n samples' worth of real time has passed
+      const target = t0 + (n / 16000) * 1000;
+      while (performance.now() < target - 2) await new Promise((r) => setTimeout(r, Math.min(20, target - performance.now())));
+    };
+    const sendFrame = (f) => { if (ws && ws.readyState === 1) ws.send(f.buffer); sent += f.length; };
+    const silence = async (sec) => { for (let k = 0; k < Math.round(sec * 10); k++) { if (my !== streamToken) return; await pace(sent + F); sendFrame(new Float32Array(F)); } };
+    for (let ti = 0; ti < pcm.length; ti++) {
+      if (my !== streamToken) return;
+      if (ti > 0) await silence(gapS);
+      if (my !== streamToken) return;
+      player.src = "/audio/" + encodeURIComponent(conv.files[ti]);
+      player.play().catch(() => {});
+      const x = pcm[ti];
+      for (let i = 0; i < x.length; i += F) {
+        if (my !== streamToken) return;
+        await pace(sent + F);
+        sendFrame(x.slice(i, i + F));
+      }
+    }
+    await silence(1.2);                                       // trailing pause so Arc endpoints like a live mic
+    if (my !== streamToken) return;
+    send({ t: "stop" });
+  }
+
+  function replay(file, btn) {
+    if (!file) return;
+    streamToken++;                                            // abort any conversation still streaming
+    if (mic.on) stopMic(true, "replay");
+    const modes = window.HSFilm && window.HSFilm.active ? ["headstart", "baseline"] : modesFor(modeSel);
+    document.querySelectorAll(".qlist button.on").forEach((n) => n.classList.remove("on"));
+    if (btn) btn.classList.add("on");
+    lastReplay = { item: { file }, btn, key: file };
+    try { player.pause(); } catch { /* ignore */ }
+    player.src = "/audio/" + encodeURIComponent(file);
+    if (!send({ t: "replay", file, modes })) return;
+    startRun("replay", modes);
+    player.currentTime = 0;
+    player.play().catch(() => toast("Audio playback blocked by the browser; the race still runs", false));
+  }
+  $("#adhocForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = $("#adhocFile").value.trim();
+    if (f) replay(f, null);
+  });
+
+  // ------------------------------------------------------------------ microphone
+  // One capture (stream + AudioContext + worklet) is opened on the first press and kept warm between presses;
+  // a press only gates sending (mic.on). Faster (no getUserMedia/AudioContext per press) and steadier in WKWebView.
+  // The capture is released after MIC_KEEP_MS without a press (the system mic indicator goes off).
+  const MIC_KEEP_MS = 60000;
+  const mic = { on: false, ctx: null, stream: null, src: null, node: null, sink: null, buf: [], acc: 0, cnt: 0, frac: 0, ratio: 3,
+                level: 0, idle: null, st: null };
+  const WORKLET = `class Cap extends AudioWorkletProcessor{process(i){const c=i[0]&&i[0][0];if(c)this.port.postMessage(c.slice(0));return true}}registerProcessor('hs-cap',Cap);`;
+  // capture counters for the current press (sent with "stop" and logged by the server; also console.log)
+  const newStats = () => ({ t0: performance.now(), frames: 0, inS: 0, sent: 0, mutes: 0, reused: 0, node: "" });
+
+  function captureLive() {
+    return !!(mic.stream && mic.ctx && mic.ctx.state !== "closed" && mic.stream.getAudioTracks().some((t) => t.readyState === "live"));
+  }
+  async function openCapture() {
+    if (captureLive()) {
+      if (mic.ctx.state !== "running") { try { await mic.ctx.resume(); } catch { /* reported in the stats */ } }
+      return true;
+    }
+    releaseCapture();
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(stream);
+    const sink = ctx.createGain();
+    sink.gain.value = 0;
+    sink.connect(ctx.destination);
+    for (const t of stream.getAudioTracks()) {
+      t.addEventListener("mute", () => { if (mic.st) mic.st.mutes++; console.log("[mic] track muted"); });
+      t.addEventListener("unmute", () => console.log("[mic] track unmuted"));
+      t.addEventListener("ended", () => console.log("[mic] track ended"));
+    }
+    ctx.onstatechange = () => console.log("[mic] AudioContext", ctx.state);
+    let node, kind;
+    try {
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+      await ctx.audioWorklet.addModule(url);
+      node = new AudioWorkletNode(ctx, "hs-cap");
+      node.port.onmessage = (e) => pushPcm(e.data);
+      kind = "worklet";
+    } catch {
+      node = ctx.createScriptProcessor(4096, 1, 1);
+      node.onaudioprocess = (e) => pushPcm(e.inputBuffer.getChannelData(0).slice(0));
+      kind = "script";
+    }
+    src.connect(node); node.connect(sink);
+    Object.assign(mic, { ctx, stream, src, node, sink, kind });
+    if (ctx.state !== "running") { try { await ctx.resume(); } catch { /* reported in the stats */ } }
+    return false;
+  }
+  function releaseCapture() {
+    clearTimeout(mic.idle); mic.idle = null;
+    try { mic.node && mic.node.disconnect(); } catch { /* ignore */ }
+    try { mic.src && mic.src.disconnect(); } catch { /* ignore */ }
+    try { mic.stream && mic.stream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+    try { mic.ctx && mic.ctx.state !== "closed" && mic.ctx.close(); } catch { /* ignore */ }
+    Object.assign(mic, { ctx: null, stream: null, src: null, node: null, sink: null });
+  }
+  function nativeMic(on) {         // Mac app: keeps the app out of App Nap while listening
+    const nb = nativeBridge();
+    if (nb) { try { nb.postMessage({ t: "mic", on }); } catch { /* ignore */ } }
+  }
+  function micDebug(why) {
+    const st = mic.st || newStats();
+    const tr = mic.stream && mic.stream.getAudioTracks()[0];
+    return { why, held_s: +((performance.now() - st.t0) / 1000).toFixed(2), frames: st.frames, in_s: +st.inS.toFixed(2),
+             sent_s: +(st.sent / 16000).toFixed(2), node: mic.kind || "", reused: st.reused, ctx: mic.ctx ? mic.ctx.state : "none",
+             rate: mic.ctx ? mic.ctx.sampleRate : 0, track: tr ? tr.readyState : "none", muted: tr ? tr.muted : false,
+             mutes: st.mutes, ws_buf: ws ? ws.bufferedAmount : -1 };
+  }
+
+  // open = clicked the mic (it keeps listening: open mic); push-to-talk (Space) is not open
+  async function startMic(open = false) {
+    streamToken++;
+    if (!navigator.mediaDevices?.getUserMedia) { toast("Microphone not available here; use Replay", true); return; }
+    if (!wsOpen) { toast("Not connected to the server yet", true); return; }
+    clearTimeout(mic.idle); mic.idle = null;
+    let reused;
+    try { reused = await openCapture(); }
+    catch (err) { releaseCapture(); toast("Microphone permission denied; use Replay", true); return; }
+    try { player.pause(); } catch { /* ignore */ }
+    Object.assign(mic, { on: true, buf: [], acc: 0, cnt: 0, frac: 0, ratio: mic.ctx.sampleRate / 16000, st: newStats() });
+    mic.st.reused = reused ? 1 : 0;
+    const modes = modesFor(modeSel);
+    send({ t: "start", modes, open: !!open });
+    startRun("mic", modes);
+    document.querySelectorAll(".qlist button.on").forEach((n) => n.classList.remove("on"));
+    nativeMic(true);
+    console.log("[mic] start", { reused, ctx: mic.ctx.state, node: mic.kind });
+    paintMic();
+  }
+
+  // box-filter decimation to 16 kHz (works for 44.1k and 48k), then 100 ms Float32 frames
+  function pushPcm(x) {
+    if (!mic.on) return;
+    mic.st.frames++;
+    mic.st.inS += x.length / (mic.ctx ? mic.ctx.sampleRate : 48000);
+    let sq = 0;
+    for (let i = 0; i < x.length; i++) {
+      const s = x[i];
+      sq += s * s;
+      mic.acc += s; mic.cnt++; mic.frac += 1;
+      if (mic.frac >= mic.ratio) {
+        mic.buf.push(mic.acc / mic.cnt);
+        mic.acc = 0; mic.cnt = 0; mic.frac -= mic.ratio;
+      }
+    }
+    mic.level = 0.8 * mic.level + 0.2 * Math.sqrt(sq / Math.max(1, x.length));
+    while (mic.buf.length >= 1600) {
+      const f = new Float32Array(mic.buf.splice(0, 1600));
+      if (ws && ws.readyState === 1) { ws.send(f.buffer); mic.st.sent += f.length; }
+    }
+    const ring = $("#micRing");
+    ring.style.transform = `scale(${1 + Math.min(0.35, mic.level * 6)})`;
+  }
+
+  function stopMic(sendStop = true, why = "release") {
+    if (!mic.on) return;
+    mic.on = false;
+    if (mic.buf.length && ws && ws.readyState === 1) { mic.st.sent += mic.buf.length; ws.send(new Float32Array(mic.buf.splice(0)).buffer); }
+    const dbg = micDebug(why);
+    console.log("[mic] stop", dbg);
+    if (sendStop) send({ t: "stop", dbg });
+    nativeMic(false);
+    clearTimeout(mic.idle);
+    mic.idle = setTimeout(releaseCapture, MIC_KEEP_MS);
+    $("#micRing").style.transform = "";
+    paintMic();
+  }
+  function paintMic() {
+    $("#micBtn").classList.toggle("live", mic.on);
+    $("#micLabel").textContent = mic.on ? "Stop" : "Ask";
+  }
+  $("#micBtn").addEventListener("click", () => (mic.on ? stopMic(true, "click") : startMic(true)));
+  // a clamped answer (results view shows one line) opens in place on click (it used to carry the whole answer as a
+  // hover tooltip, which popped up over the strip)
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest(".pane .answer");
+    if (a && !e.target.closest("a") && (a.classList.contains("clamped") || a.classList.contains("open"))) {
+      const open = a.classList.toggle("open");
+      if (open) a.classList.remove("clamped");
+      const b = a.querySelector(":scope > .more");
+      if (b) b.textContent = open ? "less" : "more";
+      if (!open) fitAnswer(a);
+    }
+  });
+
+  // ------------------------------------------------------------------ keyboard
+  // Push-to-talk: hold Space to talk, release to send. Key auto-repeat is ignored (holding a key fires keydown
+  // many times a second, which used to toggle the mic on/off/on…). After release the mic keeps streaming briefly
+  // so the last word and its pause reach the ear.
+  const ptt = { held: false, starting: false, tail: null };
+  addEventListener("keydown", (e) => {
+    const inField = e.target?.closest?.("input, textarea");
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "k" || e.key === "K")) { e.preventDefault(); focusType(); return; }
+    if (!inField && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === "/") { e.preventDefault(); focusType(); return; }
+    if (inField && e.key === "Escape" && e.target.id === "typeBox") e.target.blur();
+  });
+  addEventListener("keydown", async (e) => {
+    if (e.target?.closest?.("input, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (document.body.classList.contains("rec-on")) return;     // the My recordings drawer is open (web/recordings.js)
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (e.repeat || ptt.held) return;
+      ptt.held = true;
+      if (ptt.tail) { clearTimeout(ptt.tail); ptt.tail = null; }
+      if (!mic.on && !ptt.starting) {
+        ptt.starting = true;
+        try { await startMic(); } finally { ptt.starting = false; }
+        if (!ptt.held && mic.on) ptt.tail = setTimeout(() => { ptt.tail = null; stopMic(true, "released while starting"); }, 500);
+      }
+      return;
+    }
+    else if (/^[1-9]$/.test(e.key)) {
+      const i = +e.key - 1;
+      const b = document.querySelector(`.qlist button[data-i="${i}"]`);
+      if (b && questions[i]) playItem(questions[i], b);
+    } else if (e.key === "r" || e.key === "R") { if (lastReplay) playItem(lastReplay.item, lastReplay.btn); }
+    else if (e.key === "d" || e.key === "D") {
+      const details = document.body.classList.toggle("minimal") === false;
+      store.set("hs_details", details ? "1" : "0");
+      document.querySelectorAll(".res").forEach((b) => { b._sig = null; });
+    }
+  });
+
+  addEventListener("keyup", (e) => {
+    if (e.code !== "Space" || !ptt.held) return;
+    e.preventDefault();
+    ptt.held = false;
+    if (mic.on && !ptt.starting) ptt.tail = setTimeout(() => { ptt.tail = null; stopMic(true); }, 500);
+  });
+  addEventListener("blur", () => {           // window lost focus while holding Space: treat as release
+    if (!ptt.held) return;
+    ptt.held = false;
+    if (mic.on) ptt.tail = setTimeout(() => { ptt.tail = null; stopMic(true, "window blur"); }, 500);
+  });
+
+  // ------------------------------------------------------------------ typed questions (server: {t:"type"})
+  // The text box streams into the same pipeline as speech: finished words go to the Arc Tagger as they are typed (with
+  // keystroke timings), so free lookups fire while you type; Enter is the endpoint. One run per question.
+  // asked: the text of the last question sent with Enter, and its run id. Enter again on the same, unedited text
+  // while that question is still being answered is ignored (Enter spam used to re-ask it: a new run per press, each
+  // cutting the previous answer short and paying for the same searches again).
+  const typed = { open: false, rid: null, last: "", asked: null, askedRid: null };
+  function focusType() {
+    const b = $("#typeBox");
+    if (!b || $("#typeForm").hidden) return;
+    b.focus();
+    b.select();
+  }
+  function typeSend(final) {
+    const text = $("#typeBox").value;
+    if (!typed.open) {
+      if (!text.trim()) return;
+      if (final && typed.asked === text && run && run.rid === typed.askedRid && run.running) return;   // Enter spam
+      if (mic.on) stopMic(true, "typing");
+      const modes = modesFor(modeSel);
+      if (!send({ t: "start", typed: true, modes })) return;
+      startRun("typed", modes);
+      document.querySelectorAll(".qlist button.on").forEach((n) => n.classList.remove("on"));
+      Object.assign(typed, { open: true, rid: ridSeq, last: "" });
+    }
+    if (text === typed.last && !final) return;
+    typed.last = text;
+    send({ t: "type", rid: typed.rid, text, final: !!final });
+    if (final) Object.assign(typed, { open: false, last: "", asked: text, askedRid: typed.rid });
+  }
+  // a typed question is answered at Enter: after a pause in typing, say so where the ear state shows (lookups already
+  // run while you type, so a pause with results on screen and no answer read as the app being stuck)
+  let typeIdle = null;
+  $("#typeBox").addEventListener("input", () => {
+    typeSend(false);
+    clearTimeout(typeIdle);
+    typeIdle = setTimeout(() => {
+      if (typed.open && run && run.kind === "typed" && run.running && $("#typeBox").value.trim()) {
+        $("#earState").textContent = "press Enter for the answer";
+        $("#earState").className = "ear live hint";
+      }
+    }, 1500);
+  });
+  function typeSubmit() {
+    clearTimeout(typeIdle);
+    if (!$("#typeBox").value.trim()) return;
+    typeSend(true);
+    $("#typeBox").select();                 // the next keystroke starts a new question
+  }
+  $("#typeForm").addEventListener("submit", (e) => { e.preventDefault(); typeSubmit(); });
+  // Enter in the box submits directly, not only through the form's implicit submission (which a capture-phase key
+  // handler or the browser can skip). An Enter that commits an input-method composition only commits it.
+  $("#typeBox").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    typeSubmit();
+  });
+  // "Mask profanity in the transcript" (default on): display only; masked words never reach the search either way
+  window.HSMaskOn = () => $("#maskToggle").checked;
+  $("#maskToggle").checked = store.get("hs-mask") !== "0";
+  $("#maskToggle").addEventListener("change", () => {
+    store.set("hs-mask", $("#maskToggle").checked ? "1" : "0");
+    if (window.HSHears && window.HSHears.repaint) window.HSHears.repaint();
+  });
+
+  // ------------------------------------------------------------------ results (runs/ab_latest.json)
+  const num = (v) => (typeof v === "number" && isFinite(v) ? v : null);
+  function readyOf(x) {
+    if (x == null) return null;
+    if (typeof x === "number") return x;
+    return num(x.ready_ms) ?? num(x.ready) ?? null;
+  }
+  function pct(arr, p) {
+    const a = arr.filter((v) => v != null).sort((x, y) => x - y);
+    if (!a.length) return null;
+    const i = (a.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+    return a[lo] + (a[hi] - a[lo]) * (i - lo);
+  }
+  function normResults(d) {
+    if (!d || (typeof d === "object" && !Array.isArray(d) && !Object.keys(d).length)) return null;
+    const rows = Array.isArray(d) ? d : (d.rows || d.results || d.questions || d.items || []);
+    const by = new Map();
+    const get = (id, text) => { if (!by.has(id)) by.set(id, { id, text: text || id, hs: [], bl: [] }); const r = by.get(id); if (text && r.text === id) r.text = text; return r; };
+    for (const r of rows) {
+      if (!r || typeof r !== "object") continue;
+      const id = r.id ?? r.qid ?? r.file ?? r.question ?? r.text;
+      const text = r.text ?? r.question ?? r.transcript ?? null;
+      const it = get(String(id), text);
+      if (r.headstart !== undefined || r.baseline !== undefined) {
+        const h = readyOf(r.headstart), b = readyOf(r.baseline);
+        if (h != null) it.hs.push(h); if (b != null) it.bl.push(b);
+      } else if (r.mode) {
+        const v = readyOf(r);
+        if (v != null) (r.mode === "baseline" ? it.bl : it.hs).push(v);
+        if (r.correct != null) it[r.mode === "baseline" ? "blOk" : "hsOk"] = !!r.correct;
+        if (r.path) it[r.mode === "baseline" ? "blPath" : "hsPath"] = r.path;
+      } else {
+        const h = num(r.headstart_ready_ms) ?? num(r.hs_ready_ms), b = num(r.baseline_ready_ms) ?? num(r.bl_ready_ms);
+        if (h != null) it.hs.push(h); if (b != null) it.bl.push(b);
+      }
+    }
+    const pairs = Array.from(by.values()).map((r) => ({ ...r, h: pct(r.hs, 0.5), b: pct(r.bl, 0.5) })).filter((r) => r.h != null || r.b != null);
+    const sum = (d && d.summary) || {};
+    const S = (mode, key, arr, p) => num(sum[mode]?.[key]) ?? pct(arr, p);
+    const hsAll = pairs.map((r) => r.h), blAll = pairs.map((r) => r.b);
+    return {
+      pairs,
+      hs50: S("headstart", "p50_ready_ms", hsAll, 0.5), hs90: S("headstart", "p90_ready_ms", hsAll, 0.9),
+      bl50: S("baseline", "p50_ready_ms", blAll, 0.5), bl90: S("baseline", "p90_ready_ms", blAll, 0.9),
+      summary: sum, raw: d,
+    };
+  }
+
+  async function loadResults() {
+    const body = $("#resBody");
+    let d;
+    try { d = await (await fetch("/api/results", { cache: "no-store" })).json(); } catch { d = null; }
+    const R = normResults(d);
+    if (!R) { body.innerHTML = '<p class="muted">No A/B run on this machine yet. The measured results are under <b>Results</b> in the top bar.</p>'; $("#resSub").textContent = ""; return; }
+    const pv = (d && d.provenance) || {};
+    const when = pv.created ? String(pv.created).slice(0, 10) : "";
+    $("#resSub").textContent = [R.pairs.length ? `${R.pairs.length} questions` : "", when ? `run ${when}` : "", pv.web_backend ? `web: ${pv.web_backend}` : "",
+      pv.cost_mode ? `budget: ${pv.cost_mode}` : (pv.created ? "before the Parity budget" : "")].filter(Boolean).join(" · ");
+    const tile = (lab, v, cls = "", extra = "") => `<div class="tile ${cls}"><label>${lab}</label><div class="v">${v == null ? "—" : fmtS(v)}${extra}</div></div>`;
+    // the saving is the PAIRED median (median over questions of baseline − head start), not p50(BL) − p50(HS)
+    const P = R.raw && R.raw.paired && typeof R.raw.paired === "object" ? R.raw.paired : {};
+    const both = R.pairs.filter((r) => r.h != null && r.b != null);
+    const saved = num(P.p50_saved_ms) ?? pct(both.map((r) => r.b - r.h), 0.5);
+    const nPair = num(P.n) ?? num(P.n_paired) ?? both.length;
+    let fasterN = num(P.headstart_faster) ?? num(P.n_headstart_faster);
+    if (fasterN != null && fasterN > 0 && fasterN <= 1 && nPair > 1) fasterN = Math.round(fasterN * nPair);   // a rate
+    if (fasterN == null && both.length) fasterN = both.filter((r) => r.h < r.b).length;
+    const fasterTxt = fasterN != null && nPair ? ` <small>faster on ${fasterN}/${nPair}</small>` : "";
+    let html = pv.created && !pv.current ? `<p class="res-old">Older run (${esc(when)}${pv.web_backend ? ", " + esc(pv.web_backend) : ""}${pv.cost_mode ? ", " + esc(pv.cost_mode) : ", before the Parity budget"}), not this server's settings. Current measured numbers: <b>Results</b> in the top bar.</p>` : "";
+    html += `<div class="res-tiles">${tile("Onset p50", R.hs50, "hs")}${tile("Baseline p50", R.bl50)}${tile("median saving per question", saved, "hs", fasterTxt)}${tile("p90 HS / BL", R.hs90, "", ` <small>/ ${fmtS(R.bl90)}</small>`)}</div>`;
+    const acc = (m) => num(R.summary[m]?.accuracy);
+    if (acc("headstart") != null || acc("baseline") != null) {
+      const a = (v) => (v == null ? "—" : Math.round(v * 100) + "%");
+      const n = R.summary.headstart?.n ?? R.summary.baseline?.n ?? R.pairs.length;
+      html += `<p class="res-note">answer correct: Onset <b>${a(acc("headstart"))}</b> · Baseline <b>${a(acc("baseline"))}</b> (n=${n})` +
+        (R.summary.headstart?.draft_reuse_rate != null ? ` · draft reuse <b>${Math.round(R.summary.headstart.draft_reuse_rate * 100)}%</b>` : "") +
+        (R.summary.headstart?.mean_web_calls != null ? ` · web calls/question <b>${R.summary.headstart.mean_web_calls}</b> vs <b>${R.summary.baseline?.mean_web_calls ?? "—"}</b>` : "") +
+        (R.raw?.created ? ` · <span class="muted">${esc(R.raw.created)}</span>` : "") + `</p>`;
+    }
+    if (window.HSMeter) { try { html += window.HSMeter.evalSummary(R.raw); } catch (err) { console.error("meter", err); } }
+    if (R.pairs.length) html += chart(R.pairs);
+    body.innerHTML = html;
+  }
+
+  // dumbbell chart: one row per question, Onset vs Baseline ready ms
+  function chart(pairs) {
+    const rows = pairs.slice().sort((a, b) => (b.b ?? b.h) - (a.b ?? a.h));
+    const W = 960, L = 330, R = 70, rh = 24, top = 26, H = top + rows.length * rh + 8;
+    const maxV = Math.max(...rows.flatMap((r) => [r.h, r.b]).filter((v) => v != null), 500);
+    const step = NICE.find((s) => maxV / s <= 7) || 10000;
+    const xmax = Math.ceil(maxV / step) * step;
+    const x = (v) => L + (v / xmax) * (W - L - R);
+    let g = "";
+    for (let t = 0; t <= xmax; t += step) {
+      g += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${top - 6}" y2="${H - 4}"/><text x="${x(t)}" y="${top - 12}" text-anchor="middle" class="num">${t >= 1000 ? (t / 1000).toFixed(step < 1000 ? 1 : 0) + " s" : t + " ms"}</text>`;
+    }
+    rows.forEach((r, i) => {
+      const y = top + i * rh + rh / 2;
+      const label = r.text.length > 52 ? r.text.slice(0, 50) + "…" : r.text;
+      g += `<g class="row"><title>${esc(r.text)}\nOnset ${fmtS(r.h)}${r.hsPath ? " (" + r.hsPath + ")" : ""} · Baseline ${fmtS(r.b)}</title>`;
+      g += `<text x="${L - 12}" y="${y + 4}" text-anchor="end" class="lbl">${esc(label)}</text>`;
+      if (r.h != null && r.b != null) g += `<line class="conn" x1="${x(r.h)}" x2="${x(r.b)}" y1="${y}" y2="${y}"/>`;
+      if (r.b != null) g += `<circle class="pb${r.blOk === false ? " bad" : ""}" cx="${x(r.b)}" cy="${y}" r="5.5"/>`;
+      if (r.h != null) g += `<circle class="ph${r.hsOk === false ? " bad" : ""}" cx="${x(r.h)}" cy="${y}" r="5.5"/>`;
+      const far = Math.max(r.h ?? 0, r.b ?? 0);
+      if (r.h != null && r.b != null) g += `<text x="${x(far) + 10}" y="${y + 4}" class="num">${r.b >= r.h ? "saved " + fmtS(r.b - r.h) : "lost " + fmtS(r.h - r.b)}</text>`;
+      g += `</g>`;
+    });
+    return `<div class="res-legend"><span><i style="background:var(--hs)"></i>Onset</span><span><i style="background:var(--bl)"></i>Baseline</span><span class="muted">answer ready after the last spoken word · hollow = wrong answer</span></div>
+      <div class="res-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Ready time per question, Onset vs Baseline">${g}</svg></div>`;
+  }
+  $("#resReload").addEventListener("click", () => { loadResults(); loadQuestions(); });
+
+  // ------------------------------------------------------------------ boot
+  connect();
+  pollHealth();
+  loadQuestions();
+  loadResults();
+  setInterval(loadResults, 30000);
+  window.__hs = { get run() { return run; }, get ready() { return wsOpen && warm; }, replay: (f) => replay(f, null),
+                  mic: { start: (open) => startMic(!!open), stop: () => stopMic(true, "automation"), stats: () => micDebug("peek"), get on() { return mic.on; } } };   // for debugging in the console
+})();

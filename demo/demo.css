@@ -1,0 +1,52 @@
+/* Demo banner + scenario picker (GitHub Pages build only; site/demo/demo.js). Uses the app's own tokens. */
+#micBtn { display: none !important; }
+.tb-key { display: none; }
+#typeBox[readonly] { cursor: default; }
+.adhoc { display: none !important; }
+
+.demo-bar {
+  position: sticky; top: 0; z-index: 40;
+  background: var(--card); border-bottom: 1px solid var(--line); box-shadow: var(--shadow);
+  padding: 8px 16px 6px; display: grid; gap: 6px;
+}
+.demo-bar .db-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.db-home { color: var(--ink-2); text-decoration: none; font-weight: 600; white-space: nowrap; }
+.db-home:hover { color: var(--ink); }
+.db-msg { margin: 0; flex: 1; min-width: 0; color: var(--ink-2); }
+.db-msg b { color: var(--ink); font-weight: 600; }
+.db-dl {
+  white-space: nowrap; text-decoration: none; font-weight: 600; font-size: 13px;
+  background: var(--ink); color: var(--bg); padding: 6px 12px; border-radius: 8px;
+}
+.db-dl:hover { opacity: .88; }
+.db-pick { align-items: flex-start; }
+.db-lab { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3);
+  padding-top: 8px; white-space: nowrap; }
+.db-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; min-width: 0; flex: 1; }
+.db-chip {
+  flex: 0 0 auto; display: grid; text-align: left; gap: 1px;
+  border: 1px solid var(--line); background: var(--card-2); border-radius: 10px; padding: 5px 10px;
+  font-size: 13px; font-weight: 500; color: var(--ink);
+}
+.db-chip small { font-size: 10.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; }
+.db-chip:hover { border-color: var(--hs); }
+.db-chip.on { border-color: var(--hs); background: var(--hs-soft); }
+.db-chip:focus-visible, .db-dl:focus-visible, .db-home:focus-visible { outline: 2px solid var(--hs); outline-offset: 2px; }
+.db-note { margin: 0; min-height: 1.2em; font-size: 12.5px; color: var(--ink-2); }
+.demo-bar.pulse { animation: dbpulse 1.1s ease 1; }
+@keyframes dbpulse { 0%, 100% { box-shadow: var(--shadow); } 30% { box-shadow: 0 0 0 3px var(--hs-soft), var(--shadow); } }
+@media (prefers-reduced-motion: reduce) { .demo-bar.pulse { animation: none; } }
+
+@media (min-width: 1100px) { .db-chips { flex-wrap: wrap; overflow: visible; } }
+@media (max-width: 640px) {
+  .demo-bar { padding: 8px 12px 6px; position: static; }
+  .db-msg span { display: none; }
+  .db-lab { display: none; }
+}
+
+/* phone width: the app is built for a Mac window; keep the static page inside the viewport */
+@media (max-width: 640px) {
+  .top .controls { flex-wrap: wrap; flex: 1 1 100%; min-width: 0; }
+  .hc { white-space: normal; max-width: 100%; flex-wrap: wrap; }
+  .layout, .main, .card { min-width: 0; }
+}
