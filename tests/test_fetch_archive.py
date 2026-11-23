@@ -116,5 +116,7 @@ def test_release_manifest_only_lists_what_the_release_profile_allows():
         assert m["source"]["url"].endswith("dl=1")
     idx = next(m for m in man["models"] if m["dir"] == "index-data")
     assert all(f["path"].startswith("knowledge/") for f in idx["files"])     # never the private local-moments index
-    arc = next(m for m in man["models"] if m["dir"] == "arc-v1")
-    assert not any("decoder_v1e" in f["path"] for f in arc["files"])
+    dirs = {m["dir"] for m in man["models"]}
+    assert "arc-v1" not in dirs and {"arc-mini", "arc-lm"} <= dirs      # Arc Mini (libarc) is the ear; arc-v1 never ships
+    lm = next(m for m in man["models"] if m["dir"] == "arc-lm")
+    assert {"LICENSE", "NOTICE"} <= {f["path"] for f in lm["files"]}

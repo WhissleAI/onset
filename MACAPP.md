@@ -420,7 +420,7 @@ ONSET_SIGN_ID="Developer ID Application: Whissle LLC (XXK95K57U5)" NOTARY_PROFIL
 - **DMG**: the app plus an Applications link, lzma (`ULMO`), signed. Notarized with `notarytool submit --wait`; the
   ticket covers the app inside, so the app is stapled, the DMG rebuilt around the stapled app, notarized again and
   stapled (an app copied out of the DMG then opens offline too). `shasum -a 256` next to it.
-- **Licences**: `Contents/Resources/Licenses` (`macapp/licenses/THIRD_PARTY.md` is the index; Arc v1, Moonshine,
+- **Licences**: `Contents/Resources/Licenses` (`macapp/licenses/THIRD_PARTY.md` is the index; Arc Mini, libarc, the Arc LM, Moonshine,
   Arc Tagger licence + NOTICE, Apache 2.0, Python). Python packages keep theirs in their `.dist-info`.
 
 Verify:
