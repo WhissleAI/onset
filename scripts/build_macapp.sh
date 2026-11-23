@@ -133,17 +133,19 @@ step "Server code, web UI, small data"
 A="$RES/app"
 mkdir -p "$A"
 rsync -a --exclude __pycache__ --exclude '*.pyc' server web "$A/"
-mkdir -p "$A/scripts" "$A/models/arctag" "$A/vendor/arctag" "$A/eval/multipart" "$A/index" "$A/runs" "$A/macapp"
+mkdir -p "$A/scripts" "$A/models/arctag" "$A/vendor/arctag" "$A/vendor/arc" "$A/eval/multipart" "$A/index" "$A/runs" "$A/macapp"
 cp scripts/fetch_models.py "$A/scripts/"
 cp "$MODELS_MANIFEST" "$A/models/manifest.json"
 cp models/arctag/LICENSE models/arctag/NOTICE "$A/models/arctag/" 2>/dev/null || true
 cp vendor/arctag/LICENSE vendor/arctag/NOTICE "$A/vendor/arctag/"
+cp vendor/arc/LICENSE vendor/arc/NOTICE "$A/vendor/arc/"
 cp eval/questions.jsonl eval/conversations.jsonl "$A/eval/"
 cp eval/multipart/questions.jsonl "$A/eval/multipart/"
 cp index/questions_local.jsonl "$A/index/"
 cp runs/web_cache.json "$A/runs/" 2>/dev/null || true
 cp macapp/app.conf macapp/server_main.py "$A/macapp/"
 python3 scripts/fetch_models.py build-tagger --out "$A/vendor/arctag/libarctag.dylib" >/dev/null
+python3 scripts/fetch_models.py build-arc --out "$A/vendor/arc/libarc.dylib" >/dev/null   # the ear (Arc Mini in C)
 "$PY/bin/python3" -m compileall -q "$A/server" "$A/macapp" "$A/scripts" >/dev/null
 if [ ! -f "$PY/.pruned" ]; then        # once per Python build: drop bytecode of modules the server never imports
   "$PY/bin/python3" -I macapp/prune_bytecode.py "$A" "$(ls -d "$PY"/lib/python3.*/site-packages)"
@@ -161,14 +163,16 @@ cp LICENSE "$L/Onset-LICENSE.txt" 2>/dev/null || true
 cp macapp/licenses/THIRD_PARTY.md "$L/"
 cp macapp/licenses/Apache-2.0.txt "$L/"
 cp vendor/arctag/LICENSE "$L/ArcTagger-LICENSE.txt"; cp vendor/arctag/NOTICE "$L/ArcTagger-NOTICE.txt"
+cp vendor/arc/LICENSE "$L/libarc-LICENSE.txt"; cp vendor/arc/NOTICE "$L/libarc-NOTICE.txt"
 MD="$RES/models"; [ -d "$MD" ] || MD="$(python3 -c 'from server import modelpaths; print(modelpaths.models_dir())')"
 cp models/arctag/LICENSE "$L/ArcTaggerModel-LICENSE.txt" 2>/dev/null || true
 cp models/arctag/NOTICE "$L/ArcTaggerModel-NOTICE.txt" 2>/dev/null || true
 cp vendor/arctag/third_party/cjson/LICENSE "$L/cJSON-LICENSE.txt"
 cp macapp/licenses/EmbeddingGemma-NOTICE.txt "$L/"
-for f in arc-v1/LICENSE:ArcV1-LICENSE.txt arc-v1/NOTICE:ArcV1-NOTICE.txt \
-         arc-v1/moonshine-streaming-tiny/LICENSE:Moonshine-LICENSE.txt \
-         arc-v1/moonshine-streaming-tiny/ORIGIN.md:Moonshine-ORIGIN.md \
+for f in arc-mini/LICENSE:ArcMini-LICENSE.txt arc-mini/NOTICE:ArcMini-NOTICE.txt \
+         arc-mini/moonshine-streaming-tiny/LICENSE:Moonshine-LICENSE.txt \
+         arc-mini/moonshine-streaming-tiny/ORIGIN.md:Moonshine-ORIGIN.md \
+         arc-lm/LICENSE:ArcLM-LICENSE.txt arc-lm/NOTICE:ArcLM-NOTICE.txt \
          embeddinggemma-2-onnx/LICENSE:EmbeddingGemma2-ONNX-LICENSE.txt \
          embeddinggemma-2-onnx/NOTICE:EmbeddingGemma2-ONNX-NOTICE.txt \
          answer-lm/LICENSE:Qwen2.5-0.5B-Instruct-LICENSE.txt; do

@@ -4,8 +4,9 @@ Everything below ships inside Onset.app. The licence texts are in this folder (C
 
 | Component | What it does in Onset | Licence | File here |
 |---|---|---|---|
-| Arc v1 (WhissleAI) | on-device ear: words + audio metadata | CC BY-NC 4.0: free for non-commercial use; commercial use needs a licence from WhissleAI | ArcV1-LICENSE.txt, ArcV1-NOTICE.txt (also covers the MIT jellyfish Metaphone fallback) |
-| Moonshine Streaming tiny (Useful Sensors / Moonshine AI), modified by WhissleAI inside Arc v1 | Arc's encoder + built-in transcript | MIT | Moonshine-LICENSE.txt, Moonshine-ORIGIN.md |
+| Arc Mini + libarc (WhissleAI) | on-device ear: words + audio metadata (libarc, C) | CC BY-NC 4.0 + Whissle terms: free for non-commercial use; commercial use needs a licence from WhissleAI | ArcMini-LICENSE.txt, ArcMini-NOTICE.txt, libarc-LICENSE.txt, libarc-NOTICE.txt |
+| Moonshine Streaming tiny (Useful Sensors / Moonshine AI), modified by WhissleAI inside Arc Mini | Arc's encoder + built-in transcript | MIT | Moonshine-LICENSE.txt, Moonshine-ORIGIN.md |
+| Arc spoken-question n-gram LM (WhissleAI), built from public question corpora (GooAQ, Natural Questions, SQuAD 2.0, Mintaka, MASSIVE, HotpotQA, MuSiQue, 2WikiMultihopQA, StrategyQA, CoQA, QuAC, Wikipedia titles) | re-ranks the ear's final words | CC BY-SA 4.0 (share-alike from its sources) | ArcLM-LICENSE.txt, ArcLM-NOTICE.txt |
 | Arc Tagger model + libarctag (Whissle) | on-device tagging, safety | CC BY-NC 4.0 + Whissle terms: free for non-commercial use | ArcTaggerModel-LICENSE.txt, ArcTaggerModel-NOTICE.txt, ArcTagger-LICENSE.txt, ArcTagger-NOTICE.txt |
 | cJSON (Dave Gamble and contributors), inside libarctag | JSON parsing | MIT | cJSON-LICENSE.txt |
 | EmbeddingGemma 2 (Google), `google/embeddinggemma-2` | meaning search, rerank | Apache 2.0 (model card); use must follow the Gemma Prohibited Use Policy (https://ai.google.dev/gemma/prohibited_use_policy) | Apache-2.0.txt, EmbeddingGemma-NOTICE.txt (EmbeddingGemma2-ONNX-* in a native-runtime build) |

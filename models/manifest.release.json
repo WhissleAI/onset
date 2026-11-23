@@ -4,187 +4,48 @@
  "about": "What the public app downloads on first run (scripts/publish_models.py writes this; scripts/fetch_models.py fetch reads it). One public Dropbox archive per model, sha256-pinned; after unpacking every file is sha256-checked too. Only what models/release_profile.json allows is here.",
  "models": [
   {
-   "name": "Arc v1 (streaming ear: words, revisions, command_complete; also Arc metadata under Flux)",
-   "dir": "arc-v1",
+   "name": "Arc Mini (the streaming ear: words with times, revisions, command_complete; also Arc metadata under Flux and recordings), run by libarc in C",
+   "dir": "arc-mini",
    "required": true,
-   "revision": "f0e43f48eee72070d18ddd2bd207df4624e85028 (arc-audio 1.0.1; HF commit recorded in the copy's .cache/huggingface)",
-   "license": "CC BY-NC 4.0 (Arc code + weights); bundled Moonshine Streaming tiny: MIT (see NOTICE)",
-   "size": 574879791,
+   "revision": "v1.2.0 (WhissleAI/arc-v1.1 tag; mini/ = the v1.1.1 weights), 4-bit weights read by libarc 1.5.0 (vendor/arc)",
+   "license": "CC BY-NC 4.0 + Whissle terms (Arc weights, LICENSE); bundled Moonshine Streaming tiny (modified): MIT (moonshine-streaming-tiny/LICENSE); see NOTICE",
+   "note": "Default ear since ARC_BACKEND=mini (MACAPP.md 'Arc Mini in C'). No torch: loaded by server/arc_c.py through libarc.dylib.",
+   "size": 70938405,
    "source": {
     "type": "archive",
     "format": "tar",
-    "url": "https://www.dropbox.com/scl/fi/qitblki7jkh9qulhax6g4/arc-v1.tar?rlkey=bvubvti9mn6bun2lrk5as94ri&dl=1",
-    "size": 436531200,
-    "sha256": "87a2cea33b0b839166ce301c53dc68426158af1ee10840d3658a3d2c47fc0a36",
+    "url": "https://www.dropbox.com/scl/fi/jzq23punabu1qknmmg1vl/arc-mini.tar?rlkey=4dd7tcfhbbrpb979cp6as5k4z&dl=1",
+    "size": 70952960,
+    "sha256": "3ee0a2f8aac3dbb457db0eb74de37b91381406d2ce0817bb9bbf0b82bbe9be4f",
     "host": "Dropbox",
-    "origin": "local"
+    "origin": "WhissleAI/arc-v1.1"
    },
-   "release_note": "Whissle's own model (CC BY-NC 4.0); Moonshine tiny inside is MIT. Licence + NOTICE ship in Resources/Licenses. decoder_v1e (138 MB) is left out: the server uses the tagged decoder, and arc_audio only loads v1e when the file exists (else the built-in decoder).",
+   "release_note": "Arc Mini (Whissle, CC BY-NC 4.0 + Whissle terms; Moonshine tiny inside is MIT): the ear, Arc metadata and recordings, run by libarc (no torch). LICENSE + NOTICE ship in the model folder and Resources/Licenses. 71 MB instead of arc-v1's 437 MB.",
    "files": [
     {
      "path": "LICENSE",
-     "size": 20020,
-     "sha256": "deccff9c95d837e2037097073e32ef5888b53eda3c7f819647896085e79f15d6"
-    },
-    {
-     "path": "MANIFEST.sha256",
-     "size": 4889,
-     "sha256": "621861fa75821957c60c9a06a529659ad501852077546c223b5488a89e693381"
+     "size": 22053,
+     "sha256": "47377b0214c20476d0c6a2c934d9b9845e54155f8df860e7f668eaf8f460b11a"
     },
     {
      "path": "NOTICE",
-     "size": 1487,
-     "sha256": "7dc532d7f74d9f0e79dbc8fb35e89351a51a9dcf565ea67457ff4c2acd9206e8"
-    },
-    {
-     "path": "README.md",
-     "size": 26573,
-     "sha256": "2fa1a48d3ee875d3c5dc7b1744d07d16f483304bbba1133e84cd70daf2e85d4f"
-    },
-    {
-     "path": "arc_audio/__init__.py",
-     "size": 128,
-     "sha256": "820137237010838d703d056b4b423e1b7eef20fe84e05a74a1b404997c0c669e"
-    },
-    {
-     "path": "arc_audio/align.py",
-     "size": 6968,
-     "sha256": "1483bed92fffea34782b6ee1cba9fa80593dccc42f4a991910b23d8eb52a4438"
-    },
-    {
-     "path": "arc_audio/api.py",
-     "size": 40252,
-     "sha256": "b4446afa81d02cf19575376339c309ef7b40c44479d8424e7a68e1d0bb846168"
-    },
-    {
-     "path": "arc_audio/audio.py",
-     "size": 1703,
-     "sha256": "2b6ae56e38a402ab0e3e7c20967811726fe00228e2c678f719c36941fb080f0f"
-    },
-    {
-     "path": "arc_audio/bias.py",
-     "size": 3375,
-     "sha256": "7f67aa136f34051b94e6ef43bbc5d8863bc353ed08f0ad9d9f8f5189f7603de6"
-    },
-    {
-     "path": "arc_audio/engine.py",
-     "size": 68897,
-     "sha256": "ae0d11cb9eff8626e59cb8308943ab0c708b0cd1ab29f59efa8b6bd242561104"
-    },
-    {
-     "path": "arc_audio/model.py",
-     "size": 16480,
-     "sha256": "c35366f3c1c2adc187e585712904ea4377f6e34c683a54e99746fdfdecd0c95d"
-    },
-    {
-     "path": "arc_audio/moon.py",
-     "size": 743,
-     "sha256": "794934aaa4789f8564495df508235576624de654ade7c26154835f5a107fb490"
-    },
-    {
-     "path": "arc_audio/mst.py",
-     "size": 6292,
-     "sha256": "d5fb7f561481efc573b1be7d56c7c3b9cb8f1d9d4f3db3a62102f3f313b1d24d"
-    },
-    {
-     "path": "arc_audio/namesim.py",
-     "size": 3684,
-     "sha256": "1860b6b9029b872a5b86ecbe08e8444685d08301d7ef78c0c874d7c18b77ffe6"
-    },
-    {
-     "path": "arc_audio/nametext.py",
-     "size": 6200,
-     "sha256": "0a036583b10567ba3759b237682cc203d2124a19201b62e6f67bec1b610a9add"
-    },
-    {
-     "path": "arc_audio/numlib.py",
-     "size": 9745,
-     "sha256": "fc9ff1f7df4b3960385454352f20b49c4e30b3aee49cbf4ac9556c4548657133"
-    },
-    {
-     "path": "arc_audio/numvalue.py",
-     "size": 9701,
-     "sha256": "327fb98c7cffbbd3cd3f48b04293b4feb0805bf39a6d5d4ef6236fab52be95b0"
-    },
-    {
-     "path": "arc_audio/ontology.py",
-     "size": 3287,
-     "sha256": "27109fadd029bfc10e5e38951d99b2ffb5e7f73153398b0fe302c01e76d814d6"
-    },
-    {
-     "path": "arc_audio/parakeet.py",
-     "size": 3242,
-     "sha256": "74662af9d45e570ac9fb1c8aeb342da75e070e10d7000d255d16e42c867ce54b"
-    },
-    {
-     "path": "arc_audio/rescorer.py",
-     "size": 7844,
-     "sha256": "53df2806fc5ddce7374581737ea682d2a2587dc271faa69c1c941f07f91d7e46"
-    },
-    {
-     "path": "arc_audio/roles.py",
-     "size": 6029,
-     "sha256": "7e520e2738b4551d8e1d9934d015d7f34a45f16882456a641878de11f8833913"
-    },
-    {
-     "path": "arc_audio/seq/__init__.py",
-     "size": 65,
-     "sha256": "12dabc36fa28fbfe6c658e150de2fe4355d61f65a35a26ef1780c49cc095bffc"
-    },
-    {
-     "path": "arc_audio/seq/chunked.py",
-     "size": 4264,
-     "sha256": "b3e3097b94cf4e6f5e32dcdeb30023afad1dfd251a60fe6e40103645ee1d962a"
-    },
-    {
-     "path": "arc_audio/seq/layer.py",
-     "size": 4835,
-     "sha256": "7b6602b6f422df82dd13fce94676c454393e137b7df755e5a5acf7881c8b2300"
-    },
-    {
-     "path": "arc_audio/seq/scan.py",
-     "size": 353,
-     "sha256": "be7a6c7246072a8073b689e0325fda732aa493d17c82547bdf190a1b95a0cdaf"
-    },
-    {
-     "path": "arc_audio/tagdec.py",
-     "size": 4948,
-     "sha256": "fb9369cf03c848efe1fe62eac505b0aaa8bb0fccd77ad83b84019b0e6db79d8f"
-    },
-    {
-     "path": "arc_audio/textlayer.py",
-     "size": 6553,
-     "sha256": "66ee2060c47152c932d96e279167ba6889ef424fd1f7acf9b8256b5cba7c9afb"
-    },
-    {
-     "path": "arc_audio/trackbank.py",
-     "size": 2850,
-     "sha256": "993d0f49850b9b6f17ad1a77cd44a45be6b2f50117870009948526fe140f6859"
-    },
-    {
-     "path": "arc_audio/transcribe.py",
-     "size": 10468,
-     "sha256": "ce4fd90961b80b0c0906b6e042362fdb64e1e1c35f34106d5b060055d76d4053"
-    },
-    {
-     "path": "arc_audio/wordch.py",
-     "size": 14419,
-     "sha256": "eeac78060301df2c0effd7a0e56e1d2615cf781dbd5ed2d6823fbeffdeac0a2e"
-    },
-    {
-     "path": "arc_audio/words.py",
-     "size": 6352,
-     "sha256": "cefd7c0bc2e83648ae329e34c213a129750f682c1a42ea428d2363a136c67639"
+     "size": 1352,
+     "sha256": "55037ef591c392a4989b0a2c082788b7d2f14805c7d14e165444caee8dca1134"
     },
     {
      "path": "config.json",
-     "size": 137830,
-     "sha256": "c9fedc1ab981219d5870996de0591c2e53942cfe8f5d4a3afdc80cdb53820caa"
+     "size": 106001,
+     "sha256": "d3573c09e5f4e3a01a6a19d267169b2b11d80d933d8bbc1b29c30532df19ee49"
     },
     {
-     "path": "model.safetensors",
-     "size": 117505924,
-     "sha256": "5f35b2e00aea84cef4ccba02de0a3095fd5e6f52d6bfe8561fe6ae98531bbdee"
+     "path": "heads.safetensors",
+     "size": 6727212,
+     "sha256": "4d598e53b4eb29a0dabb9fe58f36531ffc0aeb91e39e28668eec52f4ca7b25f5"
+    },
+    {
+     "path": "model.q4.safetensors",
+     "size": 37098434,
+     "sha256": "cccf781963855beedcfd439fd7740a8756ae5b80518700eac7ac55906eccdc9f"
     },
     {
      "path": "moonshine-streaming-tiny/LICENSE",
@@ -193,18 +54,13 @@
     },
     {
      "path": "moonshine-streaming-tiny/ORIGIN.md",
-     "size": 938,
-     "sha256": "eac258749148a6d5b97a52b9eca024971da429cb72d470be9a5b2336ad7e1b90"
+     "size": 507,
+     "sha256": "ee0e6a8c47f582e84568d2a51e93bdacf869d0d4b4d1b3b0e8d3257138dfb232"
     },
     {
      "path": "moonshine-streaming-tiny/config.json",
-     "size": 1538,
-     "sha256": "774a4e8f8cd85ceb5a65bb47a02c9c0e936c9930e1514c8cb271f3b837bc9a94"
-    },
-    {
-     "path": "moonshine-streaming-tiny/decoder_release.safetensors",
-     "size": 138385304,
-     "sha256": "0b95d072361548d4d2a6293fc4b49258c86330cd6181b4368ed15ecdf87998fc"
+     "size": 1537,
+     "sha256": "5c00a220c4588d8ccc525eb0d9b0e9c23788addd0cab9007976fb7fcdfd5a0e9"
     },
     {
      "path": "moonshine-streaming-tiny/generation_config.json",
@@ -212,9 +68,9 @@
      "sha256": "c875411220a20402cb62bf4ec2f17ad3148ea6ac119a4eb4bed3ba224e801215"
     },
     {
-     "path": "moonshine-streaming-tiny/model.safetensors",
-     "size": 176237340,
-     "sha256": "b117d20e29193ed55ff6ac90ea0e9fe1a872ca317cebe9fca431a89b819db8f3"
+     "path": "moonshine-streaming-tiny/model.q4.safetensors",
+     "size": 25129580,
+     "sha256": "5a5ea9d7d0daf58008db6df4856b70ee01df5b69ee074ebe7d95d51bb7c9d9d8"
     },
     {
      "path": "moonshine-streaming-tiny/processor_config.json",
@@ -223,8 +79,8 @@
     },
     {
      "path": "moonshine-streaming-tiny/tokenizer.json",
-     "size": 3761899,
-     "sha256": "967bed3947f26fd771dbe1c02c9fb58ee60f289f0f46404d21c22940936edba0"
+     "size": 1691602,
+     "sha256": "52f75b90b1308a44ab450f7c348af66ac2d75431f8753040c0f79a2993d5946d"
     },
     {
      "path": "moonshine-streaming-tiny/tokenizer_config.json",
@@ -232,14 +88,45 @@
      "sha256": "68abd67d38150c56e3b44af16f005a5220d6ec2380cc98de16c35415c620c5af"
     },
     {
-     "path": "pyproject.toml",
-     "size": 925,
-     "sha256": "5205547266d8d77c15d7b3b093d611d21548433f94c6c12f098422de21b8e2ec"
+     "path": "tags.json",
+     "size": 145150,
+     "sha256": "d68e86adca1aacf1d46cdd91ea24dfae0d902c9548544f71e23543e1eab4f902"
+    }
+   ]
+  },
+  {
+   "name": "Arc n-gram LM (spoken questions; fused into Arc Mini's decoder for finals, libarc arc_set_lm)",
+   "dir": "arc-lm",
+   "required": false,
+   "revision": "questions.arclm sha256 5b8ba8b96b6cd1ce (2026-11-23; ARCLM1, order 3, 32 MB)",
+   "license": "CC BY-SA 4.0 (n-gram statistics of CC BY-SA / CC BY / Apache-2.0 / MIT question corpora; NOTICE lists them)",
+   "note": "Loaded by server/ear.py via config.arc_lm(): ARC_LM=0 turns it off, ARC_LM_WEIGHT (0.3), ARC_LM_PARTIALS (0: partials and the endpoint untouched). MACAPP.md 'Arc n-gram LM' has the A/B.",
+   "size": 33589604,
+   "source": {
+    "type": "archive",
+    "format": "tar",
+    "url": "https://www.dropbox.com/scl/fi/wqkz5ma64ciqmkok7oko1/arc-lm.tar?rlkey=28jq4p2fdhh8xx5u73g0ulduo&dl=1",
+    "size": 33597440,
+    "sha256": "44cf44732db76ef52eb78d01aece628e895c2a49d4d00c0b6130d1d52b1cf173",
+    "host": "Dropbox",
+    "origin": "local"
+   },
+   "release_note": "Arc Mini's n-gram LM (32 MB): finals fused at weight 0.3; held-out WER and name accuracy improve, endpoint unchanged (MACAPP.md 'Arc n-gram LM'). CC BY-SA 4.0 NOTICE ships with it.",
+   "files": [
+    {
+     "path": "LICENSE",
+     "size": 210,
+     "sha256": "cdf3d015fb69b3ccdbeae593258eaf73a1a3214c61d55377a3de75cf6c485c2a"
     },
     {
-     "path": "tags.json",
-     "size": 145158,
-     "sha256": "0bf60fa599b8f105e20d77d9d3bf4149f372977e64b3b7ff6ad87169508a0456"
+     "path": "NOTICE",
+     "size": 2170,
+     "sha256": "843945285ed4bb7041f0f87c92e4be945b88e6080b286148048205b937dbf4fa"
+    },
+    {
+     "path": "questions.arclm",
+     "size": 33587224,
+     "sha256": "5b8ba8b96b6cd1ce530ab1a412c7b7dda941a30d0f28247b2ea478421c9bd887"
     }
    ]
   },
