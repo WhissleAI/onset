@@ -130,7 +130,7 @@ def test_dg_words_adapter_forwards_deepgram_words():
 @needs_model
 def test_library_version_and_abi():
     assert arc_c.lib().arc_abi_version() == arc_c.ABI
-    assert arc_c.version().startswith("1.4")
+    assert arc_c.version().startswith("1.5")
 
 
 @needs_model
@@ -243,3 +243,79 @@ def test_arc_ear_on_arc_mini_feeds_sessions_timed_words(monkeypatch):
     assert len(sink.finals) == 1 and "everest" in " ".join(w["text"] for w in sink.finals[0]).lower()
     kinds = {ev["kind"] for ev in events}
     assert {"partial", "final", "arc_command_complete"} <= kinds
+
+
+# ------------------------------------------------------------------------------------------------ n-gram LM (arc-lm)
+def test_arc_lm_switch(monkeypatch, tmp_path):
+    f = tmp_path / "x.arclm"
+    f.write_bytes(b"ARCLM1\0\0")
+    monkeypatch.setattr(config, "ARC_LM_DIR", tmp_path)
+    monkeypatch.setattr(config, "ARC_LM_WEIGHT", 0.3)
+    monkeypatch.setattr(config, "ARC_LM", "1")
+    assert config.arc_lm() is None                                   # default file missing: no LM, no error
+    (tmp_path / "questions.arclm").write_bytes(b"ARCLM1\0\0")
+    assert config.arc_lm() == (str(tmp_path / "questions.arclm"), 0.3, config.ARC_LM_TOPK)
+    monkeypatch.setattr(config, "ARC_LM", str(f))
+    assert config.arc_lm()[0] == str(f)
+    for off in ("0", "off"):
+        monkeypatch.setattr(config, "ARC_LM", off)
+        assert config.arc_lm() is None
+    monkeypatch.setattr(config, "ARC_LM", "1")
+    monkeypatch.setattr(config, "ARC_LM_WEIGHT", 0.0)
+    assert config.arc_lm() is None
+
+
+def test_ear_passes_the_lm_to_full_streams_only(monkeypatch):
+    got = []
+    monkeypatch.setattr(config, "ARC_BACKEND", "mini")
+    monkeypatch.setattr(config, "arc_lm", lambda: ("/m/questions.arclm", 0.3, 0))
+    monkeypatch.setattr(config, "ARC_LM_PARTIALS", False)
+    monkeypatch.setattr(arc_c, "open_stream",
+                        lambda *a, **kw: got.append((kw.get("mode"), kw.get("lm"), kw.get("partial_lm"))) or object())
+    ear.arc_stream("assistant", "full")
+    ear.arc_stream("assistant", "external")
+    assert got == [("full", ("/m/questions.arclm", 0.3, 0), False), ("external", None, False)]
+
+
+LM_FILE = config.ARC_LM_DIR / "questions.arclm"
+
+
+@needs_model
+@pytest.mark.skipif(not LM_FILE.exists(), reason="MODELS_DIR/arc-lm/questions.arclm missing")
+def test_lm_loads_and_weight_zero_is_identical_to_no_lm():
+    x = _speech()
+    e = arc_c.Engine(config.ARC_MINI_DIR, 2)
+    try:
+        base = e.transcribe(x, "assistant")["transcript"][0]["text"]
+        assert e.set_lm(LM_FILE, 0.0) and e.lm_weight() == 0.0
+        assert e.transcribe(x, "assistant")["transcript"][0]["text"] == base
+        assert e.set_lm(LM_FILE, 0.3) and abs(e.lm_weight() - 0.3) < 1e-6
+        assert "everest" in e.transcribe(x, "assistant")["transcript"][0]["text"].lower()
+        assert not e.set_lm(Path("/nonexistent.arclm"), 0.3)               # a bad file keeps the old LM
+        assert abs(e.lm_weight() - 0.3) < 1e-6
+    finally:
+        e.close()
+
+
+@needs_model
+@pytest.mark.skipif(not LM_FILE.exists(), reason="MODELS_DIR/arc-lm/questions.arclm missing")
+def test_lm_leaves_partials_and_endpoint_untouched():
+    """partial_lm=False (the default): every partial and the final's timing are exactly what they are without an LM;
+    only the final's words may differ."""
+    x = np.concatenate([_speech(), np.zeros(16000, np.float32)])
+
+    def run(lm):
+        s = arc_c.open_stream(config.ARC_MINI_DIR, 2, "assistant", lm=lm, partial_lm=False)
+        parts, finals = [], []
+        try:
+            for i in range(0, len(x), 1600):
+                o = s.feed(x[i:i + 1600])
+                if o["transcript_partial"]:
+                    parts.append((i, o["transcript_partial"]["text"]))
+                finals += [(i, u["end"]) for u in o["transcript"]]
+            finals += [(len(x), u["end"]) for u in s.flush()["transcript"]]
+        finally:
+            s.close()
+        return parts, finals
+
+    assert run(None) == run((str(LM_FILE), 0.3, 0))

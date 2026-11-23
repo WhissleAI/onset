@@ -2111,3 +2111,12 @@ in the bundle. Where it stands:
 - **Gaps**: no Arc voice-embedding tap in libarc, so ArcState voice enrollment is off on Arc Mini; director v2's
   unshipped Arc columns (affect, speaker change, ...) are None on it (DIRECTOR_STREAMS is off by default).
 - Tests: tests/test_arc_c.py (13); full suite 793 passed, 3 skipped.
+
+## Arc n-gram LM on the ear's finals (feat/arc-mini; MACAPP.md "Arc n-gram LM")
+- **What**: libarc re-vendored at WhissleAI/arc_transcriber a512de7 (1.5.0, `arc_set_lm` fusion; Onset patch kept + bit
+  4 = partials without the LM). `MODELS_DIR/arc-lm/questions.arclm` (32 MB 3-gram, CC BY-SA 4.0) fused into FULL-stream
+  finals at weight 0.3; `ARC_LM=0` off, `ARC_LM_WEIGHT`, `ARC_LM_PARTIALS` (0).
+- **Result** (held-out eval, never in the LM): WER 6.84 -> 6.23 %, names 85.5 -> 86.4 %, exact 69.3 -> 73.2 %; at
+  10 dB SNR 35.3 -> 33.3 %. Endpoint / final time identical on every file, partials unchanged, chunk compute flat.
+- **Built** with PromptingNemo-private recipes/arc/ngram_lm (4ad1639) from 13 open question corpora + Whissle's search
+  queries, Onset eval texts and near-duplicates excluded; corpus prep scripts handed to the lead for that repo.

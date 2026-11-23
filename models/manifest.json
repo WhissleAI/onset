@@ -12,7 +12,7 @@
     "revision": "6f637153ea4953d81811e68168cd29572316d32b",
     "note": "Gated repo (accept the Arc licence on Hugging Face; set HF_TOKEN to fetch). Files are the repo's mini/ folder plus its LICENSE and NOTICE."
    },
-   "revision": "v1.2.0 (WhissleAI/arc-v1.1 tag; mini/ = the v1.1.1 weights), 4-bit weights read by libarc 1.4.1 (vendor/arc)",
+   "revision": "v1.2.0 (WhissleAI/arc-v1.1 tag; mini/ = the v1.1.1 weights), 4-bit weights read by libarc 1.5.0 (vendor/arc)",
    "license": "CC BY-NC 4.0 + Whissle terms (Arc weights, LICENSE); bundled Moonshine Streaming tiny (modified): MIT (moonshine-streaming-tiny/LICENSE); see NOTICE",
    "note": "Default ear since ARC_BACKEND=mini (MACAPP.md 'Arc Mini in C'). No torch: loaded by server/arc_c.py through libarc.dylib.",
    "files": [
@@ -102,15 +102,45 @@
    "size": 70938405
   },
   {
+   "name": "Arc n-gram LM (spoken questions; fused into Arc Mini's decoder for finals, libarc arc_set_lm)",
+   "dir": "arc-lm",
+   "required": false,
+   "source": {
+    "type": "local",
+    "note": "Built by WhissleAI/PromptingNemo-private recipes/arc/ngram_lm (build_lm.py @4ad1639 --order 3 --prune 0,8,16; corpus: corpora/questions/prep_*.py, weighted by mix.py; Onset's eval texts excluded). Release copy: manifest.release.json. Without it the ear runs exactly as before (no LM)."
+   },
+   "revision": "questions.arclm sha256 5b8ba8b96b6cd1ce (2026-11-23; ARCLM1, order 3, 32 MB)",
+   "license": "CC BY-SA 4.0 (n-gram statistics of CC BY-SA / CC BY / Apache-2.0 / MIT question corpora; NOTICE lists them)",
+   "note": "Loaded by server/ear.py via config.arc_lm(): ARC_LM=0 turns it off, ARC_LM_WEIGHT (0.3), ARC_LM_PARTIALS (0: partials and the endpoint untouched). MACAPP.md 'Arc n-gram LM' has the A/B.",
+   "size": 33589604,
+   "files": [
+    {
+     "path": "LICENSE",
+     "size": 210,
+     "sha256": "cdf3d015fb69b3ccdbeae593258eaf73a1a3214c61d55377a3de75cf6c485c2a"
+    },
+    {
+     "path": "NOTICE",
+     "size": 2170,
+     "sha256": "843945285ed4bb7041f0f87c92e4be945b88e6080b286148048205b937dbf4fa"
+    },
+    {
+     "path": "questions.arclm",
+     "size": 33587224,
+     "sha256": "5b8ba8b96b6cd1ce530ab1a412c7b7dda941a30d0f28247b2ea478421c9bd887"
+    }
+   ]
+  },
+  {
    "name": "Arc native library (libarc.dylib: Arc Mini in C11, no dependencies)",
    "dir": null,
    "required": true,
    "source": {
     "type": "build",
-    "from": "vendor/arc/src (in this repo: WhissleAI/arc_transcriber c/ @955218a, libarc 1.4.1, plus arc_stream_set_words)",
+    "from": "vendor/arc/src (in this repo: WhissleAI/arc_transcriber c/ @a512de7, libarc 1.5.0, plus arc_stream_set_words)",
     "command": "scripts/fetch_models.py build-arc"
    },
-   "revision": "libarc 1.4.1, ABI 2 (vendor/arc/include/arc.h)",
+   "revision": "libarc 1.5.0, ABI 2 (vendor/arc/include/arc.h)",
    "license": "CC BY-NC 4.0 + Whissle terms (vendor/arc/LICENSE); Metaphone port: MIT (vendor/arc/NOTICE)",
    "files": [],
    "size": 0

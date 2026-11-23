@@ -16,7 +16,7 @@ mic ─▶ Arc (streaming ASR + events) ─▶ Arc Tagger (10M, 0.7 ms/word) ─
 
 | piece | role | why it matters |
 |---|---|---|
-| **Arc Mini** (Whissle, on-device, in C: libarc, 71 MB, no torch) | live words every ~100 ms, self-revising; its own `command_complete` | words + revisions while the person is still talking |
+| **Arc Mini** (Whissle, on-device, in C: libarc, 71 MB, no torch; + a 32 MB spoken-question n-gram LM on its finals) | live words every ~100 ms, self-revising; its own `command_complete` | words + revisions while the person is still talking |
 | **Arc Tagger v0.3** (Whissle, 10M, native C int8) | partial sentence → intent, typed slots, dialogue act, `command_complete` | understands the query in ~1 ms/word instead of an LLM router's ~500 ms; updates as words revise |
 | **Speculator** (`server/speculator.py`) | when to search, what to search, cancel stale, draft early, verify reuse | the search intelligence |
 | **EmbeddingGemma 2** (Google, 740M, text+audio+image) | reranks the pool; local moments index; embeds the *spoken audio* of the question | one space for audio and text: retrieval can start before the words settle |

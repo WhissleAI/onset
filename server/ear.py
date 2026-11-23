@@ -70,7 +70,8 @@ def arc_stream(domain: str = "assistant", mode: str = "full"):
                             partials=False)
     from . import arc_c
     s = arc_c.open_stream(config.ARC_MINI_DIR, config.ARC_C_THREADS, domain, mode=mode,
-                          partial_ms=config.ARC_PARTIAL_MS, partial_encode=config.ARC_PARTIAL_ENCODE)
+                          partial_ms=config.ARC_PARTIAL_MS, partial_encode=config.ARC_PARTIAL_ENCODE,
+                          lm=config.arc_lm() if mode == "full" else None, partial_lm=config.ARC_LM_PARTIALS)
     _mini_ready = True
     return s
 

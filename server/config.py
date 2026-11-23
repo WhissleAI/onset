@@ -35,6 +35,26 @@ ARC_MINI_DIR = _mp.resolve("arc-mini", "ARC_MINI_DIR")
 ARC_C_THREADS = int(os.environ.get("ARC_C_THREADS", "2"))         # libarc worker threads per stream / engine
 ARC_PARTIAL_MS = int(os.environ.get("ARC_PARTIAL_MS", "400"))     # a partial every ... ms of audio (arc-v1: 400)
 ARC_PARTIAL_ENCODE = os.environ.get("ARC_PARTIAL_ENCODE", "1") == "1"   # partials re-encode their window (arc-v1 did)
+# Arc's n-gram LM (shallow fusion in libarc's decoder, the live ear only): MODELS_DIR/arc-lm/questions.arclm, built
+# from public spoken-question corpora (MACAPP.md "Arc n-gram LM"). ARC_LM=0 turns it off; ARC_LM=/path/x.arclm uses
+# another file. ARC_LM_WEIGHT: the fusion weight (0 = loaded but off: output identical to no LM).
+ARC_LM = os.environ.get("ARC_LM", "1").strip()
+ARC_LM_DIR = _mp.resolve("arc-lm", "ARC_LM_DIR")
+ARC_LM_WEIGHT = float(os.environ.get("ARC_LM_WEIGHT", "0.3"))
+ARC_LM_TOPK = int(os.environ.get("ARC_LM_TOPK", "0"))
+# 0 (default): partials decode without the LM, only finals are fused: the endpoint and every partial stay exactly what
+# they are without an LM (vendor/arc patch, arc_stream_set_words bit 4); 1: partials fused too.
+ARC_LM_PARTIALS = os.environ.get("ARC_LM_PARTIALS", "0") == "1"
+
+
+def arc_lm():
+    """(path, weight, topk) for arc_c's lm=, or None (off, or the file is missing)."""
+    if ARC_LM.lower() in ("0", "off", "false", "no", "") or ARC_LM_WEIGHT <= 0:
+        return None
+    p = Path(ARC_LM).expanduser() if ARC_LM.endswith(".arclm") else ARC_LM_DIR / "questions.arclm"
+    return (str(p), ARC_LM_WEIGHT, ARC_LM_TOPK) if p.exists() else None
+
+
 ARC_DIR = _mp.resolve("arc-v1", "ARC_DIR")
 ARC_THREADS = int(os.environ.get("ARC_THREADS", "6"))
 EMBED_MODEL = _mp.embed_model()

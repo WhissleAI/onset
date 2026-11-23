@@ -154,6 +154,13 @@ def lib():
             L.arc_create_ex.argtypes = [C.c_char_p, C.c_int, C.c_int, C.c_char_p, sz]
             L.arc_create_ex.restype = vp
             L.arc_destroy.argtypes = [vp]
+            if hasattr(L, "arc_set_lm"):                     # n-gram LM fusion (libarc with arc_lm.c)
+                L.arc_set_lm.argtypes = [vp, C.c_char_p, C.c_float, C.c_int]
+                L.arc_set_lm.restype = C.c_int
+                L.arc_set_lm_weight.argtypes = [vp, C.c_float]
+                L.arc_set_lm_weight.restype = C.c_int
+                L.arc_lm_weight.argtypes = [vp]
+                L.arc_lm_weight.restype = C.c_float
             L.arc_set_threads.argtypes = [vp, C.c_int]
             L.arc_last_error.restype = C.c_char_p
             L.arc_transcribe.argtypes = [vp, c_float_p, sz, C.POINTER(Options)]
@@ -265,6 +272,20 @@ class Engine:
     def threshold(self, tag: str, q: str, domain: str, default: float = 0.5) -> float:
         return float(((self.cfg.get("thresholds") or {}).get(f"{tag}@{q}") or {}).get(domain, default))
 
+    def set_lm(self, path, weight: float, topk: int = 0) -> bool:
+        """Shallow-fuse a token n-gram LM (ARCLM file) into this engine's decoder; path None / weight <= 0 clears it.
+        False when this libarc has no LM support or the file does not load."""
+        if not hasattr(self.L, "arc_set_lm"):
+            return False
+        ok = self.L.arc_set_lm(self.h, str(path).encode() if path else None, float(weight), int(topk)) == 0
+        if not ok:
+            import logging
+            logging.getLogger(__name__).warning("arc_set_lm(%s): %s", path, _s(self.L.arc_last_error()))
+        return ok
+
+    def lm_weight(self) -> float:
+        return float(self.L.arc_lm_weight(self.h)) if hasattr(self.L, "arc_lm_weight") else 0.0
+
     def close(self):
         if getattr(self, "h", None):
             self.L.arc_destroy(self.h)
@@ -274,11 +295,12 @@ class Engine:
 
     def stream(self, domain: str = "assistant", mode: str = "full", partial_ms: int = 400, words: bool = True,
                frames: bool = True, events: bool = True, speakers: bool = True, partial_encode: bool = True,
+               partial_lm: bool = True,
                own: bool = False) -> "Stream":
         """A stream on THIS engine (the stream holds the engine's call slot until it is closed). own=True: closing the
         stream also destroys the engine (an engine made for this one stream)."""
         s = Stream(self, domain=domain, mode=mode, partial_ms=partial_ms, words=words, frames=frames, events=events,
-                   speakers=speakers, partial_encode=partial_encode)
+                   speakers=speakers, partial_encode=partial_encode, partial_lm=partial_lm)
         s.own = own
         return s
 
@@ -332,7 +354,7 @@ class Stream:
 
     def __init__(self, engine: Engine, domain: str = "assistant", mode: str = "full", partial_ms: int = 400,
                  words: bool = True, frames: bool = True, events: bool = True, speakers: bool = True,
-                 partial_encode: bool = True):
+                 partial_encode: bool = True, partial_lm: bool = True):
         self.e, self.L = engine, engine.L
         self.domain = domain
         self.mode = {"full": FULL, "heads": HEADS, "external": EXTERNAL}[mode]
@@ -348,7 +370,8 @@ class Stream:
         if self.mode == FULL and (words or partial_encode):
             # vendor/arc patch: 1 = word times on partials + finals; 2 = partials decode a fresh encode of their window
             # (as arc_audio 1.0.1), not the streamed states that lag by the encoder's 0.24 s look-ahead
-            self.L.arc_stream_set_words(self.h, (1 if words else 0) | (2 if partial_encode else 0))
+            self.L.arc_stream_set_words(self.h, (1 if words else 0) | (2 if partial_encode else 0)
+                                        | (0 if partial_lm else 4))
         self.cc_thr = engine.threshold(CC, "ev_at", domain, 0.5)
         self.cc_last = -10.0
         self.total = 0
@@ -514,5 +537,11 @@ def predict_shape(r: dict) -> dict:
 
 
 def open_stream(model_dir, threads: int = 2, domain: str = "assistant", mode: str = "full", **kw) -> Stream:
-    """A stream on its own engine (one per thread; an engine loads in ~40-90 ms). close() frees both."""
-    return Engine(model_dir, threads, decoder=mode == "full").stream(domain, mode=mode, own=True, **kw)
+    """A stream on its own engine (one per thread; an engine loads in ~40-90 ms). close() frees both.
+    lm=(path, weight, topk) fuses an n-gram LM into the engine's decoder (FULL mode; libarc 1.5+ memory-maps the
+    file, so every engine on the same file shares it)."""
+    lm = kw.pop("lm", None)
+    e = Engine(model_dir, threads, decoder=mode == "full")
+    if lm and mode == "full":
+        e.set_lm(*lm)
+    return e.stream(domain, mode=mode, own=True, **kw)

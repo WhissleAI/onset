@@ -49,6 +49,10 @@ SETS = {  # rows file -> (text field, file field)
 def refs(sets: list[str], root: Path) -> list[tuple[str, str, str]]:
     out = []
     for s in sets:
+        if s.endswith(".jsonl"):                       # any rows file of {"file", "text"} (e.g. an LM dev split)
+            out += [(Path(s).stem, r["file"], r["text"]) for r in map(json.loads, Path(s).read_text().splitlines())
+                    if r.get("file")]
+            continue
         p = root / SETS[s]
         if not p.exists():
             p = ROOT / SETS[s]
@@ -69,6 +73,21 @@ _P = re.compile(r"[^\w'\s]")
 def norm(t: str) -> list[str]:
     t = re.sub(r"(?<=\w)\.(?=\w)", "", t.lower()).replace("%", " percent").replace("-", " ")   # "U.S." = "us"
     return [w.strip("'") for w in _P.sub(" ", t).split() if w.strip("'")]
+
+
+def names_in(text: str) -> list[str]:
+    """The reference's name and number words: capitalised past the first word, or with a digit ("Nvidia", "2024")."""
+    toks = re.findall(r"[\w'.%-]+", text)
+    out = []
+    for i, t in enumerate(toks):
+        if (i > 0 and t[:1].isupper()) or any(ch.isdigit() for ch in t):
+            out += norm(t)
+    return out
+
+
+def name_hits(text: str, hyp: str) -> tuple[int, int]:
+    want, got = names_in(text), set(norm(hyp))
+    return sum(w in got for w in want), len(want)
 
 
 def edits(a: list[str], b: list[str]) -> int:
@@ -102,10 +121,11 @@ def make_v1(threads: int):
     return lambda: a.stream(domain="assistant", transcript="builtin", partials=True, background=False), arc_dir
 
 
-def make_mini(threads: int, partial_ms: int, encode: bool = True):
+def make_mini(threads: int, partial_ms: int, encode: bool = True, lm=None, partial_lm: bool = True):
     from server import arc_c, modelpaths
     d = os.environ.get("ARC_MINI_DIR") or str(modelpaths.resolve("arc-mini", "ARC_MINI_DIR"))
-    return (lambda: arc_c.open_stream(d, threads, "assistant", partial_ms=partial_ms, partial_encode=encode)), d
+    return (lambda: arc_c.open_stream(d, threads, "assistant", partial_ms=partial_ms, partial_encode=encode,
+                                      lm=lm, partial_lm=partial_lm)), d
 
 
 def run_file(new_stream, x: np.ndarray, tail_s: float) -> dict:
@@ -145,6 +165,10 @@ def main():
     ap.add_argument("--streamed-partials", action="store_true",
                     help="mini: partials from the streamed encoder states (upstream libarc) instead of a re-encode")
     ap.add_argument("--tail-s", type=float, default=1.5)
+    ap.add_argument("--lm", default="", help="mini: an ARCLM n-gram LM fused into the decoder")
+    ap.add_argument("--lm-weight", type=float, default=0.3)
+    ap.add_argument("--lm-topk", type=int, default=0)
+    ap.add_argument("--lm-partials", type=int, default=1, help="0: partials decode without the LM (finals keep it)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--out")
     ap.add_argument("--summary", nargs="*")
@@ -169,7 +193,8 @@ def main():
         new_stream, mdir = make_v1(threads)
     else:
         threads = a.threads or config.ARC_C_THREADS
-        new_stream, mdir = make_mini(threads, a.partial_ms, not a.streamed_partials)
+        lm = (a.lm, a.lm_weight, a.lm_topk) if a.lm else None
+        new_stream, mdir = make_mini(threads, a.partial_ms, not a.streamed_partials, lm, bool(a.lm_partials))
     s = new_stream()                                   # first stream + a short warm feed, as ear.warmup()
     for _ in range(3):
         s.feed(np.zeros(1600, np.float32))
@@ -190,6 +215,7 @@ def main():
         fw = [w for _, u in r["finals"] for w in (u.get("words") or [])]
         full = [w for _, u in r["finals"] for w in norm(u.get("text", ""))]
         complete = next((t for t, sh in r["shown"] if full and sh == full), None)
+        right = next((t for t, sh in r["shown"] if sh == ref_w), None)        # the reference's words, all shown
         final_at = r["finals"][-1][0] if r["finals"] else None
         ends = [w["end"] for w in fw if w.get("end") is not None]
         behind = []
@@ -197,9 +223,12 @@ def main():
             if ends and ends[0] <= t <= se + 1e-6:
                 behind.append(max(0, sum(e <= t for e in ends) - len(sh)))
         first = next((t for t, sh in r["shown"] if sh), None)
+        nh, nn = name_hits(text, hyp)
         res.append({"set": set_, "file": f, "ref": text, "hyp": hyp, "n_ref": len(ref_w), "err": edits(ref_w, hyp_w),
+                    "name_hits": nh, "n_names": nn,
                     "speech_end": round(se, 2), "n_utts": len(r["finals"]),
                     "complete_ms": None if complete is None else round((complete - se) * 1000),
+                    "right_ms": None if right is None else round((right - se) * 1000),
                     "final_ms": None if final_at is None else round((final_at - se) * 1000),
                     "first_word_ms": None if first is None or not ends else round((first - ends[0]) * 1000),
                     "behind_words": round(float(np.mean(behind)), 2) if behind else 0.0,
@@ -208,7 +237,9 @@ def main():
         print(f"{k + 1:3d}/{len(rows)} {f:16s} err {res[-1]['err']}/{res[-1]['n_ref']}  {hyp[:70]}", file=sys.stderr)
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20      # macOS: bytes
     size = sum(p.stat().st_size for p in Path(mdir).rglob("*") if p.is_file())
-    out = {"ear": a.ear + ("-streamed" if a.ear == "mini" and a.streamed_partials else ""), "model_dir": mdir, "threads": threads, "partial_ms": a.partial_ms, "noisy": a.noisy or None,
+    out = {"ear": a.ear + ("-streamed" if a.ear == "mini" and a.streamed_partials else ""),
+           "lm": {"path": a.lm, "mb": round(Path(a.lm).stat().st_size / 1e6, 1), "weight": a.lm_weight,
+                  "topk": a.lm_topk, "partials": bool(a.lm_partials)} if a.lm else None, "model_dir": mdir, "threads": threads, "partial_ms": a.partial_ms, "noisy": a.noisy or None,
            "load_s": round(load_s, 2), "rss_mb": round(rss), "rss_before_load_mb": round(rss0),
            "model_mb": round(size / 1e6, 1), "chunk_ms": _pct(allchunks), "rows": res, **_agg(res)}
     print(json.dumps({k: v for k, v in out.items() if k != "rows"}, indent=1))
@@ -228,8 +259,11 @@ def _pct(xs):
 def _agg(res):
     n = sum(r["n_ref"] for r in res)
     e = sum(r["err"] for r in res)
-    return {"n_files": len(res), "wer": round(e / max(1, n), 4), "exact": round(sum(r["err"] == 0 for r in res) / max(1, len(res)), 3),
-            "complete_ms": _pct([r["complete_ms"] for r in res]), "final_ms": _pct([r["final_ms"] for r in res]),
+    nn = sum(r.get("n_names", 0) for r in res)
+    return {"n_files": len(res), "wer": round(e / max(1, n), 4),
+            "name_acc": round(sum(r.get("name_hits", 0) for r in res) / nn, 4) if nn else None, "n_names": nn, "exact": round(sum(r["err"] == 0 for r in res) / max(1, len(res)), 3),
+            "complete_ms": _pct([r["complete_ms"] for r in res]), "right_ms": _pct([r.get("right_ms") for r in res]),
+            "right_n": sum(r.get("right_ms") is not None for r in res), "final_ms": _pct([r["final_ms"] for r in res]),
             "first_word_ms": _pct([r["first_word_ms"] for r in res]),
             "behind_words": round(float(np.mean([r["behind_words"] for r in res])), 2) if res else None,
             "by_set": {s: round(sum(r["err"] for r in res if r["set"] == s) / max(1, sum(r["n_ref"] for r in res if r["set"] == s)), 4)

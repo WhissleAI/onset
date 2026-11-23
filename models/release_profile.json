@@ -40,6 +40,10 @@
     "eval/showcase/questions.jsonl"
    ],
    "note": "Only Replay questions synthesised with Kokoro-82M (Apache 2.0; eval/make_audio.py, eval/multipart/make_audio.py, eval/showcase/make_audio.py voice them through eval/tts_kokoro.py). Clips voiced with macOS system voices, recorded voices and the local-moments questions are left out."
+  },
+  "arc-lm": {
+   "files": "all",
+   "note": "Arc Mini's n-gram LM (32 MB): finals fused at weight 0.3; held-out WER and name accuracy improve, endpoint unchanged (MACAPP.md 'Arc n-gram LM'). CC BY-SA 4.0 NOTICE ships with it."
   }
  }
 }
