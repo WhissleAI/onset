@@ -65,59 +65,12 @@
 
   <section id="how" class="sec">
     <h2>How it works</h2>
-    <p class="sec-lede">Most of the meaning arrives before you finish talking. OnSet reads it as it arrives and starts the free lookups early; the web search waits until the meaning is final.</p>
-    <figure class="arch">
-      <svg viewBox="0 0 1000 430" role="img" aria-labelledby="archT archD">
-        <title id="archT">OnSet architecture</title>
-        <desc id="archD">Microphone audio goes to the ear (Whissle Arc on the Mac, or Deepgram Flux with a key), then the Arc Tagger, then the director and speculator, which pick a lane through the router: live cards, Wikidata facts, the Keystone local store, your own indexed recordings, or web search (DuckDuckGo for free; Tavily or Telem with a key). A small language model on the Mac streams a cited answer. A local memory graph feeds context to the tagger and router.</desc>
-        <defs>
-          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" class="ah"/></marker>
-        </defs>
-        <rect class="zone dev" x="10" y="10" width="640" height="410" rx="16"/>
-        <text class="zl" x="28" y="36">On your Mac</text>
-        <rect class="zone cloud" x="670" y="10" width="320" height="410" rx="16"/>
-        <text class="zl" x="688" y="36">The web, only when needed</text>
-
-        <g class="node"><rect x="30" y="60" width="130" height="64" rx="10"/><text x="95" y="88">Mic</text><text class="s" x="95" y="107">your voice</text></g>
-        <g class="node acc"><rect x="200" y="60" width="190" height="64" rx="10"/><text x="295" y="88">Arc ear</text><text class="s" x="295" y="107">live words · audio metadata</text></g>
-        <g class="node acc"><rect x="430" y="60" width="200" height="64" rx="10"/><text x="530" y="88">Arc Tagger · 10M</text><text class="s" x="530" y="107">intent · slots · corrections · done?</text></g>
-        <g class="node"><rect x="430" y="170" width="200" height="64" rx="10"/><text x="530" y="198">Director + speculator</text><text class="s" x="530" y="217">fire · cancel stale · draft</text></g>
-        <g class="node"><rect x="200" y="170" width="190" height="64" rx="10"/><text x="295" y="198">Memory graph</text><text class="s" x="295" y="217">“the old one” → Biden</text></g>
-        <g class="node"><rect x="30" y="170" width="130" height="64" rx="10"/><text x="95" y="198">Rerank</text><text class="s" x="95" y="217">EmbeddingGemma 2</text></g>
-
-        <text class="rl" x="30" y="362">Router · free lanes first, paid web last</text>
-        <g class="node free"><rect x="30" y="284" width="140" height="56" rx="10"/><text x="100" y="308">Live cards</text><text class="s" x="100" y="326">weather · prices</text></g>
-        <g class="node free"><rect x="185" y="284" width="140" height="56" rx="10"/><text x="255" y="308">Facts</text><text class="s" x="255" y="326">Wikidata</text></g>
-        <g class="node free"><rect x="340" y="284" width="140" height="56" rx="10"/><text x="410" y="308">Keystone</text><text class="s" x="410" y="326">verified answers</text></g>
-        <g class="node free"><rect x="495" y="284" width="140" height="56" rx="10"/><text x="565" y="308">Your recordings</text><text class="s" x="565" y="326">Arc + Arc Tagger index</text></g>
-
-        <g class="node paid"><rect x="690" y="170" width="280" height="64" rx="10"/><text x="830" y="198">Web search</text><text class="s" x="830" y="217">DuckDuckGo free · Tavily / Telem optional</text></g>
-        <g class="node"><rect x="690" y="60" width="280" height="64" rx="10"/><text x="830" y="88">Deepgram Flux</text><text class="s" x="830" y="107">optional cloud ear, with a key</text></g>
-        <g class="node acc"><rect x="690" y="284" width="280" height="56" rx="10"/><text x="830" y="308">Answer model, on your Mac</text><text class="s" x="830" y="326">{{ANSWER_LM}} · 1–2 cited sentences</text></g>
-        <g class="node out"><rect x="690" y="360" width="280" height="44" rx="10"/><text x="830" y="387">Cited answer, streamed</text></g>
-
-        <path class="ln" d="M160 92H196" marker-end="url(#ah)"/>
-        <path class="ln" d="M390 92H426" marker-end="url(#ah)"/>
-        <path class="ln dash" d="M390 76C520 40 600 40 690 76" marker-end="url(#ah)"/>
-        <path class="ln" d="M530 124V166" marker-end="url(#ah)"/>
-        <path class="ln" d="M430 202H394" marker-end="url(#ah)"/>
-        <path class="ln" d="M200 202H164" marker-end="url(#ah)"/>
-        <path class="ln" d="M530 234V262H100V280" marker-end="url(#ah)"/>
-        <path class="ln" d="M255 262V280M410 262V280M565 262V280"/>
-        <path class="ln paidln" d="M630 202H686" marker-end="url(#ah)"/>
-        <path class="ln" d="M635 312H686" marker-end="url(#ah)"/>
-        <path class="ln" d="M830 234V280" marker-end="url(#ah)"/>
-        <path class="ln" d="M830 340V356" marker-end="url(#ah)"/>
-      </svg>
-      <figcaption>Teal = free and local. Amber = goes to the web, once the meaning is final. Every lane has a timeout and a fallback.</figcaption>
-    </figure>
+    <p class="sec-lede">Most of a question's meaning arrives before you finish asking it. OnSet starts looking as soon as it does.</p>
     <ul class="points">
-      <li><b>Hears how you ask.</b> Whissle Arc reads the audio itself (who is speaking, corrections, whether you're done) alongside the words.</li>
-      <li><b>Searches while you speak.</b> The 10M-parameter Arc Tagger re-reads the partial sentence at about 0.7 ms per word, so lookups can start on word three.</li>
-      <li><b>Remembers context.</b> A local memory graph resolves “it”, “there” and “the old one” before anything is searched.</li>
-      <li><b>Web last, and free.</b> Cards, facts, saved answers and your recordings come first. Web search (DuckDuckGo, no key) runs only when they can't answer.</li>
-      <li><b>Answers on your Mac.</b> A small language model writes the 1–2 sentence answer from the sources, with citations. No cloud LLM.</li>
-      <li><b>Searches your recordings.</b> Drop in meetings, lectures or podcasts: Arc transcribes them and the Arc Tagger marks people, places and numbers, so answers can cite “Team sync · 12:40”.</li>
+      <li><b>Hears how you ask.</b> Arc listens on your Mac and knows when you're done, so the answer is ready the moment you stop.</li>
+      <li><b>Searches while you speak.</b> Lookups start a few words in, not after you finish.</li>
+      <li><b>Follows the conversation.</b> Ask “how old is he?” and OnSet knows who you mean.</li>
+      <li><b>Answers on your Mac.</b> A short, cited answer, written on your Mac. No cloud AI needed.</li>
     </ul>
   </section>
 
@@ -136,12 +89,12 @@
   <section id="privacy" class="sec two">
     <div>
       <h2>Private by default</h2>
-      <p class="sec-lede">Your voice, memory, recordings and answers stay on your Mac.</p>
+      <p class="sec-lede">Your voice, your questions and your answers stay on your Mac.</p>
     </div>
     <dl class="priv">
-      <div><dt>Stays on your Mac</dt><dd>Arc (speech), the Arc Tagger, the reranker, the answer model, your indexed recordings, the memory graph, the Keystone answer store and every cache. All in <code>~/Library/Application Support/OnSet</code>.</dd></div>
-      <div><dt>Leaves only when needed</dt><dd>The search query, when no local lane can answer: to DuckDuckGo, or to Tavily / Telem if you add a key. Audio goes to Deepgram only if you add a Deepgram key.</dd></div>
-      <div><dt>Never sent</dt><dd>Your memory graph, past questions, or a profile of you. Masked words never reach search, memory or logs. Keys live in the macOS Keychain.</dd></div>
+      <div><dt>Stays on your Mac</dt><dd>Listening, understanding and writing the answer all happen on your Mac, along with your history and everything OnSet remembers.</dd></div>
+      <div><dt>Leaves only when needed</dt><dd>The search words, when OnSet needs the web. Audio leaves only if you choose a cloud speech service.</dd></div>
+      <div><dt>Never sent</dt><dd>Your past questions or a profile of you. Keys you add stay in the macOS Keychain.</dd></div>
     </dl>
   </section>
 
