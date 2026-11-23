@@ -58,6 +58,34 @@ def store() -> Keystone:
         return _ks
 
 
+STORE_VERSION = 2       # 2: 0.2.0's on-device writer stored its own answers as verified ("Modi is 52"); start clean
+
+
+def migrate(d=None) -> str:
+    """Once per store version: move an older store aside (kept as <dir>.v<old>, never deleted) so wrong answers it
+    learned stop being served. Returns what it did ("" when nothing). Call before the first store() / shared_store()."""
+    import pathlib
+    import shutil
+    d = pathlib.Path(d or config.KEYSTONE_DIR)
+    mark = d / "VERSION"
+    try:
+        have = int(mark.read_text().strip()) if mark.exists() else 1
+    except ValueError:
+        have = 1
+    if have >= STORE_VERSION:
+        return ""
+    moved = ""
+    if d.exists() and any(p.name != "VERSION" for p in d.iterdir()):
+        dest = d.with_name(f"{d.name}.v{have}")
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.move(str(d), str(dest))
+        moved = str(dest)
+    d.mkdir(parents=True, exist_ok=True)
+    mark.write_text(f"{STORE_VERSION}\n")
+    return moved
+
+
 _shared = None
 
 

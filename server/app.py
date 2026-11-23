@@ -89,6 +89,14 @@ STATE = {"warm": False}
 async def startup():
     loop = asyncio.get_running_loop()
     t = time.perf_counter()
+    if config.INDEX and config.INDEX_PERSIST:
+        try:
+            from .keystone import hook as _ks
+            moved = _ks.migrate()
+            if moved:
+                print(f"[server] Keystone store v{_ks.STORE_VERSION}: the old store was moved to {moved}", flush=True)
+        except Exception as e:  # noqa: BLE001  (a store that can't be moved must not stop the app)
+            print(f"[server] Keystone migrate failed: {type(e).__name__}: {e}", flush=True)
     await loop.run_in_executor(None, ear.warmup)
     await embed.arun(embed.warmup)
     await embed.arun(personamod.warmup)

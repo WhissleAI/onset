@@ -414,3 +414,13 @@ def test_local_writer_answers_are_never_stored(index_on, monkeypatch):
     hook.note_answer(f, f.query(), "Narendra Modi is 52 years old.", "supported")
     assert hook.STATS.get("skipped_local", 0) == before.get("skipped_local", 0) + 1
     assert "DERIVED" in dir(hook) and "age_of" in hook.DERIVED
+
+
+def test_migrate_moves_an_old_store_aside_once(tmp_path):
+    d = tmp_path / "keystone"
+    d.mkdir()
+    (d / "cells.jsonl").write_text('{"payload": "Narendra Modi is 52 years old."}\n')
+    moved = hook.migrate(d)
+    assert moved and (tmp_path / "keystone.v1" / "cells.jsonl").exists()        # kept, not deleted
+    assert (d / "VERSION").read_text().strip() == str(hook.STORE_VERSION) and not (d / "cells.jsonl").exists()
+    assert hook.migrate(d) == ""                                                # once
