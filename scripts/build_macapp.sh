@@ -7,9 +7,11 @@
 #                                         (developer builds only: bakes this repo's path into Info.plist)
 #   scripts/build_macapp.sh --dmg         also make dist/<APP_NAME>.dmg (a second copy: ~1 GB more disk)
 #   scripts/build_macapp.sh --no-swap     leave the new build in dist/.staging (test it there first)
-#   scripts/build_macapp.sh --release     public release (MACAPP.md "Release"): models bundled read-only in
-#                                         Contents/Resources/models, Developer ID + timestamp signing, DMG, notarized and
-#                                         stapled. Goes to dist/release/ (never touches dist/<APP_NAME>.app). Needs
+#   scripts/build_macapp.sh --release     public release (MACAPP.md "Release"): a slim app whose models download on
+#                                         first launch from the public archives in models/manifest.release.json
+#                                         (scripts/publish_models.py), Developer ID + timestamp signing, DMG, notarized and
+#                                         stapled. Add --bundle-models for an all-in-one app instead (models read-only in
+#                                         Contents/Resources/models). Goes to dist/release/ (never touches dist/<APP_NAME>.app). Needs
 #                                         ONSET_SIGN_ID="Developer ID Application: ..." and NOTARY_PROFILE=<notarytool
 #                                         keychain profile>. Refuses --dev-env: a public build never reads a .env.
 #   scripts/build_macapp.sh --bundle-models   bundle the models into the app (release profile) without the rest
@@ -35,14 +37,17 @@ CLEAN=0; DEV_ENV=0; DMG=0; PY_ONLY=0; SWAP=1; SWAP_ONLY=0; RELEASE=0; BUNDLE_MOD
 for a in "$@"; do
   case "$a" in
     --clean) CLEAN=1 ;; --dev-env) DEV_ENV=1 ;; --dmg) DMG=1 ;; --python-only) PY_ONLY=1 ;; --no-swap) SWAP=0 ;; --swap) SWAP_ONLY=1 ;;
-    --release) RELEASE=1; BUNDLE_MODELS=1; DMG=1; NOTARIZE=1; SWAP=0 ;; --bundle-models) BUNDLE_MODELS=1 ;;
+    --release) RELEASE=1; DMG=1; NOTARIZE=1; SWAP=0 ;; --bundle-models) BUNDLE_MODELS=1 ;;
     --no-notarize) NOTARIZE=0 ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "unknown option $a"; exit 2 ;;
   esac
 done
 REQUIREMENTS="${REQUIREMENTS:-macapp/requirements.txt}"
-MODELS_MANIFEST="${MODELS_MANIFEST:-models/manifest.json}"
+# The app's manifest: the published release models (first-run download from public links) when present.
+if [ -z "${MODELS_MANIFEST:-}" ]; then
+  MODELS_MANIFEST=models/manifest.json; [ -f models/manifest.release.json ] && MODELS_MANIFEST=models/manifest.release.json
+fi
 if [ "$RELEASE" = 1 ]; then
   [ "$DEV_ENV" = 1 ] && { echo "--release never reads a .env: drop --dev-env"; exit 2; }
   case "${ONSET_SIGN_ID:-}" in "Developer ID Application:"*) ;; *) echo "--release needs ONSET_SIGN_ID=\"Developer ID Application: ...\" (security find-identity -v -p codesigning)"; exit 2 ;; esac

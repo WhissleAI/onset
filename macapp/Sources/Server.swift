@@ -157,11 +157,18 @@ final class ServerManager {
             self.state = .downloading(done: 0, total: 0, file: "")
             _ = self.runPython(["--json-progress", "fetch"]) { line in
                 guard let d = line.data(using: .utf8),
-                      let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-                      (o["event"] as? String) == "progress" else { return }
-                let done = (o["done"] as? NSNumber)?.int64Value ?? 0
-                let total = (o["total"] as? NSNumber)?.int64Value ?? 0
-                self.state = .downloading(done: done, total: total, file: "\(o["model"] ?? "")/\(o["file"] ?? "")")
+                      let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return }
+                switch o["event"] as? String {
+                case "progress":
+                    let done = (o["done"] as? NSNumber)?.int64Value ?? 0
+                    let total = (o["total"] as? NSNumber)?.int64Value ?? 0
+                    self.state = .downloading(done: done, total: total, file: "\(o["model"] ?? "")")
+                case "unpack":       // an archive arrived: unpacked and every file checked before it is used
+                    if case .downloading(let done, let total, _) = self.state {
+                        self.state = .downloading(done: done, total: total, file: "Checking \(o["model"] ?? "")…")
+                    }
+                default: return
+                }
             }
             self.q.async { self.start() }
         }

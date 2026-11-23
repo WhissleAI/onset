@@ -40,6 +40,18 @@ struct SplashView: View {
             Text(total > 0 ? "Downloading models: \(done / 1_000_000) of \(total / 1_000_000) MB" : "Preparing download…")
                 .font(.callout)
             Text(file).font(.caption).foregroundColor(.secondary).lineLimit(1).truncationMode(.middle)
+        case .needsModels(let missing) where missing.allSatisfy({ $0.downloadable }):
+            // first run: one download, no choices to make
+            let mb = missing.reduce(Int64(0)) { $0 + $1.bytes } / 1_000_000
+            VStack(spacing: 8) {
+                Text("One-time setup").font(.headline)
+                Text("\(AppInfo.name) runs its speech, search and answer models on this Mac. They download once (\(mb >= 1000 ? String(format: "%.1f GB", Double(mb) / 1000) : "\(mb) MB")) and every file is checked before it is used.")
+                    .multilineTextAlignment(.center).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Button("Download Models", action: onDownload).keyboardShortcut(.defaultAction).controlSize(.large)
+                Button("Check Again", action: onRetry)
+            }
         case .needsModels(let missing):
             VStack(alignment: .leading, spacing: 6) {
                 Text("Models needed").font(.headline)

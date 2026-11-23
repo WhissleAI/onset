@@ -140,6 +140,8 @@ def download(url: str, out: Path, f: dict, progress) -> None:
     with urllib.request.urlopen(req, timeout=60) as r:
         if have and r.status != 206:          # server ignored the range: start over
             have = 0
+        if have:
+            progress(have)                     # resumed: the bytes already on disk count toward the total
         with open(part, "ab" if have else "wb") as w:
             while True:
                 b = r.read(CHUNK)
