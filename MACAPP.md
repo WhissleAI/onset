@@ -7,9 +7,10 @@ runtime and the server. The models live in `~/Library/Application Support/<APP_N
 Onset.app/Contents/
   MacOS/Onset                  Swift shell (macapp/Sources/*.swift)
   Resources/python/            python-build-standalone 3.11 + the server's pinned dependencies (macapp/requirements.txt)
-  Resources/app/               server/, web/, scripts/fetch_models.py, models/manifest.json, libarctag.dylib (built from vendor/arctag/src)
+  Resources/app/               server/, web/, scripts/fetch_models.py, models/manifest.json, libarctag.dylib (built from vendor/arctag/src),
+                               libarc.dylib (Arc Mini in C, built from vendor/arc/src)
 ~/Library/Application Support/Onset/
-  models/                      arc-v1, arctag, embeddinggemma-2, answer-lm, index-data, demo-audio (models/manifest.json)
+  models/                      arc-mini, arctag, embeddinggemma-2, answer-lm, index-data, demo-audio (models/manifest.json)
   data/                        memory (MEM_DIR=data/memory), search cache (data/search_cache.json)
   logs/server.log              server output + request log (server.log.1 … .5 = earlier runs). Keys are never logged.
 ```
@@ -76,7 +77,10 @@ Without `ONSET_SIGN_ID` the build stays ad-hoc.
 
 | dir | what | source | size |
 |---|---|---|---|
-| `arc-v1` | Arc v1 ear (arc-audio 1.0.1 code + weights + Moonshine tiny) | **no public source**: `WhissleAI/arc-v1` is not anonymously reachable; `WhissleAI/arc-v1.1` (public, gated) is a different package, not a drop-in. Import a copy. | 575 MB |
+| `arc-mini` | Arc Mini: the ear, Arc metadata, recordings (4-bit weights + Moonshine tiny, read by libarc) | HF `WhissleAI/arc-v1.1@6f63715` (tag v1.2.0) `mini/` + LICENSE + NOTICE; **gated**: accept the licence, then `HF_TOKEN=... fetch_models.py fetch arc-mini` | 71 MB |
+| (bundled) | `libarc.dylib` | built from `vendor/arc/src` (`fetch_models.py build-arc`) | 0.6 MB |
+| `arc-lm` | Arc's n-gram LM for spoken questions (`questions.arclm`, 3-gram), fused into Arc Mini's finals | built by PromptingNemo-private `recipes/arc/ngram_lm` (see "Arc n-gram LM"); release copy via manifest.release.json; optional: without it the ear runs exactly as before | 32 MB |
+| `arc-v1` | optional, `ARC_BACKEND=v1` only: the old Arc v1 ear (arc-audio 1.0.1 code + weights + Moonshine tiny, torch) | **no public source**: `WhissleAI/arc-v1` is not anonymously reachable; `WhissleAI/arc-v1.1` (public, gated) is a different package, not a drop-in. Import a copy. | 575 MB |
 | `arctag` | Arc Tagger int8 ONNX + tokenizer + meta | HF `WhissleAI/arc-tagger@221e43d` `onnx/` (v0.4.1). The v0.3.0 that this repo was tested on is no longer on the Hub; a local v0.3.0 copy is accepted. | 10 MB |
 | (bundled) | `libarctag.dylib` | built from `vendor/arctag/src` (`fetch_models.py build-tagger`; the app build does it) | 0.2 MB |
 | `embeddinggemma-2` | EmbeddingGemma 2 | HF `google/embeddinggemma-2@f9972ac` (Apache 2.0, not gated) | 1.5 GB |
@@ -92,18 +96,19 @@ python3 scripts/fetch_models.py import arc-v1=/path/to/arc-v1 index-data=/path/t
 python3 scripts/fetch_models.py verify            # sha256 everything
 # developer machine: link existing copies instead of copying (no disk used)
 python3 scripts/fetch_models.py link --dev arc-v1=/path/to/arc-v1   # --dev: HF cache + this repo's models/arctag, index/data, eval/audio
+python3 scripts/fetch_models.py build-arc         # vendor/arc/libarc.dylib (cc, ~5 s)
 ```
-The server resolves each path in this order (`server/modelpaths.py`): its own env var (`ARC_DIR`, `EMBED_MODEL`,
+The server resolves each path in this order (`server/modelpaths.py`): its own env var (`ARC_MINI_DIR`, `ARC_LIB`, `ARC_DIR`, `EMBED_MODEL`,
 `ARCTAG_MODEL_DIR`, `ARCTAG_LIB`, `INDEX_DIR`, `AUDIO_DIR`), then `MODELS_DIR/<dir>` (`MODELS_DIR` defaults to
 `~/Library/Application Support/<APP_NAME>/models`), then the in-repo locations (`models/arctag`, `index/data`,
 `eval/audio`). No path in the code names a particular user's home folder.
 
 ## Native runtime (ONNX_RUNTIME, branch feat/native)
 Goal: every model runs on ONNX Runtime or C inside the notarized app, with no PyTorch at runtime and the models shipped
-in the bundle instead of downloaded. Status: **EmbeddingGemma 2 is done** (ONNX, 8-bit weights, parity below). The Arc
-encoder and trunk are exported with exact parity. **Arc's heads, Engine and decoder still run on torch**, so the app
-still needs torch and transformers. `ONNX_RUNTIME=1` (default off) switches the embedder now and is where the Arc
-port will plug in.
+in the bundle instead of downloaded. Status: **EmbeddingGemma 2 is done** (ONNX, 8-bit weights, parity below), the
+answer model is ONNX, and **Arc now runs in C** (Arc Mini through libarc, `ARC_BACKEND=mini`, the default; see "Arc Mini
+in C" below). With `ONNX_RUNTIME=1` no server code path imports torch, transformers or sentence-transformers any more
+(only the opt-in `ARC_META=transcriber` and `ARC_BACKEND=v1` do).
 
 ### Every model the server loads at runtime
 | model | framework today | files / size | loaded by | called from |
@@ -111,7 +116,8 @@ port will plug in.
 | EmbeddingGemma 2 (text 270M + audio 300M; vision unused) | torch + transformers + sentence-transformers. Docs + audio on MPS bf16, queries on CPU f32 (a second text-only copy) | `embeddinggemma-2/model.safetensors` 1.49 GB + tokenizer 32 MB | `server/embed.py` | query vectors: speculator (rank), lanes.local_text, knowledge (11k leads), sitebrain, keystone/hook, persona (categories). Doc vectors: speculator (fresh web docs, rerank). Audio vectors: lanes.local_audio (the audio lane, local-routed questions) |
 | **→ ONNX**: same model | onnxruntime + tokenizers + numpy | `embeddinggemma-2-onnx/` 669 MB (text.onnx 155, audio.onnx 346, embed_tokens.npz 135, tokenizer 32) | `server/embed_onnx.py` (ONNX_RUNTIME=1) | same calls |
 | Qwen2.5-0.5B-Instruct (answer writer) | onnxruntime + tokenizers (no torch): 4-bit weights incl. a 4-bit tied embedding/LM head, logits for the last position only (`scripts/native/quantize_answer_lm.py`), greedy, ≤ 96 new tokens, one generation at a time on a worker thread | `answer-lm/model.onnx` 327 MB + tokenizer 11 MB | `server/answer_lm.py` (warmed by `answer.warm()`) | `server/answer.py` Stream (drafts, soft and final answers). Measured 2026-11-23 on an M3 Pro (CPU, ANSWER_LM_THREADS=0): ~620-token prompt (5 short sources) first token ~0.5 s, ~1,460 tokens ~1.6 s; decode 65-110 tok/s. The earlier torch/MPS bf16 path was faster to first token (0.18 s at ~540 tokens) but a 988 MB download |
-| Arc v1 Mini (Moonshine Streaming tiny encoder 6 layers + Arc trunk 5 SeqLayers + tag/entity/diar/bio/word heads) | torch + transformers (MoonshineStreaming*) via the `arc_audio` package | `arc-v1/model.safetensors` 117 MB, `moonshine-streaming-tiny/model.safetensors` 176 MB (encoder + tagged decoder), `decoder_v1e` 138 MB, `decoder_release` 138 MB | `server/ear.py` arc() | EAR=arc: the local ear (builtin transcript = Moonshine decoder beam search). EAR=flux: `server/arcmeta.py` ARC_META=mini runs Arc's heads on Deepgram's words (command_complete, act/intent, speaker, bio events). `server/arcstate.py`: Arc's voice embedding per frame (diarization="voice") |
+| **Arc Mini** (WhissleAI/arc-v1.1 `mini/` v1.2.0: Moonshine Streaming tiny encoder + decoder, Arc trunk + heads, 4-bit) | **C** (`libarc.dylib`, vendored libarc 1.5.0, no dependencies) via ctypes; weights mmap'd | `arc-mini/` 71 MB (model.q4 37, moonshine-streaming-tiny/model.q4 25, heads 7); lib 0.6 MB | `server/arc_c.py` (from `server/ear.py` arc_stream / transcribe) | ARC_BACKEND=mini (default): the Arc ear (FULL stream: timed partials + finals, command_complete), `server/arcmeta.py` ARC_META=mini (EXTERNAL stream on Flux's words: for-me, command_complete, act, intent, speaker role, sound / bio events), `server/userindex.py` (recordings, arc_transcribe). No voice-embedding tap: ArcState voice enrollment is off on it |
+| Arc v1 Mini (ARC_BACKEND=v1 only; Moonshine Streaming tiny encoder 6 layers + Arc trunk 5 SeqLayers + tag/entity/diar/bio/word heads) | torch + transformers (MoonshineStreaming*) via the `arc_audio` package | `arc-v1/model.safetensors` 117 MB, `moonshine-streaming-tiny/model.safetensors` 176 MB (encoder + tagged decoder), `decoder_v1e` 138 MB, `decoder_release` 138 MB | `server/ear.py` arc() | EAR=arc: the local ear (builtin transcript = Moonshine decoder beam search). EAR=flux: `server/arcmeta.py` ARC_META=mini runs Arc's heads on Deepgram's words (command_complete, act/intent, speaker, bio events). `server/arcstate.py`: Arc's voice embedding per frame (diarization="voice") |
 | Arc Transcriber (Arc v1.1 full: Parakeet-TDT 0.6B tap + adapters) | torch (MPS), `arc_transcriber` code | not bundled (~3.1 GB RSS) | `server/arcmeta.py` transcriber() | ARC_META=transcriber only (opt-in read-out, never default). Must stay off in the public app |
 | Arc Tagger | **C** (`libarctag.dylib`: its own ONNX reader + Accelerate, no onnxruntime) via ctypes | `arctag/arctag_int8.onnx` 9 MB + tokenizer + meta; lib 0.2 MB | `server/tagger.py` | session (endpoint gate, frame read-out: entity/number/pii/events/intent/act/state), heard, memory, persona, confidence, trainlog; `server/safety.py` (TAGGER_SAFETY=1): profanity/toxicity span heads + utterance flags on the question handle, and a **second streaming handle** for the answer text (AnswerMasker) |
 | Search director (Mamba-3, int8) | **numpy** (int8 rows, f32 scale, dequantised at load) | `server/director/director.npz` 56 KB | `server/director.py` | DIRECTOR=on (Flux updates: end of turn, fire/draft/keep/addressed/route/pii heads) |
@@ -159,7 +165,90 @@ The doc and audio batches are 2-2.5x slower on CPU than torch on the GPU. End to
 and +52 ms, against torch − torch −74 ms. So ONNX is within run-to-run noise, not shown faster or slower, and
 `ONNX_RUNTIME` stays **default off** (the "no slower p50" bar is not proven).
 
-### Arc v1 Mini: what is exported
+### Arc Mini in C (libarc): the ear since feat/arc-mini
+`ARC_BACKEND=mini` (default) runs Arc Mini from `MODELS_DIR/arc-mini` through `vendor/arc` (WhissleAI/arc_transcriber
+`c/` @a512de7, libarc 1.5.0 with n-gram LM fusion, ABI 2; `server/arc_c.py`, ctypes). One engine per stream (one call at a time; loads in
+tens of ms, weights mmap'd and shared). The vendored copy has one patch (`arc_stream_set_words`, `vendor/arc/ORIGIN.md`):
+streamed partials and finals carry **word times** (upstream streams have them only in EXTERNAL mode) and a partial decodes
+a **fresh encode of its window** like arc_audio 1.0.1 did; upstream decodes the streamed encoder states, which wait for
+the encoder's 0.24 s look-ahead and showed the last word ~0.25 s later (complete p50 300 ms vs 60 ms, 0.5 vs 0.16 words
+behind; `runs/arc_ear/mini_streamed.json`). `ARC_BACKEND=v1` keeps the old arc_audio 1.0.1 ear for comparison.
+
+A/B, `eval/arc_ear_eval.py` (each ear in its own process, streamed like server/ear.py: 100 ms chunks, 1.5 s tail;
+205 spoken questions from eval/questions, current, multipart, showcase, sitebrain, index/questions_local and the
+conversation turns; v1 with partials and finals inside feed() so its lags are the model's own; M3 Pro;
+`runs/arc_ear/{v1,mini}.json`):
+
+| | Arc v1 (arc_audio 1.0.1, torch, 6 threads) | **Arc Mini (libarc, 2 threads)** |
+|---|---|---|
+| WER, 205 clean questions (exact) | 6.90 % (70.2 %) | **6.84 %** (69.3 %); paired: better on 22 files, worse on 20 |
+| WER, 52 questions at 10 dB SNR (babble + pink) | 43.5 % (9.6 %) | **35.3 %** (21.2 %); paired: better on 20, worse on 11 |
+| whole final text first shown, after speech end (p50 / p90) | 60 / 427 ms | 60 / 430 ms |
+| words behind while speaking (mean) | 0.15 | 0.16 |
+| first word shown, after that word ends (p50) | -110 ms | -70 ms |
+| final (utterance closed), after speech end (p50) | 430 ms | 430 ms (same pause rule) |
+| compute per 100 ms chunk (p50 / p90 / max / mean) | 11.0 / 70.7 / 407 / 24.9 ms | **4.1 / 42.5 / 219 / 12.6 ms** |
+| cold start (import + load + first stream) | 4.5 s | **0.2-0.6 s** |
+| peak RSS of the eval process | 1,098 MB | **413 MB** |
+| model on disk (download) | 577 MB (437 MB shipped) | **71 MB** |
+| runtime it needs | torch + transformers | libc (0.6 MB dylib) |
+
+Arc Mini's errors are the same kind as v1's (brand names: "Nvidia" → "and video", "Tavily" → "table"); it writes
+cased, punctuated text with digits and symbols ("$100", "U.S."), which the sessions already accept from Deepgram.
+The longest chunk is the final's 4-beam decode + alignment inside the push that closes the utterance (on the ear's
+worker thread, never the event loop).
+
+### Arc n-gram LM: finals re-ranked by spoken-question text
+`MODELS_DIR/arc-lm/questions.arclm` (32 MB, ARCLM1, token 3-gram) is fused into Arc Mini's decoder by libarc 1.5's
+`arc_set_lm` (shallow fusion as a relative re-ranker; tags and the end token are left to the audio). On by default when
+the file is there: `ARC_LM=0` turns it off, `ARC_LM=/path/x.arclm` swaps it, `ARC_LM_WEIGHT` (0.3), `ARC_LM_TOPK` (0 =
+16). Only FULL streams (the live ear) get it; recordings and Arc metadata do not. **Partials decode without the LM**
+(`ARC_LM_PARTIALS=0`, the vendor/arc patch bit 4 of `arc_stream_set_words`): every partial, every word time and the
+endpoint are bit-for-bit what they are without an LM; only the final's words can change.
+
+Text: public question corpora with open licences (GooAQ, Natural Questions, SQuAD 2.0, Mintaka, MASSIVE, HotpotQA,
+MuSiQue, 2WikiMultihopQA, StrategyQA, CoQA (open-licence passages), QuAC), Whissle's own spoken search queries (the
+search director's texts) and Wikipedia lead titles: 5.7 M lines, re-cased to Arc's written form, every Onset eval text
+and its near-duplicates excluded. Sources are weighted (director queries x20, MASSIVE x5, conversational and multi-hop
+x3, GooAQ x1, ...). Licence CC BY-SA 4.0 (`arc-lm/NOTICE` lists the sources). Recipe: PromptingNemo-private
+`recipes/arc/ngram_lm/corpora/questions/` (`build_onset.sh`, `mix.py`), trainer `build_lm.py --order 3 --prune 0,8,16`.
+
+Tuned on two synthetic dev sets that are not Onset's eval (300 held-out search questions, 300 held-out director
+queries; macOS voices), then measured once on the held-out eval (`eval/arc_ear_eval.py --lm`). Size vs WER at weight
+0.3 (dev / director-dev WER %; no LM 24.18 / 20.28):
+
+| LM | 8 MB | 16 MB | 32 MB 3-gram (shipped) | 32 MB 4-gram | 64 MB | 128 MB |
+|---|---|---|---|---|---|---|
+| dev | 22.06 | 21.51 | 21.77 | 21.68 | 21.68 | 20.96 |
+| director dev | 20.84 | 20.25 | **19.16** | 19.31 | 19.57 | 19.35 |
+
+Before / after (weight 0.3; "final" = when the final arrives after the end of speech; "complete" = when the words on
+screen first equal that final; "unchanged" = the files whose final words the LM did not change):
+
+| set | | WER % | names % | exact % | final p50/p95 ms | complete p50/p95 ms | complete on unchanged files | chunk mean/p90 ms |
+|---|---|---|---|---|---|---|---|---|
+| eval (205) | no LM | 6.84 | 85.5 | 69.3 | 430/490 | 60/450 | 60/450 | 11.6/39.6 |
+| | **LM, finals only** | **6.23** | **86.4** | **73.2** | 430/490 (every file identical) | 70/460 | identical (163 files) | 11.9/40.0 |
+| | LM on partials too | 6.23 | 86.4 | 73.2 | 430/490 | 60/460 | 40/459 vs 30/439 | 12.7/42.9 |
+| eval snr10 (52) | no LM | 35.32 | 81.2 | 21.2 | 405/3820 | 325/2347 | | 12.7/41.7 |
+| | **LM, finals only** | **33.33** | 81.2 | **26.9** | identical | 375/2370 | identical | 13.1/42.4 |
+| director dev (300) | no LM | 20.28 | 67.7 | 33.0 | 420/480 | 210/470 | | 14.3/49.3 |
+| | **LM, finals only** | **19.16** | **71.5** | **37.7** | identical | 355/480 | identical (160) | 14.2/48.3 |
+| dev (300) | no LM | 24.18 | 56.2 | 30.3 | 420/480 | 180/470 | | 11.9/42.2 |
+| | **LM, finals only** | **21.77** | **67.1** | **36.0** | identical | 315/480 | identical (163) | 12.1/42.3 |
+
+The LM adds no latency: the endpoint and the final arrive at the same moment on every file, partials are unchanged,
+compute per 100 ms chunk is within noise, load is an mmap (~0.1 s), RSS +30-70 MB. "complete" rises only on the files
+whose final the LM rewrote (a corrected word can first appear in the final, which comes when it always did); on every
+other file it is identical. Fusing partials too barely moves that and makes partials less stable, so it stays off.
+Names = the reference's capitalised and numeric words found in the transcript.
+
+Offline (whole clip as one utterance, `arc_transcribe`, as recordings use it) the same LM does not help: eval WER 6.05 %
+without, 6.23 % fused; rescoring the 4-beam n-best with it (score + lambda x mean LM ln p) is 6.29-7.27 % for lambda
+0.1-0.8 (director dev: 20.51 % without, 20.66 % fused, 19.31-20.10 % rescored). So recordings stay without the LM, and
+the live ear uses fusion (n-best rescoring is not available on stream finals).
+
+### Arc v1 Mini: what is exported (superseded by Arc Mini in C)
 `scripts/native/export_arc.py` → `server/arc_onnx.py`:
 - `MSTStream`: `arc_audio.mst.MSTStreamEncoder` line for line (same buffers, windows, 240 ms look-ahead, trimming).
   The frame embedder, the 6 sliding-window layers and the final norm are ONNX; the two stride-2 convs are numpy.
@@ -191,21 +280,20 @@ sets intra-op threads. `macapp/requirements-native.txt` is the dependency set fo
 ### Sizes (runtime + models)
 | | Python runtime | models | total |
 |---|---|---|---|
-| today (`requirements.txt`, safetensors) | 736 MB (torch 314, scipy 85, transformers 64, numpy 43, sympy 33, sklearn 28, PIL 14, torchvision 10) | arc-v1 574 + arctag 10 + embeddinggemma-2 1,525 + index-data 102 (+ demo-audio 17) = 2,211 (2,228) MB | 2.95 GB |
-| ONNX_RUNTIME=1 now (Arc on torch; ST, sklearn, scipy, PIL, torchvision, accelerate dropped, onnxruntime added) | est. ~670 MB | 574 + 10 + **669** + 102 = 1,355 MB | est. ~2.0 GB |
-| all native (`requirements-native.txt`, measured install: 172 MB site-packages + ~39 MB interpreter, before bytecode) | ~215 MB | Arc est. ~300 MB f32 (~90 MB at 8 bit) + 10 + 669 + 102 | est. ~1.1-1.3 GB |
-The "est." rows are not built yet: they are package sums, not a measured bundle. Arc trimming that needs no port:
-`decoder_v1e.safetensors` (138 MB) only serves `decoder="v1e"`, which the server never asks for, and `README.md`,
-`examples/`, `results/`, `tests/` are not needed at runtime. The licence files stay.
+| before feat/arc-mini (`requirements.txt`, safetensors) | 736 MB (torch 314, scipy 85, transformers 64, numpy 43, sympy 33, sklearn 28, PIL 14, torchvision 10) | arc-v1 574 + arctag 10 + embeddinggemma-2 1,525 + index-data 102 (+ demo-audio 17) = 2,211 (2,228) MB | 2.95 GB |
+| ONNX_RUNTIME=1 + Arc Mini in C (`requirements-native.txt`: no torch, transformers, ST, sklearn, scipy, PIL, torchvision, accelerate; measured install 172 MB site-packages + ~39 MB interpreter, before bytecode) | ~215 MB | arc-mini **71** + arctag 10 + embeddinggemma-2-onnx 669 + answer-lm 338 + index-data 102 = 1,190 MB | est. ~1.4 GB |
+The "est." row is not built yet: package sums, not a measured bundle (the release build and its requirements are the
+lead's: feat/onset-public).
 
 ### Licences and redistribution (the app is a public download)
 | component | licence | redistribution | the app must include |
 |---|---|---|---|
 | EmbeddingGemma 2 (and our ONNX build) | Apache 2.0 (model card → ai.google.dev/gemma/docs/gemma_4_license); deployments must follow the Gemma Prohibited Use Policy | allowed, modified files must say so | `embeddinggemma-2-onnx/LICENSE` (Apache 2.0 text) + `NOTICE` (what we changed); link to the Prohibited Use Policy in the app's About/licences |
-| Arc v1 (code + weights) | **CC BY-NC 4.0**, Whissle; "commercial use requires a separate licence from WhissleAI" | free non-commercial redistribution with attribution is allowed; WhissleAI is the rights holder, so shipping its own app is its decision, but **a paid / ad-supported / for-profit-business use of the downloaded app is outside the licence users receive** | `arc-v1/LICENSE`, `arc-v1/NOTICE` |
+| Arc Mini (weights, `arc-mini/`) and libarc (C code, `vendor/arc`); Arc v1 likewise | **CC BY-NC 4.0** + Whissle terms (WhissleAI/arc_transcriber LICENSE); "commercial use requires a separate licence from WhissleAI" | free non-commercial redistribution with attribution is allowed; WhissleAI is the rights holder, so shipping its own app is its decision, but **a paid / ad-supported / for-profit-business use of the downloaded app is outside the licence users receive** | `arc-mini/LICENSE`, `arc-mini/NOTICE`, `vendor/arc/LICENSE`, `vendor/arc/NOTICE` |
 | Qwen2.5-0.5B-Instruct (answer-lm, modified: 4-bit ONNX) | Apache 2.0 (Qwen team, Alibaba Cloud) | allowed; keep the licence | `answer-lm/LICENSE` (copied to Resources/Licenses as `Qwen2.5-0.5B-Instruct-LICENSE.txt`) |
-| Moonshine Streaming tiny (modified by Whissle, inside arc-v1) | MIT (Useful Sensors / Moonshine AI) | allowed; keep the copyright + licence | `arc-v1/moonshine-streaming-tiny/LICENSE`, `ORIGIN.md` |
-| jellyfish Metaphone fallback (in arc_audio/rescorer.py) | MIT | allowed | covered by arc-v1/NOTICE |
+| Moonshine Streaming tiny (modified by Whissle, inside arc-mini) | MIT (Useful Sensors / Moonshine AI) | allowed; keep the copyright + licence | `arc-mini/moonshine-streaming-tiny/LICENSE`, `ORIGIN.md` |
+| jellyfish Metaphone (C port in libarc's src/arc_ntext.c) | MIT | allowed | covered by vendor/arc/NOTICE |
+| Arc n-gram LM (`arc-lm/questions.arclm`) | **CC BY-SA 4.0** (n-gram statistics of CC BY-SA / CC BY / Apache-2.0 / MIT question corpora + Whissle's own queries) | allowed with attribution; share-alike applies to the LM file only | `arc-lm/LICENSE`, `arc-lm/NOTICE` |
 | Arc Tagger (weights + libarctag C code) | **CC BY-NC 4.0 + Whissle terms** (the terms exclude use "in or with a product or service" and "by or for a for-profit organisation in its business") | the same NC flag as Arc; Whissle Inc. owns it | `models/arctag/LICENSE`, `models/arctag/NOTICE`, `vendor/arctag/LICENSE`, `vendor/arctag/NOTICE` |
 | cJSON (in libarctag) | MIT | allowed | `vendor/arctag/third_party/cjson/LICENSE` |
 | ONNX Runtime | MIT | allowed | its `ThirdPartyNotices.txt` + LICENSE (inside the wheel; keep them when trimming) |
@@ -219,9 +307,15 @@ of Arc and the Arc Tagger, which Whissle has to decide on for any commercial or 
 demo-audio, which must stay out of the public bundle.
 
 ### Hand-off to the release build (feat/release)
-- Bundle `MODELS_DIR` contents: `arc-v1`, `arctag`, `embeddinggemma-2-onnx` (with ONNX_RUNTIME=1; then
+- Bundle `MODELS_DIR` contents: `arc-mini` (not `arc-v1`), `arctag`, `embeddinggemma-2-onnx` (with ONNX_RUNTIME=1; then
   `embeddinggemma-2` is not needed) and, for a public build, no `index-data` / `demo-audio` (see licences).
   Paths, sizes and sha256 are in `models/manifest.json` (`fetch_models.py verify`).
+- Build `libarc.dylib` into the app like libarctag: `python3 scripts/fetch_models.py build-arc --out
+  "$A/vendor/arc/libarc.dylib"` (server/modelpaths.arc_lib looks in `<app>/vendor/arc/`), sign it like the other
+  Mach-Os, and copy `vendor/arc/LICENSE` / `NOTICE` and `arc-mini/LICENSE` / `NOTICE` /
+  `moonshine-streaming-tiny/LICENSE` into Resources/Licenses.
+- Bundle `arc-lm` (32 MB: `questions.arclm`, `LICENSE`, `NOTICE`; release_profile ships it) and copy
+  `arc-lm/LICENSE` / `NOTICE` (CC BY-SA 4.0) into Resources/Licenses.
 - Set `ONNX_RUNTIME=1` in the server environment (macapp/Sources/Server.swift) once the release build switches. Point
   `MODELS_DIR` (or the per-model env vars) at the bundled `Resources/models`.
 - Add `onnxruntime==1.32.0` to `macapp/requirements.txt`. While Arc needs torch, drop sentence-transformers, torchvision,
@@ -312,7 +406,7 @@ ONSET_SIGN_ID="Developer ID Application: Whissle LLC (XXK95K57U5)" NOTARY_PROFIL
   allows from `MODELS_DIR` (or `MODELS_SRC`) into `Contents/Resources/models` (APFS clones, sha256-checked) and writes
   the bundle's own `manifest.json` (`"bundled": true`, exactly the files shipped). The app sees that manifest and
   uses the bundle read-only as `MODELS_DIR`; its model check runs `fetch_models.py status --manifest <bundle>`.
-  The profile ships Arc v1, Arc Tagger, EmbeddingGemma 2, the Wikipedia leads (index-data/knowledge) and the Replay
+  The profile ships Arc Mini (not Arc v1), Arc Tagger, EmbeddingGemma 2, the Wikipedia leads (index-data/knowledge) and the Replay
   questions voiced with Kokoro. It leaves out the local-moments index (third-party recordings, not ours to
   redistribute) and questions voiced with macOS system voices; `/api/questions` lists only what is installed.
 - **Native runtime** (feat/native): `MODELS_MANIFEST=<onnx manifest> ONNX_RUNTIME=1 REQUIREMENTS=<slim

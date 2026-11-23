@@ -101,3 +101,12 @@ def tagger_lib(env=None, root: Path = ROOT) -> Path:
     if repo.exists():
         return repo
     return models_dir(env, root) / "arctag" / "libarctag.dylib"
+
+
+def arc_lib(env=None, root: Path = ROOT) -> Path:
+    """libarc.dylib (Arc Mini in C, the ear) is built from vendor/arc/src (scripts/fetch_models.py build-arc, or the
+    app build). ARC_LIB env wins."""
+    env = os.environ if env is None else env
+    if env.get("ARC_LIB"):
+        return Path(env["ARC_LIB"]).expanduser()
+    return root / "vendor" / "arc" / "libarc.dylib"

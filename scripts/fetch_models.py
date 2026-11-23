@@ -13,6 +13,7 @@ Standard library only: runs with any Python 3.9+ (the repo venv, the app's bundl
                                                         models, this repo's legacy folders models/arctag, index/data, eval/audio)
     scripts/fetch_models.py import NAME=PATH [...]     copy an existing copy in (a model with no public source), sha256-checked
     scripts/fetch_models.py build-tagger [--out FILE]  compile vendor/arctag/src -> libarctag.dylib (cc + Accelerate)
+    scripts/fetch_models.py build-arc [--out FILE]     compile vendor/arc/src -> libarc.dylib (Arc Mini in C: the ear)
     scripts/fetch_models.py hash DIR                   print a manifest "files" list for DIR (maintainers)
     scripts/fetch_models.py bundle --out DIR [--src SRC] [--profile FILE]
                                                         release builds: copy the models the release profile allows
@@ -136,7 +137,11 @@ def download(url: str, out: Path, f: dict, progress) -> None:
     if have > f["size"]:
         part.unlink()
         have = 0
-    req = urllib.request.Request(url, headers={"User-Agent": UA, **({"Range": f"bytes={have}-"} if have else {})})
+    hdr = {"User-Agent": UA, **({"Range": f"bytes={have}-"} if have else {})}
+    tok = os.environ.get("HF_TOKEN")
+    if tok and url.startswith("https://huggingface.co/"):          # gated repos (WhissleAI/arc-v1.1)
+        hdr["Authorization"] = f"Bearer {tok}"
+    req = urllib.request.Request(url, headers=hdr)
     with urllib.request.urlopen(req, timeout=60) as r:
         if have and r.status != 206:          # server ignored the range: start over
             have = 0
@@ -333,6 +338,22 @@ def cmd_build_tagger(a) -> int:
     return r.returncode
 
 
+def cmd_build_arc(a) -> int:
+    """libarc: C11, libc + libm + threads (NEON kernels on arm64), no frameworks."""
+    v = ROOT / "vendor" / "arc"
+    out = Path(a.out) if a.out else v / "libarc.dylib"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cmd = ["cc", "-O2", "-std=c11", "-shared", "-fPIC", "-pthread", f"-I{v / 'include'}", f"-I{v / 'src'}",
+           *sorted(str(p) for p in (v / "src").glob("*.c")), "-lm",
+           "-install_name", "@rpath/libarc.dylib", "-o", str(out)]
+    if a.arch:
+        cmd[1:1] = ["-arch", a.arch]
+    r = subprocess.run(cmd)
+    if r.returncode == 0:
+        emit("built", message=f"{out}")
+    return r.returncode
+
+
 def cmd_hash(a) -> int:
     d = Path(a.dir)
     skip = {".cache", "__pycache__", ".git"}
@@ -441,6 +462,7 @@ def main(argv=None) -> int:
     p.add_argument("--verify", action="store_true")
     p = sub.add_parser("import"); p.add_argument("specs", nargs="+")
     p = sub.add_parser("build-tagger"); p.add_argument("--out"); p.add_argument("--arch")
+    p = sub.add_parser("build-arc"); p.add_argument("--out"); p.add_argument("--arch")
     p = sub.add_parser("hash"); p.add_argument("dir")
     p = sub.add_parser("bundle"); p.add_argument("--out", required=True); p.add_argument("--src")
     p.add_argument("--profile", default=str(PROFILE)); p.add_argument("--no-verify", action="store_true")
@@ -448,6 +470,8 @@ def main(argv=None) -> int:
     JSON_OUT = a.json_progress
     if a.cmd == "build-tagger":
         return cmd_build_tagger(a)
+    if a.cmd == "build-arc":
+        return cmd_build_arc(a)
     if a.cmd == "hash":
         return cmd_hash(a)
     man = load_manifest(Path(a.manifest))

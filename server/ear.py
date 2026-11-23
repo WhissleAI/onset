@@ -7,7 +7,8 @@ utterance's words so far (later words may revise earlier ones) and is also calle
 utterance is open: each call is a tick for the speculator's stability timers.
 
   make_ear(sinks, domain, on_event)   picks the ear from env EAR=arc|deepgram (default arc)
-  ArcEar        Arc v1 Mini's built-in transcript, local (torch, CPU thread)
+  ArcEar        Arc's built-in transcript, local, on one CPU thread: Arc Mini in C (libarc, server/arc_c.py; default)
+                or, with ARC_BACKEND=v1, the old Arc v1 Mini (arc_audio 1.0.1 on torch)
   DeepgramEar   Deepgram's live websocket (nova-3, interim results, short endpointing); falls back to Arc when there is
                 no key, the connection fails, or it drops mid-run (the open utterance's audio is re-fed to Arc)
 """
@@ -31,8 +32,19 @@ _arc_lock = threading.Lock()
 _pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="arc")
 
 
+_mini_ready = False
+
+
+def backend() -> str:
+    """"mini": Arc Mini in C (libarc + MODELS_DIR/arc-mini, no torch); "v1": arc_audio 1.0.1 + MODELS_DIR/arc-v1."""
+    return "v1" if config.ARC_BACKEND == "v1" else "mini"
+
+
 def arc():
+    """The arc_audio Arc object (ARC_BACKEND=v1 only: Arc Mini in C has no Python model object; see arc_stream)."""
     global _arc
+    if backend() != "v1":
+        raise RuntimeError("arc() is the ARC_BACKEND=v1 model; Arc Mini runs through server/arc_c.py")
     with _arc_lock:
         if _arc is None:
             sys.path.insert(0, str(config.ARC_DIR))
@@ -41,15 +53,57 @@ def arc():
         return _arc
 
 
+def loaded() -> bool:
+    """The ear's model is loaded (a new stream is then quick)."""
+    return _arc is not None if backend() == "v1" else _mini_ready
+
+
+def arc_stream(domain: str = "assistant", mode: str = "full"):
+    """A new Arc stream with arc_audio's feed / flush output shape. mode "full": the built-in transcript with partials
+    (the ear); "external": heads + another recogniser's words (Arc metadata, server/arcmeta.py). Close it with
+    close_stream() on the thread that feeds it."""
+    global _mini_ready
+    if backend() == "v1":
+        if mode == "full":
+            return arc().stream(domain=domain, transcript="builtin", partials=True)
+        return arc().stream(domain=domain, transcript="external", name_source="word", interim_source="deepgram",
+                            partials=False)
+    from . import arc_c
+    s = arc_c.open_stream(config.ARC_MINI_DIR, config.ARC_C_THREADS, domain, mode=mode,
+                          partial_ms=config.ARC_PARTIAL_MS, partial_encode=config.ARC_PARTIAL_ENCODE,
+                          lm=config.arc_lm() if mode == "full" else None, partial_lm=config.ARC_LM_PARTIALS)
+    _mini_ready = True
+    return s
+
+
+def close_stream(s):
+    if s is not None and hasattr(s, "close"):
+        s.close()
+
+
+def transcribe(wav: np.ndarray, domain: str) -> dict:
+    """A whole recording -> arc_audio predict()'s keys that server/moments.py reads (transcript with word times,
+    names, numbers, events, speakers, diarization)."""
+    if backend() == "v1":
+        return arc().predict(wav, domain=domain, transcript="builtin", return_frames=False)
+    from . import arc_c
+    e = arc_c.Engine(config.ARC_MINI_DIR, config.ARC_C_THREADS)
+    try:
+        return arc_c.predict_shape(e.transcribe(wav, domain))
+    finally:
+        e.close()
+
+
 def warmup():
     """Arc is loaded whatever the ear: it is the Deepgram ear's fallback."""
     t = time.perf_counter()
-    s = arc().stream(domain="assistant", transcript="builtin", partials=True)
+    s = arc_stream("assistant")
     z = np.zeros(1600, np.float32)
     rng = np.random.default_rng(0)
     for i in range(20):
         s.feed(z if i % 2 else rng.standard_normal(1600).astype(np.float32) * 0.001)
     s.flush()
+    close_stream(s)
     if config.EAR == "flux":
         arcmeta.warmup()                     # Arc Transcriber (ARC_META=transcriber) loads ~3 GB: do it before the demo
     return time.perf_counter() - t
@@ -110,7 +164,7 @@ class ArcEar:
 
     def __init__(self, sinks: list, domain: str = "assistant", on_event=None, offset_s: float = 0.0):
         self.sinks = sinks
-        self.stream = arc().stream(domain=domain, transcript="builtin", partials=True)
+        self.stream = arc_stream(domain)
         self.offset = float(offset_s)
         self.samples = int(round(self.offset * 16000))
         self.on_event = on_event or (lambda e: None)
@@ -175,6 +229,8 @@ class ArcEar:
         _arc_events(out, self.at_s, o, self.on_event)
 
     def close(self):
+        if not self.closed:
+            _pool.submit(close_stream, self.stream)      # after any feed still queued on the Arc thread
         self.closed = True
 
 
@@ -235,11 +291,13 @@ class DeepgramEar:
         self.rx: asyncio.Task | None = None
         self.arcx = self.adapter = None
         if config.DG_ARC_EVENTS and self.name == "deepgram":             # optional: Arc on the same audio + Deepgram's words, for its events only
-            sys.path.insert(0, str(config.ARC_DIR))
-            from arc_audio import WordEventAdapter
-            self.arcx = arc().stream(domain=domain, transcript="external", name_source="word",
-                                     interim_source="deepgram", partials=False)
-            self.adapter = WordEventAdapter(self.arcx)
+            self.arcx = arc_stream(domain, mode="external")
+            if backend() == "v1":
+                sys.path.insert(0, str(config.ARC_DIR))
+                from arc_audio import WordEventAdapter
+                self.adapter = WordEventAdapter(self.arcx)
+            else:
+                self.adapter = DGWords(self.arcx)
         self.tx = asyncio.create_task(self._run())
 
     @property
@@ -478,6 +536,8 @@ class DeepgramEar:
         if self.closed:
             return
         self.closed = True
+        if self.arcx is not None:
+            _pool.submit(close_stream, self.arcx)
         if self.fb is not None:
             self.fb.close()
         if self.failed is None and self.ws is not None and not self.tx.done():
@@ -488,6 +548,20 @@ class DeepgramEar:
         if self.rx is not None:
             rx = self.rx
             asyncio.get_running_loop().call_later(2.5, lambda: rx.done() or rx.cancel())
+
+
+class DGWords:
+    """Deepgram "Results" -> an Arc Mini external stream's words (what arc_audio's WordEventAdapter does for v1)."""
+
+    def __init__(self, stream):
+        self.stream = stream
+
+    def on_message(self, d: dict):
+        alts = (d.get("channel") or {}).get("alternatives") or [{}]
+        ws = [{"text": w.get("word") or "", "start": w.get("start"), "end": w.get("end")}
+              for w in alts[0].get("words") or [] if w.get("word")]
+        if ws:
+            self.stream.add_words(ws, final=bool(d.get("is_final")))
 
 
 # ---------------------------------------------------------------------------------------------------- Deepgram Flux

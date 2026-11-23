@@ -507,6 +507,7 @@ class FakeWS:
 def ws_env(monkeypatch, tmp_path):
     FakeArc.streams = []
     monkeypatch.setattr(earmod, "arc", lambda: FakeArc())
+    monkeypatch.setattr(config, "ARC_BACKEND", "v1")   # the arc_audio-shaped fake
     monkeypatch.setattr(config, "EAR", "arc")
     monkeypatch.setattr(appmod, "AUDIO", tmp_path)
     sf.write(str(tmp_path / "q.wav"), np.zeros(16000 * 4, np.float32), 16000)

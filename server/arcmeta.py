@@ -5,8 +5,11 @@ heads only (no transcription decoder, no builtin fallback decoder): device-direc
 (continuous probability and its event), act / intent of the open utterance, speaker id + role, bio events (breath,
 throat clear, ...), and, with Arc v1.1, audio events.
 
-  mini         Arc v1 Mini (arc-v1 1.0.1, the model already loaded for the Arc ear / fallback: no extra RAM).
-               Measured on this M3 Pro with real Flux words: ~10 ms of CPU per 100 ms chunk (RTF ~0.1),
+  mini         Arc Mini, the ear's model (ARC_BACKEND=mini: libarc in C, an external-words stream with no decoder,
+               server/arc_c.py; the read-out comes from its 100 ms FRAME records and EVENT records, the speaker from
+               arc_stream_speakers. No voice-embedding tap, so ArcState's voice enrollment is off on it).
+               ARC_BACKEND=v1: Arc v1 Mini (arc-v1 1.0.1, the model already loaded for the Arc ear / fallback).
+               Measured (v1) on this M3 Pro with real Flux words: ~10 ms of CPU per 100 ms chunk (RTF ~0.1),
                command_complete ~0.2 s after the last word.
   transcriber  Arc Transcriber (Arc v1.1 "full": NVIDIA Parakeet-TDT 0.6B encoder tap 12 + Arc adapters), code from the
                arc_transcriber package (1.2.1, loaded under another module name so it doesn't clash with arc-v1). Its
@@ -62,7 +65,7 @@ def ready() -> bool:
     if variant() == "transcriber":
         return _t_arc is not None
     from . import ear
-    return ear._arc is not None
+    return ear.loaded()
 
 
 def variant() -> str:
@@ -97,11 +100,15 @@ class ArcMeta:
         self.state = state if (state is not None and arcstate.ENABLED) else None
         voice = self.state is not None and arcstate.VOICE
         self.v = variant()
+        from . import ear
+        self.c = self.v != "transcriber" and ear.backend() == "mini"      # Arc Mini in C (server/arc_c.py)
+        if self.c:
+            self._init_c(domain, offset_s)
+            return
         if self.v == "transcriber":
             a = transcriber()
         else:
-            from .ear import arc
-            a = arc()
+            a = ear.arc()
         # fallback=None: external mode must not quietly run Arc's builtin decoder as a name fallback
         kw = {"diarization": "voice"} if voice else {}     # ArcState: Arc's voice embedding per frame (arcstate.Tap)
         try:
@@ -141,6 +148,29 @@ class ArcMeta:
         self.aw: list = []
         self.af: list = []
 
+    def _init_c(self, domain: str, offset_s: float):
+        from . import ear
+        self.stream = ear.arc_stream(domain, mode="external")
+        self.tap = None
+        self._common(offset_s)
+        self.ear_stream = ear.arc_stream(domain) if config.DIRECTOR_ARC_EAR else None
+
+    def _common(self, offset_s: float):
+        self.n_feed = 0
+        self.offset = float(offset_s)
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="arcmeta")
+        self.loop = None
+        self.closed = False
+        self.last_key = None
+        self.cc_events: list[dict] = []
+        self.compute_s = 0.0
+        self.audio_s = 0.0
+        self.pending = 0
+        self.lag_drops = 0
+        self.extra = ArcExtra() if (config.DIRECTOR_STREAMS or config.DIRECTOR_ARC_EAR) else None
+        self.aw: list = []
+        self.af: list = []
+
     # ------------------------------------------------------------------ in (from the ear, on the event loop)
     def feed(self, pcm: np.ndarray):
         if self.closed:
@@ -174,6 +204,14 @@ class ArcMeta:
 
     def close(self):
         self.closed = True
+        if self.c:
+            from . import ear
+            # the C streams are freed on the Arc thread, after the (at most ARC_META_MAX_PENDING) feeds queued there
+            for st in (self.stream, self.ear_stream):
+                if st is not None:
+                    self.pool.submit(ear.close_stream, st)
+            self.pool.shutdown(wait=False)
+            return
         self.pool.shutdown(wait=False, cancel_futures=True)
 
     # ------------------------------------------------------------------ on the Arc thread
@@ -184,8 +222,20 @@ class ArcMeta:
             self._emit({"error": f"{type(e).__name__}: {e}"[:200]})
 
     def _feed(self, pcm):
+        if self.closed and self.c:
+            return
         t = time.perf_counter()
         out = self.stream.feed(pcm)
+        if self.c:
+            if self.extra is not None:
+                if config.DIRECTOR_STREAMS:
+                    self.extra.step_c(self.stream, out, pcm)
+                self._feed_extra(pcm)
+            self.compute_s += time.perf_counter() - t
+            self.audio_s += len(pcm) / 16000
+            self.pending = max(0, self.pending - 1)
+            self._summarize(out)
+            return
         if self.tap is not None:
             self.n_feed += 1
             self.state.add_frames(self.tap.drain(self.offset))
@@ -201,7 +251,7 @@ class ArcMeta:
     def _feed_extra(self, pcm):
         """Director v2: Arc's unshipped heads + level (and the Arc ear's own words) -> on_meta({"x2_only": ...})."""
         o = self.offset
-        if config.DIRECTOR_STREAMS:
+        if config.DIRECTOR_STREAMS and not self.c:
             self.extra.step(self.stream, pcm)
         if self.ear_stream is not None:
             ob = self.ear_stream.feed(pcm)
@@ -308,6 +358,38 @@ class ArcExtra:
                 i = tab.idx.get(tag)
                 out[k] = (grp, cs.index(i)) if i is not None and i in cs else None
         return out
+
+    def step_c(self, stream, out: dict, pcm):
+        """Arc Mini in C: the same state from the stream's FRAME records (by label). libarc reads out only the
+        columns the domain ships, so the unshipped ones (affect, statement / backchannel acts, speaker change,
+        interruption, turn yield) stay None."""
+        x = np.asarray(pcm, np.float32)
+        self.levels.append(float(10 * np.log10(np.mean(x * x) + 1e-10)) if len(x) else -100.0)
+        if len(self.levels) > 600:
+            self.levels = self.levels[-600:]
+        labels = getattr(stream, "labels", None)
+        if not labels:
+            return
+        if self.cols is None:
+            first = {}
+            for i, lab in enumerate(labels):
+                first.setdefault(lab, i)
+            self.cols = {k: first.get(t) for k, t in X_FRAME.items()}
+            self.cols.update({k: first.get(t) for k, t in X_UTT.items()})
+            self.cols.update({k: first.get("ev_at:" + t) for k, t in X_EV.items()})
+        for f in out.get("frames") or []:
+            p = f["p"]
+            fr = {k: float(p[j]) for k, j in self.cols.items() if j is not None and k not in X_UTT}
+            self.ring.append(fr)
+            if len(self.ring) > X_RING:
+                self.ring.pop(0)
+            if f.get("in_utterance"):
+                self.utt = {k: float(p[j]) for k, j in self.cols.items() if j is not None and k in X_UTT}
+        sp = ((out.get("live") or {}).get("speaker") or {}).get("id")
+        if sp:
+            n = int(sp[1:]) if sp[1:].isdigit() else 0
+            self.nspk = max(self.nspk, n)
+            self.spk = n - 1
 
     def step(self, stream, pcm):
         eng = getattr(stream, "eng", None)

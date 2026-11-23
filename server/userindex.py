@@ -202,7 +202,7 @@ class Backend:
 
     def transcribe(self, wav: np.ndarray, domain: str) -> dict:
         from . import ear
-        return ear.arc().predict(wav, domain=domain, transcript="builtin", return_frames=False)
+        return ear.transcribe(wav, domain)
 
     def tagger(self, domain: str):
         from .tagger import Tagger
