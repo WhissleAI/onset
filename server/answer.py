@@ -609,6 +609,13 @@ class Stream:
         token within ANSWER_DEADLINE_MS, or a load / generation error: the extractive sentence instead. Cancel (or a
         cancelled task) stops the generation within one token."""
         from . import answer_lm
+        if not self.docs:
+            # no sources: the small model would answer from its own memory (it invented book titles); say so instead
+            self.by = "no-sources"
+            self.t_first = time.perf_counter()
+            self.tokens.append("I couldn't find sources for that. Try asking it another way.")
+            self._finish()
+            return
         prompt = build_prompt(self.question, self.docs, local_context(self.question, self.context), self.hint)
         g = answer_lm.Generation(SYSTEM_LOCAL, prompt, config.ANSWER_LM_MAX_TOKENS, asyncio.get_running_loop())
         part = {"req": 0, "local": True, "g": g, "s": None, "chars": 0, "cancelled": False,

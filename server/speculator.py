@@ -1385,6 +1385,17 @@ class Speculator:
             if not live():
                 return superseded()
         ranked = self._rank_for(f, qvec, 5) if plan_ranked is None else [(d, sc) for d, sc, _ in plan_ranked]
+        if (not ranked and reuse_draft is None and plan_ranked is None and qvec is not None and live()
+                and f.route != "local" and not any(x.lane == "final-web" and x.docs for x in self.fires)):
+            # nothing of this question's own to answer from (its searches came back empty, and the last question's
+            # sources don't count for a new question): one final web search rather than an answer from nothing
+            # (0.2.1 smoke: "five good books to read" after a PM question shipped with 0 sources)
+            m["path"] = (m.get("path") or "") + "+final-retry"
+            await asyncio.gather(self._fire("final-web", q, f, *self._web(q, f, final=True)).task,
+                                 return_exceptions=True)
+            if not live():
+                return superseded()
+            ranked = self._rank_for(f, qvec, 5)
         if terms and m.get("cover_guard") and reuse_draft is None:
             # the pool was about something else: answer only from sources that name the question's subject (none
             # landed in time -> no sources, the answer says so; never the unrelated article)
