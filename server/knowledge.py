@@ -219,15 +219,22 @@ SPARQL = "https://query.wikidata.org/sparql"
 # Entity-search candidates looked at per fact lookup. 5 was too few: "hamlet" ranks the settlement, the 1948 film, a
 # given name, a video game and a family name ahead of the play (6th), so the film's composer answered "who wrote Hamlet".
 WD_CANDS = 8
+# Two Wikidata timeouts in a row close the lane for this long. It was 20 s with a 0.8 s entity-search deadline: on home
+# Wi-Fi two slow mid-sentence lookups shut Wikidata out for the next two or three questions, and the on-device writer
+# guessed instead ("Donald Trump is the prime minister of the United States", "Boris Johnson").
+WD_BREAKER_S = 6.0
 
 
 async def _search(subject: str, k: int = 10) -> list[dict]:
     hit = _cache.get(("s", subject))
     if hit is not None:
         return hit
-    data = await get_json(WD_API, {"action": "wbsearchentities", "search": subject, "language": "en",
+    from .coverage import long_names
+    # a short form searches as its usual long name: "uk" alone ranks Uttarakhand (alias UK) first
+    term = (long_names(subject) or [subject])[0]
+    data = await get_json(WD_API, {"action": "wbsearchentities", "search": term, "language": "en",
                                    "uselang": "en", "format": "json", "limit": k, "type": "item"},
-                          timeout=max(config.ROUTER_TIMEOUT_S, 0.8), breaker_s=20)
+                          timeout=max(config.ROUTER_TIMEOUT_S, 1.2), breaker_s=WD_BREAKER_S)
     out = [{"id": x["id"], "label": (x.get("display", {}).get("label") or {}).get("value") or x.get("label", ""),
             "desc": (x.get("display", {}).get("description") or {}).get("value") or x.get("description", "")}
            for x in data.get("search") or []]
@@ -302,7 +309,7 @@ async def _wd_values(ids: list[str], pids: list[str]) -> dict[tuple, list[tuple]
         return hit
     data = await get_json(SPARQL, {"query": _sparql(ids, pids), "format": "json"},
                           headers={"Accept": "application/sparql-results+json"}, timeout=config.ROUTER_SLOW_TIMEOUT_S,
-                          breaker_s=20)
+                          breaker_s=WD_BREAKER_S)
     out = _rows(data)
     _cache.put(key, out)
     return out
@@ -462,7 +469,8 @@ async def wikidata(q: FactQ) -> list:
     return [Doc(id=f"wikidata:{c['id']}:{pid}", title=f"{c['label']} · Wikidata", text=text,
                 url=f"https://www.wikidata.org/wiki/{c['id']}#{pid}", source="Wikidata", score=1.0,
                 meta={"tier": "facts", "strong": True, "fact": {"prop": q.prop, "pid": pid, "values": vals,
-                                                                "item": c["label"], "sitelinks": pop.get(c["id"], 0)},
+                                                                "item": c["label"], "sitelinks": pop.get(c["id"], 0),
+                                                                "subject": q.subject},
                       "snapshot": "Wikidata, live"})]
 
 

@@ -229,6 +229,10 @@ class Memory:
         gone = set(getattr(f, "dropped", ()) or ()) | set(getattr(f, "redact_tok", ()) or ())
         toks = [norm(w) for i, w in enumerate(f.words) if i not in gone and w]
         asked = asked_kind(toks)
+        if asked is None and getattr(f, "inline", ""):
+            # an elliptical follow-up asks what its spelled-out form asks: "and what about the UK" after a PM question
+            # = "who is the prime minister of uk" -> a person (else "how old is he" next skips this turn's answer)
+            asked = asked_kind([norm(w) for w in f.inline.split() if norm(w)])
         q_ents = []
         for t, txt in f.slots:
             if t in NUMBER_TYPES:
@@ -259,9 +263,15 @@ class Memory:
         elif subject is None and q_ents:
             subject = q_ents[-1]
         a_new = []
+        from .coverage import long_names
+        # the question's entities under their long names too: the answer says "United Kingdom" for a question's "UK"
+        # (live: "United Kingdom" took the asked-for "person" vote, and "how old is he" became "how old is united
+        # kingdom")
+        q_long = {norm(x) for q in q_ents + [subject or ""] if q for x in long_names(q)}
         for t, txt in ans_spans[:8]:
             key = norm(txt)
-            if not key or any(key == q or key in q.split() or q in key.split() for q in q_ents + [subject or ""]):
+            if not key or key in q_long or \
+                    any(key == q or key in q.split() or q in key.split() for q in q_ents + [subject or ""]):
                 continue
             k = self._ent(txt, t, turn, "a", 1.0)
             if k and k not in a_new and k not in q_ents:
@@ -272,6 +282,13 @@ class Memory:
         rg = "m" if set(toks) & REL_MALE else "f" if set(toks) & REL_FEMALE else None
         if rg and a_new:
             self.ents[a_new[0]]["gender"] = rg
+        vals = self._facts(docs or [], turn)
+        if asked and vals:
+            # a Wikidata value of the asked kind IS the entity asked for ("head of government: Andy Burnham"): it
+            # leads the answer's new entities, ahead of whatever the tagger caught first
+            v = next((k for k in vals if self._kind(k) == asked and k not in q_ents), None)
+            if v:
+                a_new = [v] + [k for k in a_new if k != v]
         if asked and a_new:
             # the entity the question asked for is the answer's first new one: its kind is known from the question
             e = self.ents[a_new[0]]
@@ -284,13 +301,6 @@ class Memory:
         for k in a_new[1:4]:
             if subject:
                 self._edge(subject, k, "mentioned", "co", turn)
-        vals = self._facts(docs or [], turn)
-        # a Wikidata fact the answer used names the entity asked for ("made by: Apple Inc."): it leads
-        if asked and vals and not a_new:
-            # the answer named nothing the tagger caught: the Wikidata value is the entity asked for
-            v = next((k for k in vals if self._kind(k) == asked), None)
-            if v:
-                a_new = [v]
         self.turns.append({"t": turn, "q": getattr(f, "kept_text", None) or f.text, "inline": getattr(f, "inline", "") or "", "content": list(f.content),
                            "intent": f.intent, "q_ents": q_ents, "a_new": a_new, "asked": asked, "subject": subject,
                            "names": names_thing(toks),

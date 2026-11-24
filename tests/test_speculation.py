@@ -46,7 +46,7 @@ class FakeStream:
     instances: list["FakeStream"] = []
     TTFT = 0.3
 
-    def __init__(self, question, docs, tag="", context="", hint=""):
+    def __init__(self, question, docs, tag="", context="", hint="", ask=""):
         self.question, self.docs, self.tag, self.hint = question, list(docs), tag, hint
         self.tokens, self.done, self.error = [], False, None
         self.t_start = time.perf_counter()

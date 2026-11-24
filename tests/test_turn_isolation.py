@@ -83,3 +83,54 @@ def test_carried_docs_rank_only_for_follow_ups():
     assert s._rank_for(F(), v, 3) == []              # not a follow-up: last turn's sources are no answer
     F.carried = "Narendra Modi"
     assert s._rank_for(F(), v, 3)                    # "how old is he": they are
+
+
+# --- 0.2.2: follow-ups ("and USA", "and what about the UK") -----------------------------------------------------
+
+def test_short_country_names_cover_their_long_form_sources():
+    from server import coverage
+    us = Doc(id="wikidata:Q30:P6", title="United States · Wikidata",
+             text="United States (country): head of government: Donald Trump.", url="", source="Wikidata")
+    assert coverage.covers(us, ["usa"])               # live: the guard dropped this, the answer had 0 sources
+    assert coverage.covers(us, ["the usa"]) and coverage.long_names("the UK") == ["united kingdom", "britain"]
+    assert not coverage.covers(us, ["canada"])
+    fact = Doc(id="wikidata:Q1:P6", title="X · Wikidata", text="X: head of government: Y.", url="", source="Wikidata",
+               meta={"fact": {"subject": "zz"}})
+    assert coverage.covers(fact, ["zz"])              # a fact looked up FOR the subject covers it whatever it's called
+
+
+def test_fact_answer_reads_the_resolved_follow_up_and_its_subject(monkeypatch):
+    monkeypatch.setattr(answer, "backend", lambda: "local")
+
+    def fact(item, qid, v):
+        return Doc(id=f"wikidata:{qid}:P6", title=f"{item} · Wikidata", text=f"{item}: head of government: {v}.",
+                   url="", source="Wikidata", score=1.0,
+                   meta={"strong": True, "fact": {"prop": "head_gov", "values": [v], "item": item}})
+
+    class S(answer.Stream):
+        def __init__(self, q, docs, ask):
+            self.question, self.docs, self.tokens, self.ask, self.by = q, docs, [], ask, None
+
+        def _finish(self, *a):
+            pass
+    # the carried India fact ranks first; the answer must be the USA one
+    s = S("And USA", [fact("India", "Q668", "Narendra Modi"), fact("United States", "Q30", "Donald Trump")],
+          "who is the prime minister of usa")
+    assert s._fact_answer()
+    assert s.tokens == ["The United States has no prime minister; its head of government is the president, "
+                        "Donald Trump. [2]"]
+    t = S("And USA", [fact("India", "Q668", "Narendra Modi")], "who is the prime minister of usa")
+    assert not t._fact_answer()                        # only India's fact: no fact answer (never India's for USA)
+
+
+def test_list_questions_are_not_fact_lookups():
+    from server import router
+    assert router._OPEN.search("what are five good books to read")
+    assert not router._OPEN.search("who is the prime minister of india")
+
+
+def test_confidence_is_never_high_without_sources():
+    from server import calibrate
+    assert calibrate.cap({"n_docs": 0}, 0.95)[0] <= 0.1
+    assert calibrate.cap({"n_docs": 5, "v_unverified": 1, "ans_words": 3}, 0.9)[0] < 0.6
+    assert calibrate.cap({"n_docs": 2, "facts": 1, "ans_words": 9}, 0.9)[0] == 0.9

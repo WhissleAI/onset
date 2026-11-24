@@ -26,7 +26,7 @@ from server import answer  # noqa: E402
 class CtxStream(FakeStream):
     """FakeStream that also keeps the previous-turn context the answer model was given."""
 
-    def __init__(self, question, docs, tag="", context="", hint=""):
+    def __init__(self, question, docs, tag="", context="", hint="", ask=""):
         self.context = context
         super().__init__(question, docs, tag=tag, context=context, hint=hint)
 

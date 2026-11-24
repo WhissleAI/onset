@@ -276,6 +276,16 @@ _FACT_TEMPLATES = {
 }
 
 
+def asks_fact(question: str):
+    """knowledge.FactQ for the question (carried referent spelled in), or None."""
+    from . import knowledge
+    q = (question or "").strip().rstrip("?.! ")
+    m = re.match(r"^(.*?)\s*\(([^()]+)\)$", q)
+    if m:
+        q = re.sub(r"\b(he|she|it|they|him|her|them)\b", m.group(2), m.group(1), count=1, flags=re.I)
+    return knowledge.parse_fact(q)
+
+
 def asks_prop(question: str) -> str:
     """The Wikidata property the question asks for ("" if none), with a carried referent spelled in
     ("how old is he (Narendra Modi)" -> "how old is narendra modi")."""
@@ -303,10 +313,31 @@ def fact_sentence(question: str, item: str, prop: str, vals: list, today=None) -
     v = re.sub(r"\s*\([^()]*\)", "", v).strip()      # "Canberra (capital city of Australia)" -> "Canberra"
     if prop in ("head_state", "head_gov"):
         role = re.search(r"\b(prime minister|premier|chancellor|president|king|queen|monarch|leader)\b", question.lower())
+        if role and prop == "head_gov" and role.group(1) in ("prime minister", "premier", "chancellor") \
+                and item.lower() in _PRESIDENTIAL:
+            # P6 of a presidential republic is its president: "and USA" after a PM question is not "the prime
+            # minister of United States is Donald Trump"
+            return f"{_the(item)} has no {role.group(1)}; its head of government is the president, {v}."
         if role:                                       # say it the way it was asked: "the prime minister of India"
-            return f"The {role.group(1)} of {item} is {v}."
+            return f"The {role.group(1)} of {_the(item, lower=True)} is {v}."
     tpl = _FACT_TEMPLATES.get(prop)
     return tpl.format(item=item, v=v) if tpl else ""
+
+
+_PRESIDENTIAL = {"united states", "united states of america", "brazil", "mexico", "argentina", "colombia", "chile",
+                "indonesia", "philippines", "nigeria", "kenya", "ghana", "venezuela", "ecuador", "bolivia", "paraguay",
+                "uruguay", "costa rica", "panama", "guatemala", "honduras", "el salvador", "dominican republic",
+                "afghanistan", "cyprus", "turkey", "türkiye"}
+_THE = {"united states", "united states of america", "united kingdom", "united arab emirates", "netherlands",
+        "philippines", "czech republic", "dominican republic", "bahamas", "gambia", "maldives", "soviet union",
+        "democratic republic of the congo", "central african republic"}
+
+
+def _the(item: str, lower: bool = False) -> str:
+    """"United States" -> "The United States" (sentence start) / "the United States"."""
+    if item.lower() in _THE:
+        return ("the " if lower else "The ") + item
+    return item
 
 
 _REFERS = re.compile(r"\b(he|she|it|its|it's|they|them|their|theirs|his|her|hers|him|there|that|this|those|these|"
@@ -440,8 +471,10 @@ class Stream:
     Ends exactly once: done=True (with error set on failure, "cancelled" on cancel) and every follower wakes, whether
     _run finished, failed, was cancelled mid-flight or was cancelled before it ever started."""
 
-    def __init__(self, question: str, docs, tag: str = "", context: str = "", hint: str = ""):
+    def __init__(self, question: str, docs, tag: str = "", context: str = "", hint: str = "", ask: str = ""):
         self.question = question
+        self.ask = ask                          # the question as resolved for lookups ("and USA" after a PM question:
+                                                # "who is the prime minister of usa"); the fact path reads it
         self.hint = hint                        # read-out instruction for this question (Frame.answer_hint)
         self.docs = list(docs)
         self.tag = tag
@@ -685,18 +718,25 @@ class Stream:
         can't do date arithmetic ("how old is he" -> 52, 71, 72 for a man born in 1950). Claude still writes."""
         if backend() != "local" or not self.docs:
             return False
-        want = asks_prop(self.question)
-        if not want:
+        from . import coverage
+        ask = getattr(self, "ask", "") or ""
+        q = self.question if asks_prop(self.question) else ask
+        fq = asks_fact(q) if q else None
+        if fq is None:
             return False
+        want = fq.prop
         for n, d in enumerate(self.docs[:5], 1):   # the fact this question asks for, wherever it ranked
             meta = getattr(d, "meta", None) or {}
             fact = meta.get("fact") or {}
             vals, item, prop = fact.get("values") or [], fact.get("item") or "", fact.get("prop") or ""
-            if meta.get("strong") and vals and item and prop == want:
+            # ... about the subject asked: "and USA" after a PM-of-India turn still has India's fact among its
+            # carried sources (live: it answered "The prime minister of India is Narendra Modi")
+            if meta.get("strong") and vals and item and prop == want and \
+                    (not fq.subject or coverage.covers(d, [fq.subject])):
                 break
         else:
             return False                       # only the fact this question asks for (not a carried one)
-        text = fact_sentence(self.question, item, prop, vals)
+        text = fact_sentence(q, item, prop, vals)
         if not text:
             return False
         self.by = "fact"

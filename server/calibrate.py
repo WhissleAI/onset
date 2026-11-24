@@ -270,7 +270,24 @@ def assess(feats: dict, stage: str = "post") -> dict:
     p = raw(feats, stage)
     if p is None:
         return {}
-    return {"conf": round(p, 3), "band": band(p), "reason": reason(feats, p), "stage": stage}
+    c, why = cap(feats, p, stage)
+    why, p = (why if c < p else ""), c         # the model's own reason when the ceiling changed nothing
+    return {"conf": round(p, 3), "band": band(p), "reason": why or reason(feats, p), "stage": stage}
+
+
+def cap(feats: dict, p: float, stage: str = "post") -> tuple[float, str]:
+    """Hard ceilings the fitted model can't learn from its (Claude-written, Flux-era) training rows. Live 0.2.1 on the
+    local writer: an answer with NO sources ("I couldn't find sources...") and a 3-word unverified answer both read
+    "High confidence"."""
+    if stage != "post":
+        return p, ""
+    if ("n_docs" in feats and not feats["n_docs"]) or feats.get("non_answer"):
+        return min(p, 0.1), "no sources answer this"
+    if feats.get("v_unverified") and "ans_words" in feats and feats["ans_words"] <= 4 and not feats.get("facts"):
+        return min(p, 0.45), "short answer the sources don't confirm"
+    if feats.get("extractive"):
+        return min(p, 0.7), "quoted from a source, not checked"
+    return p, ""
 
 
 def compact(feats: dict) -> dict:

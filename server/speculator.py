@@ -514,6 +514,16 @@ class Speculator:
                        "instead": (ch or {}).get("instead"), "ms": self.ms()})
         return out
 
+    @staticmethod
+    def _ask(f: Frame) -> str:
+        """The question as the router read it (a follow-up spelled out: "and USA" -> "who is the prime minister of
+        usa"), for the answer's Wikidata fact path."""
+        try:
+            from . import router
+            return router.repaired_text(f)
+        except Exception:
+            return ""
+
     def _hint(self, f: Frame) -> str:
         """The answer model's note: the frame's (conversion, persona style) + the persona's sense line."""
         h = f.answer_hint()
@@ -1185,7 +1195,8 @@ class Speculator:
                 own = {d.id for x in ready for d in x.docs}
                 if not own & {d.id for d in top}:
                     return                          # don't draft from other questions' results
-                st = answer.Stream(f.resolved_text, top, tag="draft", context=self.context, hint=self._hint(f))
+                st = answer.Stream(f.resolved_text, top, tag="draft", context=self.context, hint=self._hint(f),
+                                   ask=self._ask(f))
                 self.streams.append(st)
                 d = Draft(id=f"d{next(_ids)}", meaning_sig=f.meaning_sig, question=f.text, qvec=qvec, stream=st,
                           t_start=time.perf_counter(), doc_ids=tuple(x.id for x in top), content=f.content,
@@ -1428,9 +1439,10 @@ class Speculator:
                 groups = [(self._part_text(p) or p.fallback, [j + 1 for j, (_, _, pi) in enumerate(plan_ranked) if pi == i])
                           for i, p in enumerate(mp.parts)]
                 hint = planner.answer_hint(mp, groups, qtext) + (" " + self._hint(f) if self._hint(f) else "")
-                st = PlanStream(qtext, docs, tag="final", context=self.context, hint=hint)
+                st = PlanStream(qtext, docs, tag="final", context=self.context, hint=hint, ask=self._ask(f))
             else:
-                st = answer.Stream(qtext, docs, tag="final", context=self.context, hint=self._hint(f))
+                st = answer.Stream(qtext, docs, tag="final", context=self.context, hint=self._hint(f),
+                                      ask=self._ask(f))
             self.streams.append(st)
             if alt is not None:
                 st = answer.Race(st, alt)

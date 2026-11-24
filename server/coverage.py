@@ -55,13 +55,37 @@ def key_terms(f) -> list[str]:
     return res
 
 
+# short names people say for what sources spell out (live: "who is the prime minister of India" then "and USA": the
+# Wikidata answer says "United States", the guard wanted the word "usa" and dropped the only right source)
+ALIASES = {"usa": ["united states"], "us": ["united states"], "u s": ["united states"], "u s a": ["united states"],
+           "america": ["united states"], "uk": ["united kingdom", "britain"], "u k": ["united kingdom", "britain"],
+           "britain": ["united kingdom"], "great britain": ["united kingdom"], "uae": ["united arab emirates"],
+           "nyc": ["new york"], "la": ["los angeles"], "sf": ["san francisco"], "dc": ["washington"],
+           "ussr": ["soviet union"], "drc": ["democratic republic of the congo"], "nz": ["new zealand"]}
+
+
+def long_names(t: str) -> list[str]:
+    """The usual long names of a short one ("the UK" -> ["united kingdom", "britain"]); [] when it has none."""
+    k = re.sub(r"^the ", "", _fold(t).strip())
+    return [_fold(a).strip() for a in ALIASES.get(k, ())]
+
+
+def _forms(t: str) -> list[str]:
+    return [_fold(t).strip()] + long_names(t)
+
+
 def covers(doc, terms: list[str]) -> bool:
     if not terms:
         return True
+    # a Wikidata fact looked up FOR this subject covers it whatever the item is called ("usa" -> United States)
+    fact = ((getattr(doc, "meta", None) or {}).get("fact") or {})
+    subj = _fold(fact.get("subject") or "").strip()
+    if subj and any(_fold(t).strip() == subj for t in terms):
+        return True
     hay = _fold(f"{getattr(doc, 'title', '')} {getattr(doc, 'text', '')}")
     # every word of the name, as whole words ("Albert Einstein" covers "albert einstein"; "the Einstein family"
-    # alone does not; "San José" covers "san jose")
-    return any(all(f" {w} " in hay for w in t.split()) for t in terms)
+    # alone does not; "San José" covers "san jose"), or a usual long form of a short one ("usa": "United States")
+    return any(all(f" {w} " in hay for w in form.split()) for t in terms for form in _forms(t))
 
 
 def split(ranked: list, terms: list[str]) -> tuple[list, list]:

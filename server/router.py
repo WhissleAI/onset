@@ -35,7 +35,11 @@ _FRESH = re.compile(r"\b(latest|news|headlines?|today'?s?|tonight|right now|curr
                     r"grand prix|election|super bowl|final|finals|tournament|championship|playoffs?|series|cup))\b")
 _OPEN = re.compile(r"\b(how (?:do|can|should|to|would) (?:i|you|we)|how to|what should i|should i|can i|is it (?:bad|"
                    r"safe|ok|okay|good)|best|recommend|recommendations?|review|reviews|vs|versus|better|worse|"
-                   r"symptoms?|treat|cure|near me|places|restaurants?|tips|ideas|instead of|substitute|why)\b")
+                   r"symptoms?|treat|cure|near me|places|restaurants?|tips|ideas|instead of|substitute|why|"
+                   # list / taste questions are the web's, not a fact lookup's (live 0.2.1: "what are five good books to
+                   # read" went to the who/what-is lane and answered from one Wikipedia lead)
+                   r"suggest|suggestions?|good|great|favou?rite|top (?:\d+|three|five|ten)|must[- ](?:read|see|watch)|"
+                   r"to (?:read|watch|visit|see|do|try|listen to))\b")
 _WH = re.compile(r"^(?:who|what|whats|what's|when|where|which|how (?:many|much|tall|long|old|far|big|high|deep|fast|"
                  r"hot|cold|heavy))\b")
 _TIME_Q = re.compile(r"\b(what time is it|what(?:'s| is) the (?:current |local )?time|(?:current|local) time|"
