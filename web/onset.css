@@ -64,6 +64,8 @@ kbd { font: 600 11px/1 -apple-system, system-ui, sans-serif; padding: 2px 6px; b
 .results a:hover b { color: var(--accent); }
 .results small { display: block; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
 .a .cite { font-size: 11px; vertical-align: super; color: var(--accent); text-decoration: none; padding: 0 1px; }
+.ask-again { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 2px 12px; font-size: 13px; color: var(--accent); }
+.a .muted { color: var(--ink-2); }
 .thinking { display: inline-flex; gap: 4px; padding: 6px 0; }
 .thinking i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: blink 1s infinite; }
 .thinking i:nth-child(2) { animation-delay: .15s; } .thinking i:nth-child(3) { animation-delay: .3s; }

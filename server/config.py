@@ -323,6 +323,7 @@ ROUTER_LOOSE = os.environ.get("ROUTER_LOOSE", "1") == "1"   # wider card detecti
 # Device lane (server/device.py): your files (Spotlight), Music, apps on this Mac. Off off macOS.
 DEVICE = os.environ.get("DEVICE", "1").strip().lower() in ("1", "on", "true")
 DEVICE_TIMEOUT_S = float(os.environ.get("DEVICE_TIMEOUT_S", "1.5"))           # one Spotlight search
+DEVICE_WALK_S = float(os.environ.get("DEVICE_WALK_S", "2.5"))               # the name walk when Spotlight has nothing
 DEVICE_ACTION_TIMEOUT_S = float(os.environ.get("DEVICE_ACTION_TIMEOUT_S", "6.0"))   # Music / open -a (first launch is slow)
 ROUTER_LEADS = os.environ.get("ROUTER_LEADS", "1") == "1"              # local Wikipedia lead index (if built)
 ROUTER_LEADS_STRONG = float(os.environ.get("ROUTER_LEADS_STRONG", "0.76"))   # lead cosine that counts as an answer (calibrated on the eval factoids)

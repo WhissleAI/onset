@@ -179,6 +179,7 @@
     else if (t.state === "error") a.textContent = "Couldn't get an answer right now. Try again in a moment.";
     else if (t.state === "thinking") a.innerHTML = '<span class="thinking" aria-label="Thinking"><i></i><i></i><i></i></span>';
     else if (t.state === "done") a.textContent = t.docs.length ? "" : "I couldn't find an answer to that.";
+    else if (t.state === "held") a.innerHTML = '<span class="muted">Was that for me? </span><button type="button" class="ask-again">Answer it</button>';
     else a.innerHTML = "";
 
     // "find my …": the device card's own list keeps Spotlight's order (the ranker may trim the per-file rows)
@@ -211,6 +212,15 @@
   const fmtReady = (ms) => (ms <= 150 ? "Ready as you finished" : `${(ms / 1000).toFixed(1)} s`);
   function hue(s) { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 55% 62%)`; }
   thread.addEventListener("click", (e) => {
+    const again = e.target.closest(".ask-again");
+    if (again) {
+      const el = again.closest(".turn");
+      const t = [...turns.values(), cur].find((x) => x && x.el === el);
+      const text = t ? (t.text || t.words.map((w) => w.w).join(" ")) : "";
+      if (t) dropTurn(t);
+      if (text) { if (mic.on) stopMic(true, "answer it"); box.value = text; typeSend(false); typeSend(true); }
+      return;
+    }
     const f = e.target.closest(".file");
     if (f) { if (!post({ t: "open", path: f.dataset.path })) toast("Open files from the Onset app"); return; }
     const m = e.target.closest(".more-src");
@@ -244,10 +254,14 @@
         for (const [i] of e.mask_kind || []) t.mask.add(i);
         paintTurn(t);
         break;
-      case "heard":                       // a statement or noise, not a question: no turn for it
+      case "heard": {                     // held back (open mic: not clearly a question for Onset)
         t = turnFor(e);
-        if (!t.answer) dropTurn(t);
+        const said = (e.words || []).join(" ").trim();
+        if (t.answer || !said || e.why === "empty") { if (!t.answer) dropTurn(t); break; }
+        t.state = "held"; t.text = t.text || said;
+        paintTurn(t);
         break;
+      }
       case "endpoint":
         t = turnFor(e);
         t.state = "thinking"; paintTurn(t); follow();
@@ -286,6 +300,7 @@
         t.ready = typeof e.ready_ms === "number" ? Math.max(0, e.ready_ms) : null;
         if (run && t === cur) run.q.answer[MODE] = t.answer;
         paintTurn(t); follow();
+        if (mic.on && mic.oneShot && run && run.kind === "mic") stopMic(true, "answered");
         break;
     }
   }
@@ -361,6 +376,14 @@
       sent_s: +(st.sent / 16000).toFixed(2), node: mic.kind, reused: st.reused, ctx: mic.ctx ? mic.ctx.state : "none",
       rate: mic.ctx ? mic.ctx.sampleRate : 0, track: tr ? tr.readyState : "none", muted: tr ? tr.muted : false, mutes: st.mutes, ws_buf: ws ? ws.bufferedAmount : -1 };
   }
+  // Clicking the mic asks ONE question (no open-mic filter: a click means "I'm talking to you"). The mic stops once the
+  // answer is in, or after MIC_IDLE_MS with no words. Holding Space is the same without the auto stop.
+  const MIC_IDLE_MS = 8000;
+  let micIdle = null;
+  function armIdle() {
+    clearTimeout(micIdle);
+    micIdle = setTimeout(() => { if (mic.on && mic.oneShot && !(cur && cur.words.length)) { stopMic(true, "no speech"); toast("I didn't hear anything. Click the mic and ask again."); } }, MIC_IDLE_MS);
+  }
   async function startMic(open = false) {
     if (!navigator.mediaDevices?.getUserMedia) { toast("No microphone here. Type your question instead."); return; }
     if (!wsOpen) { toast("Onset is still starting. Try again in a moment."); return; }
@@ -371,9 +394,11 @@
     Object.assign(mic, { on: true, buf: [], acc: 0, cnt: 0, frac: 0, ratio: mic.ctx.sampleRate / 16000, st: newStats() });
     mic.st.reused = reused ? 1 : 0;
     if (typed.open) { box.value = ""; typed.open = false; }
-    send({ t: "start", modes: MODES, open: !!open });
+    mic.oneShot = !!open;
+    send({ t: "start", modes: MODES, open: false });
     startRun("mic");
     cur = null;
+    if (mic.oneShot) armIdle();
     post({ t: "mic", on: true });
     paintMic();
   }
@@ -396,6 +421,7 @@
   function stopMic(sendStop = true, why = "release") {
     if (!mic.on) return;
     mic.on = false;
+    clearTimeout(micIdle);
     if (mic.buf.length && ws && ws.readyState === 1) { mic.st.sent += mic.buf.length; ws.send(new Float32Array(mic.buf.splice(0)).buffer); }
     if (sendStop) send({ t: "stop", dbg: micDebug(why) });
     post({ t: "mic", on: false });
@@ -406,7 +432,7 @@
   function paintMic() {
     $("#micBtn").classList.toggle("live", mic.on);
     $("#micBtn").setAttribute("aria-label", mic.on ? "Stop" : "Talk");
-    $("#hint").innerHTML = mic.on ? "Listening… release <kbd>Space</kbd> or click to stop" : "Hold <kbd>Space</kbd> to talk · <kbd>/</kbd> to type";
+    $("#hint").innerHTML = mic.on ? (mic.oneShot ? "Listening… ask your question" : "Listening… release <kbd>Space</kbd> when you're done") : "Hold <kbd>Space</kbd> to talk · <kbd>/</kbd> to type";
   }
   $("#micBtn").addEventListener("click", () => (mic.on ? stopMic(true, "click") : startMic(true)));
 

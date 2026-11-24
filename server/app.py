@@ -73,7 +73,8 @@ def log_event(e: dict, mode: str, run_id: int):
              f"lane={e.get('lane') or e.get('route') or '-'}" + (f" fallback={e['answer_fallback']}" if e.get("answer_fallback") else "")
              + (f" ERROR={e.get('error')}" if e.get("failed") else "") + f" | {words!r}")
     elif t == "heard":
-        rlog(f"run {run_id} {mode} q{q} heard (not a request: {e.get('why')})")
+        said = " ".join(str(w) for w in (e.get("words") or []))[:80]
+        rlog(f"run {run_id} {mode} q{q} heard (not a request: {e.get('why')}) | {said!r}")
     elif t in ("answer_error", "error"):
         rlog(f"run {run_id} {mode} q{q} {t}: {str(e.get('error'))[:200]}")
     elif t == "ear" and e.get("kind") in ("fallback", "error", "warning", "connected"):

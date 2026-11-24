@@ -163,3 +163,21 @@ def test_card_answers_without_model(dev):
         return s
     s = asyncio.run(go())
     assert s.by == "card" and s.text().startswith("Paused the music.")
+
+
+def test_slow_spotlight_falls_back_to_the_folder_walk(monkeypatch, tmp_path):
+    """Spotlight timing out under load used to return "no files" (installed 0.2.3: "find my resume" found nothing)."""
+    import asyncio as _a
+    (tmp_path / "Downloads").mkdir()
+    (tmp_path / "Downloads" / "Jane Resume.pdf").write_text("x")
+    (tmp_path / "Desktop" / "work" / "repo" / "recipes" / "x").mkdir(parents=True)
+    (tmp_path / "Desktop" / "work" / "repo" / "recipes" / "x" / "RESUME_PLAN.md").write_text("x")
+    (tmp_path / "Desktop" / "work" / "repo" / "recipes" / "x" / "copy").mkdir()
+    monkeypatch.setenv("DEVICE_HOME", str(tmp_path))
+
+    async def slow(*a, **k):
+        raise _a.TimeoutError
+    monkeypatch.setattr(device, "_run", slow)
+    rows = _a.run(device.find_files(device.DeviceQ("files", "resume", "", 0, "", "", "")))
+    assert rows and rows[0]["name"] == "Jane Resume.pdf"          # the document first, the project file after
+    assert [r["name"] for r in rows].count("RESUME_PLAN.md") <= 1

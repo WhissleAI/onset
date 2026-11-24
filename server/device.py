@@ -298,11 +298,11 @@ async def find_files(q: DeviceQ, n: int = 5) -> list[dict]:
         try:
             _, out = await _run("mdfind", "-onlyin", str(home), spotlight_query(q), timeout=config.DEVICE_TIMEOUT_S)
         except (asyncio.TimeoutError, OSError):
-            return []
+            out = ""                                   # Spotlight slow or missing: the name walk below still answers
         paths = [Path(x) for x in out.splitlines()[:400] if x.strip()]
         if not paths:
-            # Spotlight off, still indexing, or its index lost (a full disk drops it): walk the usual folders by name
-            paths = await asyncio.to_thread(_walk, q, config.DEVICE_TIMEOUT_S)
+            # Spotlight off, still indexing, slow, or its index lost (a full disk drops it): walk the usual folders
+            paths = await asyncio.to_thread(_walk, q, config.DEVICE_WALK_S)
     rows = []
     terms = q.term.split()
     for p in paths:
@@ -316,10 +316,28 @@ async def find_files(q: DeviceQ, n: int = 5) -> list[dict]:
         except OSError:
             continue
         name_hit = sum(t in p.name.lower() for t in terms)
-        rows.append((name_hit, st.st_mtime, p))
-    rows.sort(key=lambda r: (-r[0], -r[1]))
-    return [{"path": str(p), "name": p.name, "where": _where(p), "modified": _ago(m), "mtime": m}
-            for _, m, p in rows[:n]]
+        try:
+            depth = len(p.relative_to(home).parts)
+        except ValueError:
+            depth = 9
+        # people mean their documents ("find my resume" = Resume.pdf, not a project's RESUME_PLAN.md): documents
+        # first, then files near the top of Downloads / Desktop / Documents, then the newest
+        doc = p.suffix.lower() in _DOCS
+        rows.append((name_hit, doc, depth > 4, st.st_mtime, p))
+    rows.sort(key=lambda r: (-r[0], -r[1], r[2], -r[3]))
+    seen, out = set(), []
+    for _, _, _, m, p in rows:
+        if p.name.lower() in seen and q.kind != "recent":
+            continue                                   # the same file copied into several folders: once
+        seen.add(p.name.lower())
+        out.append({"path": str(p), "name": p.name, "where": _where(p), "modified": _ago(m), "mtime": m})
+        if len(out) >= n:
+            break
+    return out
+
+
+_DOCS = {".pdf", ".doc", ".docx", ".pages", ".rtf", ".odt", ".key", ".ppt", ".pptx", ".xls", ".xlsx", ".numbers",
+         ".jpg", ".jpeg", ".png", ".heic", ".mov", ".mp4", ".m4a", ".mp3", ".epub"}
 
 
 _EXT = {"pdf": {".pdf"}, "image": {".jpg", ".jpeg", ".png", ".heic", ".gif", ".webp", ".tiff"},
@@ -329,6 +347,10 @@ _CODE = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".py", ".pyc", ".swift", ".json",
          ".cc", ".cpp", ".java", ".kt", ".rb", ".sh", ".yml", ".yaml", ".toml", ".lock", ".log", ".map", ".css",
          ".scss", ".html", ".vue", ".o", ".so", ".dylib", ".pyi", ".ipynb"}
 _WALK_DIRS = ("Desktop", "Documents", "Downloads", "Pictures", "Movies", "Music")
+
+
+_WALK_SKIP = {"node_modules", "Library", "__pycache__", "site-packages", "venv", ".venv", "dist", "build", "target",
+              "vendor", "Pods", "DerivedData"}
 
 
 def _walk(q: DeviceQ, budget_s: float) -> list[Path]:
@@ -345,7 +367,7 @@ def _walk(q: DeviceQ, budget_s: float) -> list[Path]:
             continue
         for e in entries:
             n = e.name
-            if n.startswith(".") or n in ("node_modules", "Library", "__pycache__") or n.endswith((".app", "library")):
+            if n.startswith(".") or n in _WALK_SKIP or n.endswith((".app", "library")):
                 continue
             low = n.lower()
             try:
