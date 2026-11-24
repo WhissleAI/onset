@@ -16,6 +16,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     var quitting = false
     var micActivity: NSObjectProtocol?
     static let hidden = UserDefaults.standard.bool(forKey: "hidden")
+    /// The Developer menu (race view, replay questions, keys, server restart) stays out of the consumer app: shown
+    /// when Option is held at launch or after `defaults write <bundle id> developerMenu -bool true`.
+    static let developerMenu = UserDefaults.standard.bool(forKey: "developerMenu") || NSEvent.modifierFlags.contains(.option)
+    /// Developer view: the engine page (web/lab.html: race, timeline, query frame) instead of the consumer page.
+    var devView = UserDefaults.standard.bool(forKey: "developerView") && AppDelegate.developerMenu
+    func pageURL(_ port: Int) -> URL { URL(string: "http://127.0.0.1:\(port)/" + (devView ? "lab.html" : ""))! }
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
@@ -25,13 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         buildWindow()
         server.onState = { [weak self] s in self?.apply(s) }
         if !Self.hidden { NSApp.activate(ignoringOtherApps: true) }
-        // first run of a release build: explain the keys before the server starts (it reads them once at launch,
-        // so starting first would load the models twice)
-        if !AppInfo.onboardingDone && AppInfo.devEnvPath == nil {
-            showOnboarding(firstRun: true)
-        } else {
-            server.start()
-        }
+        // no key screen on first run: Onset works with no keys (on-device answers, DuckDuckGo). Your own service
+        // keys are optional, under Settings > Advanced.
+        AppInfo.onboardingDone = true
+        server.start()
         Updater.shared.checkAtLaunch()       // GitHub releases, at most once a day (Updater.swift)
     }
 
@@ -69,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     // MARK: window
 
     func buildWindow() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 780),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         window.title = AppInfo.name
@@ -131,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             if loadedPort != port || web.url == nil || loadedGeneration != server.generation {
                 loadedPort = port
                 loadedGeneration = server.generation
-                web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/")!))
+                web.load(URLRequest(url: pageURL(port)))
             } else {
                 showWeb(true)
             }
@@ -188,7 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     private func reloadAfterEnd() {
         pendingNotice = "The page stopped unexpectedly and was reloaded. Your conversation memory is kept; ask again."
         if case .ready(let port) = server.state {
-            web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/")!))
+            web.load(URLRequest(url: pageURL(port)))
         } else {
             web.reload()
         }
@@ -205,7 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     private func retryLoad() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             guard let self = self, case .ready(let port) = self.server.state else { return }
-            self.web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(port)/")!))
+            self.web.load(URLRequest(url: self.pageURL(port)))
         }
     }
 
@@ -282,6 +285,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
             } else if !on, let a = micActivity {
                 ProcessInfo.processInfo.endActivity(a)
                 micActivity = nil
+            }
+        case "open":
+            // a file from a "find my …" result: opened with its default app. Anything that would run code (apps,
+            // scripts, installers) is only shown in Finder.
+            guard let path = body["path"] as? String, path.hasPrefix(NSHomeDirectory() + "/") || path.hasPrefix("/Volumes/"),
+                  FileManager.default.fileExists(atPath: path) else { return }
+            let url = URL(fileURLWithPath: path).standardizedFileURL
+            let risky: Set<String> = ["app", "command", "sh", "zsh", "bash", "tool", "pkg", "mpkg", "terminal", "workflow",
+                                      "scpt", "applescript", "jar", "py", "rb", "pl", "dmg", "action", "prefpane", "webloc", "inetloc"]
+            var isDir: ObjCBool = false
+            FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
+            if risky.contains(url.pathExtension.lowercased()) || (!isDir.boolValue && FileManager.default.isExecutableFile(atPath: path)) {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } else {
+                NSWorkspace.shared.open(url)
             }
         case "pickRecordings":
             // My recordings (web/recordings.js): pick audio / video files; the server reads them in place by path
@@ -427,9 +445,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
     }
 
     @objc func toggleDetails() {
-        // same as pressing D in the page: toggles the question list / timeline / sources ("minimal" is the default)
-        web.evaluateJavaScript("dispatchEvent(new KeyboardEvent('keydown', {key: 'd', code: 'KeyD'})); !document.body.classList.contains('minimal')",
-                               completionHandler: nil)
+        // Developer view: the engine page (race, timeline, question list) vs the consumer page
+        devView.toggle()
+        UserDefaults.standard.set(devView, forKey: "developerView")
+        if case .ready(let port) = server.state { web.load(URLRequest(url: pageURL(port))) }
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleDetails) { item.state = devView ? .on : .off }
+        return true
     }
 
     @objc func openModels() { NSWorkspace.shared.open(AppInfo.modelsDir) }
@@ -438,12 +462,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
     @objc func showAbout() {
         let credits = NSAttributedString(string: """
-            Voice search that searches while you speak.
-            Runs on this Mac: Arc Mini ear with a question n-gram LM + Arc Tagger (Whissle, CC BY-NC 4.0), \
-            EmbeddingGemma 2 (Google, Apache 2.0), \
-            Qwen2.5-0.5B-Instruct answers (Qwen, Apache 2.0), search director. Web: DuckDuckGo (free), or with your \
-            keys Tavily or Telem. Cloud ear with a key: Deepgram Flux.
-            Licences: \(AppInfo.name).app/Contents/Resources/Licenses
+            Ask out loud. The answer is ready when you stop talking.
+            Listening and answers run on this Mac. Web results come from DuckDuckGo.
+            Built with Arc Mini and Arc Tagger (Whissle, CC BY-NC 4.0), EmbeddingGemma (Google, Apache 2.0) and \
+            Qwen2.5-0.5B-Instruct (Qwen, Apache 2.0). Licences: \(AppInfo.name).app/Contents/Resources/Licenses
             """, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits, .applicationName: AppInfo.name])
     }
@@ -468,13 +490,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         upd.target = Updater.shared; app.addItem(upd)
         app.addItem(.separator())
         app.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
-        app.addItem(withTitle: "Set Up Keys…", action: #selector(setUpKeys), keyEquivalent: "")
-        app.addItem(.separator())
-        app.addItem(withTitle: "Forget Memory…", action: #selector(forgetMemory), keyEquivalent: "")
-        app.addItem(withTitle: "Clear Search Cache…", action: #selector(clearCache), keyEquivalent: "")
-        app.addItem(withTitle: "Open Logs", action: #selector(openLogs), keyEquivalent: "")
-        app.addItem(withTitle: "Open Models Folder", action: #selector(openModels), keyEquivalent: "")
-        app.addItem(withTitle: "Restart Server", action: #selector(restartServer), keyEquivalent: "")
+        app.addItem(withTitle: "Forget What Onset Remembers…", action: #selector(forgetMemory), keyEquivalent: "")
         app.addItem(.separator())
         app.addItem(withTitle: "Hide \(AppInfo.name)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         app.addItem(.separator())
@@ -494,16 +510,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
 
         let viewItem = NSMenuItem(); main.addItem(viewItem)
         let view = NSMenu(title: "View")
-        view.addItem(withTitle: "Show Details and Question List", action: #selector(toggleDetails), keyEquivalent: "d")
         view.addItem(withTitle: "Reload", action: #selector(reloadPage), keyEquivalent: "r")
         view.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
             .keyEquivalentModifierMask = [.command, .control]
         viewItem.submenu = view
 
-        let replayItemTop = NSMenuItem(); main.addItem(replayItemTop)
-        let loading = NSMenuItem(title: "Loading…", action: nil, keyEquivalent: ""); loading.isEnabled = false
-        replayMenu.addItem(loading)
-        replayItemTop.submenu = replayMenu
+        if AppDelegate.developerMenu {
+            let devItem = NSMenuItem(); main.addItem(devItem)
+            let dev = NSMenu(title: "Developer")
+            dev.addItem(withTitle: "Developer View", action: #selector(toggleDetails), keyEquivalent: "d")
+                .keyEquivalentModifierMask = [.command, .option]
+            let replayTop = NSMenuItem(title: "Replay", action: nil, keyEquivalent: "")
+            let loading = NSMenuItem(title: "Loading…", action: nil, keyEquivalent: ""); loading.isEnabled = false
+            replayMenu.addItem(loading)
+            replayTop.submenu = replayMenu
+            dev.addItem(replayTop)
+            dev.addItem(.separator())
+            dev.addItem(withTitle: "Set Up Keys…", action: #selector(setUpKeys), keyEquivalent: "")
+            dev.addItem(withTitle: "Clear Search Cache…", action: #selector(clearCache), keyEquivalent: "")
+            dev.addItem(withTitle: "Open Models Folder", action: #selector(openModels), keyEquivalent: "")
+            dev.addItem(withTitle: "Restart Server", action: #selector(restartServer), keyEquivalent: "")
+            devItem.submenu = dev
+        }
 
         let winItem = NSMenuItem(); main.addItem(winItem)
         let win = NSMenu(title: "Window")
@@ -511,6 +539,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
         win.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         winItem.submenu = win
         NSApp.windowsMenu = win
+        let helpItem = NSMenuItem(); main.addItem(helpItem)
+        let help = NSMenu(title: "Help")
+        help.addItem(withTitle: "Open Logs (for a bug report)", action: #selector(openLogs), keyEquivalent: "")
+        helpItem.submenu = help
+        NSApp.helpMenu = help
         NSApp.mainMenu = main
     }
 

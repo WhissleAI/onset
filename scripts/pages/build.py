@@ -63,7 +63,8 @@ def build_demo(out: Path):
     health = json.loads((data / "api" / "health.json").read_text())
     sc["now"] = {"cost_mode": meter.get("cost_mode"), "web_backend": health.get("web_backend"), "keystone": True}
     (data / "api" / "scorecard.json").write_text(json.dumps(sc))
-    page = (demo / "index.html").read_text()
+    # the recorded demo replays engine runs: it is built on the developer view (web/lab.html), not the app page
+    page = (demo / "lab.html").read_text()
     page = page.replace("<title>Onset</title>", "<title>OnSet demo</title>", 1)
     page = page.replace("</head>", '<link rel="stylesheet" href="demo.css?v=1">\n</head>', 1)
     i = page.index("<script src=")

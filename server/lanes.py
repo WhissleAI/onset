@@ -40,6 +40,8 @@ class Doc:
                 # router tiers (server/router.py): which kind of source answered, the card itself, "as of" time
                 **({"tier": self.meta["tier"]} if self.meta.get("tier") else {}),
                 **({"card": self.meta["card"]} if self.meta.get("card") else {}),
+                # device lane (server/device.py): {"kind": "file", "path": ...} rows the app opens, or the action done
+                **({"device": self.meta["device"]} if self.meta.get("device") else {}),
                 **({"snapshot": self.meta["snapshot"]} if self.meta.get("snapshot") else {}),
                 # local moments: Arc / Arc Tagger chips (people, places, orgs, numbers); the user's own recording
                 **({"chips": self.meta["chips"][:6]} if self.meta.get("chips") else {}),

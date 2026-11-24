@@ -24,6 +24,9 @@ def _isolate_fallback_state(monkeypatch, tmp_path):
     # the tiered router (server/router.py) calls free APIs (Wikidata, Open-Meteo, ...): off unless a test opts in
     # (tests/test_router.py does, with a mock transport)
     monkeypatch.setattr(config, "ROUTER", False)
+    # the device lane (server/device.py) searches files, plays Music and opens apps: off unless a test opts in
+    # (tests/test_device.py, with its subprocess runner mocked)
+    monkeypatch.setattr(config, "DEVICE", False)
     # the after-answer re-check (server/recheck.py) calls Wikidata: off unless a test opts in (tests/test_recheck.py)
     monkeypatch.setattr(config, "VERIFY_RESEARCH", False)
     # Keystone (server/keystone/) is process-wide and persists to the data dir: off and in-memory unless a test opts

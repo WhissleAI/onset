@@ -135,7 +135,7 @@ def test_answer_card_markup():
 
 def test_typed_box_enter_handling():
     js = (ROOT / "web" / "app.js").read_text()
-    html = (ROOT / "web" / "index.html").read_text()
+    html = (ROOT / "web" / "lab.html").read_text()
     # Enter submits from the box's own keydown (not only the form's implicit submission); an IME commit doesn't
     assert '$("#typeBox").addEventListener("keydown"' in js and "e.isComposing" in js
     # Enter again on the same unedited question while it is answered does not re-ask it (a new run per press)

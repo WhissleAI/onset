@@ -18,7 +18,7 @@ struct SplashView: View {
         VStack(spacing: 18) {
             Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 96, height: 96)
             Text(AppInfo.name).font(.system(size: 30, weight: .semibold))
-            Text("Voice search that searches while you speak").foregroundColor(.secondary)
+            Text("Ask out loud. The answer is ready when you stop.").foregroundColor(.secondary)
             content.frame(maxWidth: 460)
         }
         .padding(40)
@@ -30,14 +30,14 @@ struct SplashView: View {
         switch model.state {
         case .idle, .checkingModels:
             ProgressView().controlSize(.small)
-            Text("Checking models…").foregroundColor(.secondary)
+            Text("Starting…").foregroundColor(.secondary)
         case .starting(let s, let detail):
             ProgressView().progressViewStyle(.linear)
-            Text("\(detail)… \(s) s").foregroundColor(.secondary).font(.callout)
-            Text("First start takes about a minute: the models load into memory.").font(.caption).foregroundColor(.secondary)
+            Text("Getting ready… \(s) s").foregroundColor(.secondary).font(.callout)
+            Text("The first start takes about a minute.").font(.caption).foregroundColor(.secondary)
         case .downloading(let done, let total, let file):
             ProgressView(value: total > 0 ? Double(done) / Double(total) : 0).progressViewStyle(.linear)
-            Text(total > 0 ? "Downloading models: \(done / 1_000_000) of \(total / 1_000_000) MB" : "Preparing download…")
+            Text(total > 0 ? "Downloading: \(done / 1_000_000) of \(total / 1_000_000) MB" : "Preparing download…")
                 .font(.callout)
             Text(file).font(.caption).foregroundColor(.secondary).lineLimit(1).truncationMode(.middle)
         case .needsModels(let missing) where missing.allSatisfy({ $0.downloadable }):
@@ -45,11 +45,11 @@ struct SplashView: View {
             let mb = missing.reduce(Int64(0)) { $0 + $1.bytes } / 1_000_000
             VStack(spacing: 8) {
                 Text("One-time setup").font(.headline)
-                Text("\(AppInfo.name) runs its speech, search and answer models on this Mac. They download once (\(mb >= 1000 ? String(format: "%.1f GB", Double(mb) / 1000) : "\(mb) MB")) and every file is checked before it is used.")
+                Text("\(AppInfo.name) listens and answers on this Mac, so your voice never leaves it. It needs a one-time download (\(mb >= 1000 ? String(format: "%.1f GB", Double(mb) / 1000) : "\(mb) MB")).")
                     .multilineTextAlignment(.center).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                Button("Download Models", action: onDownload).keyboardShortcut(.defaultAction).controlSize(.large)
+                Button("Download", action: onDownload).keyboardShortcut(.defaultAction).controlSize(.large)
                 Button("Check Again", action: onRetry)
             }
         case .needsModels(let missing):
@@ -94,35 +94,40 @@ struct SettingsView: View {
     @State private var note = ""
     var onSave: () -> Void
 
+    @State private var advanced = false
+
     var body: some View {
         Form {
-            Section(header: Text("API keys").font(.headline)) {
-                ForEach(Keys.all, id: \.self) { k in
-                    KeyRow(info: KeyInfo.of(k),
-                           entry: Binding(get: { entries[k] ?? "" }, set: { entries[k] = $0 }),
-                           saved: saved[k] == true, compact: true,
-                           onRemove: { Keys.set(k, nil); refresh(); note = "Removed. Save to restart the server." })
+            Section(header: Text("Privacy").font(.headline)) {
+                Toggle("Help improve Onset", isOn: $collect)
+                Text("Keeps anonymous timings of your questions on this Mac to tune Onset. No audio. Nothing is uploaded.")
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            DisclosureGroup(isExpanded: $advanced) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Onset works without any keys: answers are written on this Mac and web results come from DuckDuckGo. Add your own keys for longer answers or other services. Keys stay in your Keychain.")
+                        .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 4)
-                }
-                Text("Web search: Tavily with a Tavily key, else Telem with a Telem key, else DuckDuckGo (free). Answers are written on this Mac (\(ServicePlan.answerModel)): no key. Keys are stored only in your login Keychain and passed to the local server as environment variables. Never written to disk or logs.")
-                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Section(header: Text("Ear").font(.headline).padding(.top, 8)) {
-                Picker("", selection: $ear) {
-                    Text("Automatic (Deepgram Flux with a key, else Arc on this Mac)").tag("auto")
-                    Text("Arc (on this Mac, no key)").tag("arc")
-                    Text("Deepgram Flux (cloud; falls back to Arc)").tag("flux")
-                }.pickerStyle(.radioGroup).labelsHidden()
-            }
-            Section(header: Text("Improve Onset").font(.headline).padding(.top, 8)) {
-                Toggle("Use my questions to improve the models", isOn: $collect)
-                Text("Saves timings, routes and outcomes of each question on this Mac, with personal data masked. No audio. Never uploaded.")
-                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
+                    ForEach(Keys.all, id: \.self) { k in
+                        KeyRow(info: KeyInfo.of(k),
+                               entry: Binding(get: { entries[k] ?? "" }, set: { entries[k] = $0 }),
+                               saved: saved[k] == true, compact: true,
+                               onRemove: { Keys.set(k, nil); refresh(); note = "Removed. Save to apply." })
+                            .padding(.bottom, 4)
+                    }
+                    Text("Speech recognition").font(.subheadline).padding(.top, 6)
+                    Picker("", selection: $ear) {
+                        Text("On this Mac (recommended)").tag("auto")
+                        Text("On this Mac only").tag("arc")
+                        Text("Deepgram (cloud, needs a key)").tag("flux")
+                    }.pickerStyle(.radioGroup).labelsHidden()
+                }.padding(.top, 6)
+            } label: { Text("Advanced").font(.headline) }
+            .padding(.top, 10)
             HStack {
                 Text(note).font(.caption).foregroundColor(.secondary)
                 Spacer()
-                Button("Save and Restart Server") {
+                Button("Save") {
                     for (k, v) in entries where !v.trimmingCharacters(in: .whitespaces).isEmpty { Keys.set(k, v) }
                     entries = [:]
                     UserDefaults.standard.set(ear, forKey: "ear")
@@ -134,7 +139,7 @@ struct SettingsView: View {
             }.padding(.top, 10)
         }
         .padding(20)
-        .frame(width: 560)
+        .frame(width: 520)
         .onAppear(perform: refresh)
     }
 

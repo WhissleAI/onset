@@ -123,7 +123,7 @@ final class Automation {
                             try? ((r as? String) ?? "").write(to: self.dir!.appendingPathComponent("page_after_replay.txt"),
                                                                atomically: true, encoding: .utf8)
                             self.note("replay menu items: \(app.replayMenu.items.count)")
-                            app.toggleDetails()        // View > Show Details: the question list + timeline
+                            app.toggleDetails()        // Developer > Developer View: the engine page (question list + timeline)
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                                 self.saveWeb(app.web, "05_details_question_list.png") {
                                     app.toggleDetails()

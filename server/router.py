@@ -20,7 +20,7 @@ import re
 import time
 from dataclasses import dataclass, field
 
-from . import config, knowledge
+from . import config, device, knowledge
 from .frame import Frame, norm
 from .verticals import clock, fx, geo, units, weather
 
@@ -198,6 +198,10 @@ def plan(f: Frame) -> Plan:
     text = repaired_text(f)
     low = _low(text)
     toks = set(low.split())
+    # --- this Mac (server/device.py): files, Music, apps. Checked first: "play X" / "find my X" are never web questions
+    dq = device.parse(text)
+    if dq is not None:
+        return Plan("card", "device", 0.95, {"dq": dq}, "your Mac" + (" (action)" if dq.action else ""))
     # --- units (no network): "how many ounces are in one cup", "26 miles in km"
     u = units.parse(text)
     if u:
@@ -277,6 +281,8 @@ async def _cheap(p: Plan, f: Frame, meter: dict) -> list:
         calls[0] += k
 
     try:
+        if v == "device":
+            return await device.docs(p.args["dq"])
         if v == "units":
             return [units.card(p.args["parse"]).doc()]
         if v == "fx":
@@ -364,6 +370,11 @@ async def route(query: str, f: Frame, *, final: bool, meter: dict, web_fn):
             meter.update(tier="wait", backend="router", credits=0.0, paid=0)
             raise Skip(p.why)
         p = Plan("web", p.vertical, 0.3, {}, p.why + " (final: web)")
+    if p.vertical == "device" and p.args["dq"].action and not final:
+        # music / apps act on the Mac: only once the speaker has finished (never on a partial "play taylor")
+        from .lanes import Skip
+        meter.update(tier="wait", backend="router", credits=0.0, paid=0)
+        raise Skip("device action: waits for the endpoint")
     cheap: list = []
     hedge_ms = meter.get("hedge_ms", config.ROUTER_FACTS_HEDGE_MS)
     if p.lane == "facts" and hedge_ms is not None and hedge_ms >= 0 and not (meter.get("no_paid") and not final):
@@ -380,7 +391,9 @@ async def route(query: str, f: Frame, *, final: bool, meter: dict, web_fn):
         meter["route_fallback"] = "empty" if not cheap else "weak"
     elif p.lane in ("card", "facts"):
         try:
-            cheap = await asyncio.wait_for(_cheap(p, f, meter), config.ROUTER_LANE_TIMEOUT_S)
+            lane_s = max(config.ROUTER_LANE_TIMEOUT_S, config.DEVICE_ACTION_TIMEOUT_S) if p.vertical == "device" \
+                else config.ROUTER_LANE_TIMEOUT_S
+            cheap = await asyncio.wait_for(_cheap(p, f, meter), lane_s)
         except asyncio.CancelledError:
             raise
         except BaseException as e:
@@ -487,6 +500,8 @@ def card_fits(card: dict, question: str) -> bool:
     """Does this card answer `question` (the final question text)? Its key arguments must still be what was asked:
     the same place and day (weather), currencies and amount (fx), units and amount (units), place (time / sun)."""
     v, a = card.get("vertical"), card.get("args") or {}
+    if v == "device":
+        return device.fits(a, question)
     low = _low(question)
     if v == "units":
         u = units.parse(question)

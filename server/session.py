@@ -48,7 +48,7 @@ def gate_open(f, cc_at: int | None, spans: list[dict]) -> bool:
 # to eat pancakes") is heard, labelled, and not searched / answered. Push-to-talk and replays never use this gate.
 _REQUEST_START = re.compile(r"^(what|whats|what's|who|whos|who's|whom|whose|when|where|wheres|where's|why|which|how|hows|"
                             r"how's|is|are|was|were|do|does|did|can|could|will|would|should|shall|may|might|has|have|had|"
-                            r"tell|show|find|search|look|give|get|play|open|define|explain|list|compare|check|any|anything)$")
+                            r"tell|show|find|search|look|give|get|play|open|launch|pause|resume|locate|define|explain|list|compare|check|any|anything)$")
 
 
 def open_mic_skip(f, ctx: dict | None = None) -> str | None:

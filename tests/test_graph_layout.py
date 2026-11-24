@@ -111,7 +111,7 @@ def test_group_layout_one_cell_per_turn_labels_apart():
 
 
 def test_web_wiring_full_size_view():
-    html = (ROOT / "web" / "index.html").read_text()
+    html = (ROOT / "web" / "lab.html").read_text()
     i_l, i_g, i_b = html.index("graphlayout.js"), html.index('src="graph.js'), html.index("graphbig.js")
     assert i_l < i_g < i_b and "graphbig.css" in html
     g = (ROOT / "web" / "graph.js").read_text()

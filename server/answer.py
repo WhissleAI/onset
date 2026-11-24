@@ -301,7 +301,7 @@ def asks_prop(question: str) -> str:
 def fact_sentence(question: str, item: str, prop: str, vals: list, today=None) -> str:
     """One plain sentence from a Wikidata fact. "how old is ..." with a full birth date: the age, computed."""
     import datetime as _dt
-    v = ", ".join(vals[:3]) if len(vals) > 1 else vals[0]
+    v = (", ".join(vals[:2]) + " and " + vals[2] if len(vals) >= 3 else " and ".join(vals[:2])) if len(vals) > 1 else vals[0]
     if prop == "born_date" and re.search(r"\bhow old\b", question.lower()):
         try:
             born = _dt.datetime.strptime(vals[0], "%B %d, %Y").date()

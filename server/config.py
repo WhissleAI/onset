@@ -320,6 +320,10 @@ PII_YEARS = os.environ.get("PII_YEARS", "1") == "1"
 # <data dir>/train/rows.jsonl for the training loop (server/trainlog.py, scripts/train_cycle.sh). Local only; no audio.
 TRAIN_COLLECT = os.environ.get("TRAIN_COLLECT", "1") == "1"
 ROUTER_LOOSE = os.environ.get("ROUTER_LOOSE", "1") == "1"   # wider card detection: "how hot is it in X", "what time was it in X" (needs an Arc place / intent)
+# Device lane (server/device.py): your files (Spotlight), Music, apps on this Mac. Off off macOS.
+DEVICE = os.environ.get("DEVICE", "1").strip().lower() in ("1", "on", "true")
+DEVICE_TIMEOUT_S = float(os.environ.get("DEVICE_TIMEOUT_S", "1.5"))           # one Spotlight search
+DEVICE_ACTION_TIMEOUT_S = float(os.environ.get("DEVICE_ACTION_TIMEOUT_S", "6.0"))   # Music / open -a (first launch is slow)
 ROUTER_LEADS = os.environ.get("ROUTER_LEADS", "1") == "1"              # local Wikipedia lead index (if built)
 ROUTER_LEADS_STRONG = float(os.environ.get("ROUTER_LEADS_STRONG", "0.76"))   # lead cosine that counts as an answer (calibrated on the eval factoids)
 ROUTER_UA = os.environ.get("ROUTER_UA", "HeadStartDemo/0.1 (https://github.com/; voice search research prototype)")

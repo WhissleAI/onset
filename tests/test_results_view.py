@@ -195,7 +195,7 @@ def test_health_and_ready_carry_notices(client, monkeypatch, claude_backend):
 
 # ----------------------------------------------------------------------------- web wiring (static checks)
 def test_web_wiring():
-    html = (ROOT / "web" / "index.html").read_text()
+    html = (ROOT / "web" / "lab.html").read_text()
     assert 'id="scOpen"' in html and "scorecard.js" in html and "scorecard.css" in html
     assert ">Sources</button>" in html                     # the race toggle is not also called "Results"
     assert html.count('data-k="route"') == 2

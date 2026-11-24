@@ -206,6 +206,10 @@ cat > "$C/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>$APP_NAME listens while you hold Space (or after you click the mic) so it can search while you speak. Audio stays on this Mac unless you add a Deepgram key.</string>
+  <key>NSAppleEventsUsageDescription</key><string>$APP_NAME controls Music and opens apps when you ask it to.</string>
+  <key>NSDesktopFolderUsageDescription</key><string>$APP_NAME looks for your files here when you ask it to find one.</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>$APP_NAME looks for your files here when you ask it to find one.</string>
+  <key>NSDownloadsFolderUsageDescription</key><string>$APP_NAME looks for your files here when you ask it to find one.</string>
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
   <key>HSDevEnvPath</key><string>$( [ "$DEV_ENV" = 1 ] && echo "$REPO/.env" )</string>
   <key>HSServerEnv</key><dict>$( [ "${ONNX_RUNTIME:-0}" = 1 ] && echo "<key>ONNX_RUNTIME</key><string>1</string>" )</dict>

@@ -724,7 +724,7 @@ async def ws_endpoint(ws: WebSocket):
                     if not p.exists():
                         await send({"t": "error", "mode": "sys", "error": f"no such file {p.name}"})
                         continue
-                modes = data.get("modes") or ["headstart", "baseline"]
+                modes = data.get("modes") or ["headstart"]   # the app: Onset only; the developer view asks for the baseline race
                 typed = t == "start" and bool(data.get("typed")) and TYPED_INPUT
                 rstate, kt = None, None
                 if typed:
