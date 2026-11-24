@@ -3,7 +3,7 @@
 Asking out loud is reliable again. Onset 0.2.x updates itself to this version (or Onset > Check for Updates…).
 
 **Download:** `Onset-0.2.4-arm64.dmg` below. Signed with Whissle LLC's Developer ID and notarized by Apple. Check
-the download: `shasum -a 256 Onset-0.2.4-arm64.dmg` should match `Onset-0.2.4-arm64.dmg.sha256` (`SHA_PENDING`).
+the download: `shasum -a 256 Onset-0.2.4-arm64.dmg` should match `Onset-0.2.4-arm64.dmg.sha256` (`8775f3d2d6c8998547225839cb04914dc02c2720172502f2d85cddd1ae193622`).
 
 ### Fixed
 - **Spoken questions and follow-ups that showed but got no answer.** Clicking the mic now means "I'm asking you":
