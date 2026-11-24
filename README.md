@@ -31,6 +31,12 @@ It works without any keys: Arc listens on your Mac, DuckDuckGo searches the web,
 cloud ear, Tavily or Telem for the live web), with a **Test** button for each. Keys are stored only in your Mac's Keychain; questions, memory and history
 stay on your Mac. You can speak (hold Space) or type. Release steps: [MACAPP.md](MACAPP.md#release).
 
+
+## Windows
+A Windows build (x64, Windows 10/11) is made from main with one PowerShell command: see
+[docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md). Same engine, page and models as the Mac app; "find my files", Music
+and app actions are Mac-only for now.
+
 ## Index your own recordings
 Click **Recordings** in the top bar and drop in a meeting, call or voice memo (wav, mp3, m4a, aac, flac, ogg, or the
 audio of an mp4 / mov). On your Mac, Arc Mini transcribes it with word timings, Arc Tagger marks the people, places and

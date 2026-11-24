@@ -24,3 +24,7 @@ def test_release_smoke_contract():
 def test_runs_onset_only_and_opens_files_through_the_app():
     assert 'MODES = [MODE]' in JS and 'MODE = "headstart"' in JS
     assert 't: "open", path' in JS
+
+
+def test_page_talks_to_the_windows_shell_too():
+    assert "window.pywebview.api.message" in JS and "pywebviewready" in JS

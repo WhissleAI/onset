@@ -25,7 +25,10 @@ import json
 import os
 import queue
 import re
-import resource
+try:
+    import resource                    # POSIX only (Windows has no getrusage)
+except ImportError:
+    resource = None
 import shutil
 import subprocess
 import sys
@@ -401,6 +404,8 @@ class Store:
 
 # ------------------------------------------------------------------------------------------------ the pipeline
 def _rss_mb() -> float:
+    if resource is None:
+        return 0.0
     r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return round(r / (1e6 if sys.platform == "darwin" else 1e3), 1)
 

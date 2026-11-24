@@ -7,7 +7,13 @@
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const MODE = "headstart", MODES = [MODE];
-  const bridge = () => (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.onset) || null;
+  // the app shell: Mac = WKWebView's window.webkit.messageHandlers.onset; Windows = pywebview's window.pywebview.api
+  // (winapp/onset_win.py Api.message). In a plain browser there is none (no Settings button, files don't open).
+  const bridge = () => {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.onset) return window.webkit.messageHandlers.onset;
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.message) return { postMessage: (m) => window.pywebview.api.message(m) };
+    return null;
+  };
   const post = (m) => { const b = bridge(); if (!b) return false; try { b.postMessage(m); return true; } catch { return false; } };
 
   // ------------------------------------------------------------------ errors → the Mac app's log
@@ -437,7 +443,10 @@
     box.focus();
   }
   $("#newChat").addEventListener("click", newChat);
-  if (bridge()) { $("#settingsBtn").hidden = false; $("#settingsBtn").addEventListener("click", () => post({ t: "settings" })); }
+  $("#settingsBtn").addEventListener("click", () => post({ t: "settings" }));
+  const showSettings = () => { $("#settingsBtn").hidden = !bridge(); paintNotice(); };
+  showSettings();
+  addEventListener("pywebviewready", showSettings);      // Windows: the api is injected after the page loads
   function replay(file) {
     if (!file) return;
     if (mic.on) stopMic(true, "replay");

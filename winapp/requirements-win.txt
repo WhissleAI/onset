@@ -1,0 +1,4 @@
+# The Windows shell (winapp/onset_win.py), on top of macapp/requirements-native.txt (the engine, no torch).
+pywebview==6.2.1         # Edge WebView2 window (pythonnet on Windows)
+pythonnet==3.0.5         # pywebview's .NET bridge to WebView2 / WinForms
+keyring==25.7.0          # optional service keys in Windows Credential Manager

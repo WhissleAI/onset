@@ -18,9 +18,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _alive_windows(pid: int) -> bool:
+    """Windows: os.kill(pid, 0) would TERMINATE the app (it calls TerminateProcess), so ask the kernel instead."""
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    h = k32.OpenProcess(0x00100000 | 0x1000, False, pid)        # SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return False
+    try:
+        return k32.WaitForSingleObject(h, 0) == 0x102               # WAIT_TIMEOUT: still running
+    finally:
+        k32.CloseHandle(h)
+
+
 def watch_parent(pid: int):
     while True:
         time.sleep(1.0)
+        if sys.platform == "win32":
+            if not _alive_windows(pid):
+                os._exit(0)
+            continue
         try:
             os.kill(pid, 0)
         except ProcessLookupError:

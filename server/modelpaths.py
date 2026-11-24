@@ -11,6 +11,7 @@ The names under MODELS_DIR are the "dir" fields of models/manifest.json (kept in
 from __future__ import annotations
 
 import os
+import sys
 import re
 from pathlib import Path
 
@@ -92,15 +93,23 @@ def embed_model(env=None, root: Path = ROOT) -> str:
     return "google/embeddinggemma-2"
 
 
+def _lib(stem: str) -> str:
+    """The shared library's file name on this platform: libarc.dylib (macOS), arc.dll (Windows: mingw build,
+    scripts/build_windows_libs.sh), libarc.so (Linux)."""
+    if sys.platform == "win32":
+        return f"{stem}.dll"
+    return f"lib{stem}.dylib" if sys.platform == "darwin" else f"lib{stem}.so"
+
+
 def tagger_lib(env=None, root: Path = ROOT) -> Path:
     """libarctag.dylib is built from vendor/arctag/src (scripts/fetch_models.py --build-tagger, or the app build)."""
     env = os.environ if env is None else env
     if env.get("ARCTAG_LIB"):
         return Path(env["ARCTAG_LIB"]).expanduser()
-    repo = root / "vendor" / "arctag" / "libarctag.dylib"
+    repo = root / "vendor" / "arctag" / _lib("arctag")
     if repo.exists():
         return repo
-    return models_dir(env, root) / "arctag" / "libarctag.dylib"
+    return models_dir(env, root) / "arctag" / _lib("arctag")
 
 
 def arc_lib(env=None, root: Path = ROOT) -> Path:
@@ -109,4 +118,4 @@ def arc_lib(env=None, root: Path = ROOT) -> Path:
     env = os.environ if env is None else env
     if env.get("ARC_LIB"):
         return Path(env["ARC_LIB"]).expanduser()
-    return root / "vendor" / "arc" / "libarc.dylib"
+    return root / "vendor" / "arc" / _lib("arc")
