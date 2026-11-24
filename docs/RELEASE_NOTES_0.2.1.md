@@ -4,7 +4,7 @@ A fix release for answers in a conversation. Onset 0.2.0 updates itself to this 
 Updates…).
 
 **Download:** `Onset-0.2.1-arm64.dmg` below. Signed with Whissle LLC's Developer ID and notarized by Apple. Check
-the download: `shasum -a 256 Onset-0.2.1-arm64.dmg` should match `Onset-0.2.1-arm64.dmg.sha256` (`@DMG_SHA@`).
+the download: `shasum -a 256 Onset-0.2.1-arm64.dmg` should match `Onset-0.2.1-arm64.dmg.sha256` (`cba93eb223afa4ba4f7a1417a50598b266ff47048a5db165c9d8d334716ce1eb`).
 
 ### Fixed
 - **A new question could get the last question's answer.** Asking "what are five good books to read" right after
